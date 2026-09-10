@@ -105,6 +105,14 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 .unc-field{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12.5px;color:var(--ink);
   flex-shrink:0}
 .unc-field input{width:auto}
+.geo-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);
+  margin-top:4px}
+.geo-line.ok{color:var(--ink)}
+.geo-line.error{color:var(--red)}
+.geo-line .geo-text{overflow-wrap:anywhere}
+.geo-line button{border:1px solid var(--border);background:#fff;color:var(--muted);font-size:10px;
+  font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:3px 8px;border-radius:10px;
+  cursor:pointer;white-space:nowrap;font-family:var(--sans);flex-shrink:0}
 .notes-row{display:none}
 .notes-row.open{display:block;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
 .detail-label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);
@@ -725,6 +733,209 @@ window.FHKit = (function(){
     toast("Photos zip exported");
   }
 
+  /* ---- Minimal, dependency-free GeoPackage (.gpkg) writer ------------------
+     A GeoPackage is an OGC-standard SQLite database, so this hand-builds the
+     raw SQLite file bytes (header, table b-tree pages, records) for exactly
+     the handful of tables a minimal points-only GeoPackage needs: the three
+     required gpkg_* metadata tables plus one point feature table. There's no
+     SQL engine here at all — every row is encoded directly into SQLite's
+     on-disk page/record format. Verified against real GIS tooling (GDAL's
+     ogrinfo, and SQLite's own "PRAGMA integrity_check") while this was built;
+     kept deliberately to a single leaf page per table (see the page-size
+     selection below) rather than implementing a full multi-page b-tree,
+     since a single field survey's species list comfortably fits on one
+     64KB-or-smaller page. */
+  function gpkgVarint(value){
+    let v = BigInt(Math.trunc(value));
+    if(v < 0n) v = v & 0xFFFFFFFFFFFFFFFFn; // two's-complement wrap into unsigned 64-bit
+    if(v <= 0x7Fn) return new Uint8Array([Number(v)]);
+    const TWO_56 = 1n<<56n;
+    if(v < TWO_56){
+      const groups = []; let vv = v;
+      while(vv > 0n){ groups.unshift(Number(vv & 0x7Fn)); vv >>= 7n; }
+      const bytes = [];
+      for(let i=0;i<groups.length-1;i++) bytes.push(groups[i] | 0x80);
+      bytes.push(groups[groups.length-1]);
+      return new Uint8Array(bytes);
+    }
+    // 9-byte special form (only reached for large-magnitude / negative rowids):
+    // first 8 bytes carry the top 56 bits (7 bits each, continuation bit set),
+    // the 9th byte carries the low 8 bits raw.
+    const top56 = v >> 8n, last8 = Number(v & 0xFFn);
+    const groups = []; let vv = top56;
+    for(let i=0;i<8;i++){ groups.unshift(Number(vv & 0x7Fn)); vv >>= 7n; }
+    const bytes = [];
+    for(let i=0;i<8;i++) bytes.push(groups[i] | 0x80);
+    bytes.push(last8);
+    return new Uint8Array(bytes);
+  }
+  function gpkgBEU16(n){ return new Uint8Array([(n>>>8)&0xFF, n&0xFF]); }
+  function gpkgBEU32(n){ return new Uint8Array([(n>>>24)&0xFF,(n>>>16)&0xFF,(n>>>8)&0xFF,n&0xFF]); }
+  function gpkgBEDouble(n){ const b=new ArrayBuffer(8); new DataView(b).setFloat64(0,n,false); return new Uint8Array(b); }
+  function gpkgIntSerial(v){
+    if(v >= -128 && v <= 127) return {type:1, bytes:new Uint8Array([v & 0xFF])};
+    if(v >= -32768 && v <= 32767) return {type:2, bytes:gpkgBEU16(v & 0xFFFF)};
+    if(v >= -8388608 && v <= 8388607) return {type:3, bytes:new Uint8Array([(v>>>16)&0xFF,(v>>>8)&0xFF,v&0xFF])};
+    if(v >= -2147483648 && v <= 2147483647) return {type:4, bytes:gpkgBEU32(v)};
+    // 8-byte fallback for anything larger than 32-bit (not expected here).
+    const hi = Math.floor(v/0x100000000), lo = v>>>0;
+    return {type:6, bytes:u8concat([gpkgBEU32(hi), gpkgBEU32(lo)])};
+  }
+  // Column descriptors used with gpkgEncodeRecord: {t:'rowid'} for an INTEGER
+  // PRIMARY KEY column (its value lives in the row's key, not the record body),
+  // {t:'null'}, {t:'int',v}, {t:'real',v}, {t:'text',v} or {t:'blob',v}.
+  function gpkgEncodeColumn(col){
+    if(col.t==="rowid" || col.t==="null") return {serialType:0, body:new Uint8Array(0)};
+    if(col.t==="int"){ const r = gpkgIntSerial(col.v); return {serialType:r.type, body:r.bytes}; }
+    if(col.t==="real") return {serialType:7, body:gpkgBEDouble(col.v)};
+    if(col.t==="text"){ const b=new TextEncoder().encode(col.v==null?"":String(col.v)); return {serialType:b.length*2+13, body:b}; }
+    if(col.t==="blob") return {serialType:col.v.length*2+12, body:col.v};
+    throw new Error("gpkg: unknown column type "+col.t);
+  }
+  function gpkgEncodeRecord(columns){
+    const encoded = columns.map(gpkgEncodeColumn);
+    const serialVarints = encoded.map(e=>gpkgVarint(e.serialType));
+    let headerLenNoSelf = 0; serialVarints.forEach(v=>headerLenNoSelf+=v.length);
+    let headerLenVarint = gpkgVarint(headerLenNoSelf+1);
+    for(let guard=0; guard<5; guard++){
+      const refit = gpkgVarint(headerLenNoSelf + headerLenVarint.length);
+      if(refit.length===headerLenVarint.length){ headerLenVarint = refit; break; }
+      headerLenVarint = refit;
+    }
+    return u8concat([headerLenVarint, ...serialVarints, ...encoded.map(e=>e.body)]);
+  }
+  function gpkgBuildLeafPage(pageSize, rows, isPage1){
+    const headerOffset = isPage1 ? 100 : 0;
+    const pointerArrayStart = headerOffset + 8;
+    const cellBuffers = rows.map(r=> u8concat([gpkgVarint(r.record.length), gpkgVarint(r.rowid), r.record]));
+    let contentStart = pageSize;
+    const cellOffsets = new Array(cellBuffers.length);
+    for(let i=0;i<cellBuffers.length;i++){ contentStart -= cellBuffers[i].length; cellOffsets[i] = contentStart; }
+    if(contentStart < pointerArrayStart + cellBuffers.length*2){
+      throw new Error("This survey has too many species/too much text to export as a GeoPackage at this size.");
+    }
+    const page = new Uint8Array(pageSize);
+    page[headerOffset] = 0x0D; // leaf table b-tree page
+    page.set(gpkgBEU16(0), headerOffset+1);
+    page.set(gpkgBEU16(cellBuffers.length), headerOffset+3);
+    page.set(gpkgBEU16(contentStart % 65536), headerOffset+5);
+    page[headerOffset+7] = 0;
+    for(let i=0;i<cellBuffers.length;i++) page.set(gpkgBEU16(cellOffsets[i] % 65536), pointerArrayStart+i*2);
+    for(let i=0;i<cellBuffers.length;i++) page.set(cellBuffers[i], cellOffsets[i]);
+    return page;
+  }
+  function gpkgEncodePoint(lon, lat, srsId){
+    const flags = new Uint8Array([0x01]); // little-endian, no envelope, not empty, standard
+    const srs = new Uint8Array(4); new DataView(srs.buffer).setInt32(0, srsId, true);
+    const wkbType = new Uint8Array(4); new DataView(wkbType.buffer).setUint32(0, 1, true); // 1 = Point
+    const x = new Uint8Array(8); new DataView(x.buffer).setFloat64(0, lon, true);
+    const y = new Uint8Array(8); new DataView(y.buffer).setFloat64(0, lat, true);
+    return u8concat([new Uint8Array([0x47,0x50,0]), flags, srs, new Uint8Array([1]), wkbType, x, y]);
+  }
+  /* opts: { tableName, identifier, description, points:[{id,sci,common,lat,lon}] }
+     Returns a Uint8Array — the complete .gpkg file. One point feature per
+     entry in `points` (only pass rows that actually have a captured lat/lon). */
+  function buildGeoPackageBytes(opts){
+    const tableName = (opts && opts.tableName) || "species_points";
+    const geomCol = "geom", srsId = 4326;
+    const points = (opts && opts.points) || [];
+    const identifier = (opts && opts.identifier) || tableName;
+    const description = (opts && opts.description) || "";
+    const nowIso = new Date().toISOString();
+
+    let minX=null,minY=null,maxX=null,maxY=null;
+    points.forEach(p=>{
+      if(minX===null||p.lon<minX) minX=p.lon; if(maxX===null||p.lon>maxX) maxX=p.lon;
+      if(minY===null||p.lat<minY) minY=p.lat; if(maxY===null||p.lat>maxY) maxY=p.lat;
+    });
+
+    const t=(s)=>({t:"text",v:s}), n=(v)=>({t:"int",v:v}), rl=(v)=>({t:"real",v:v}), rid=()=>({t:"rowid"}), nul=()=>({t:"null"});
+
+    const sqlSrs = "CREATE TABLE gpkg_spatial_ref_sys (srs_name TEXT NOT NULL,srs_id INTEGER PRIMARY KEY,"
+      +"organization TEXT NOT NULL,organization_coordsys_id INTEGER NOT NULL,definition TEXT NOT NULL,description TEXT)";
+    const sqlContents = "CREATE TABLE gpkg_contents (table_name TEXT NOT NULL,data_type TEXT NOT NULL,"
+      +"identifier TEXT,description TEXT,last_change TEXT NOT NULL,min_x DOUBLE,min_y DOUBLE,max_x DOUBLE,max_y DOUBLE,srs_id INTEGER)";
+    const sqlGeomCols = "CREATE TABLE gpkg_geometry_columns (table_name TEXT NOT NULL,column_name TEXT NOT NULL,"
+      +"geometry_type_name TEXT NOT NULL,srs_id INTEGER NOT NULL,z TINYINT NOT NULL,m TINYINT NOT NULL)";
+    const sqlFeature = "CREATE TABLE "+tableName+" (fid INTEGER PRIMARY KEY AUTOINCREMENT,"+geomCol+" POINT,"
+      +"record_id TEXT,scientific_name TEXT,common_name TEXT)";
+
+    const srsRows = [
+      {rowid:-1, record: gpkgEncodeRecord([t("Undefined cartesian SRS"), rid(), t("NONE"), n(-1), t("undefined"), nul()])},
+      {rowid:0,  record: gpkgEncodeRecord([t("Undefined geographic SRS"), rid(), t("NONE"), n(0), t("undefined"), nul()])},
+      {rowid:4326, record: gpkgEncodeRecord([t("WGS 84"), rid(), t("EPSG"), n(4326),
+        t('GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]'),
+        t("longitude/latitude coordinates in decimal degrees on the WGS 84 spheroid")])}
+    ];
+    const contentsRows = [
+      {rowid:1, record: gpkgEncodeRecord([
+        t(tableName), t("features"), t(identifier), t(description), t(nowIso),
+        points.length?rl(minX):nul(), points.length?rl(minY):nul(), points.length?rl(maxX):nul(), points.length?rl(maxY):nul(),
+        n(srsId)
+      ])}
+    ];
+    const geomColsRows = [
+      {rowid:1, record: gpkgEncodeRecord([ t(tableName), t(geomCol), t("POINT"), n(srsId), n(0), n(0) ])}
+    ];
+    const featureRows = points.map((p,i)=>({
+      rowid: i+1,
+      record: gpkgEncodeRecord([ rid(), {t:"blob", v: gpkgEncodePoint(p.lon, p.lat, srsId)}, t(p.id), t(p.sci), t(p.common) ])
+    }));
+
+    const tableDefs = [
+      { name:"gpkg_spatial_ref_sys", sql:sqlSrs, rows:srsRows },
+      { name:"gpkg_contents", sql:sqlContents, rows:contentsRows },
+      { name:"gpkg_geometry_columns", sql:sqlGeomCols, rows:geomColsRows },
+      { name:tableName, sql:sqlFeature, rows:featureRows }
+    ];
+    const masterRows = tableDefs.map((td,i)=>({
+      rowid: i+1,
+      record: gpkgEncodeRecord([ t("table"), t(td.name), t(td.name), n(i+2), t(td.sql) ])
+    }));
+
+    const PAGE_SIZES = [512,1024,2048,4096,8192,16384,32768,65536];
+    const needed = (rows, isPage1) => {
+      let sum = 0;
+      rows.forEach(r=>{ sum += gpkgVarint(r.record.length).length + gpkgVarint(r.rowid).length + r.record.length + 2; });
+      return (isPage1?100:0) + 8 + sum + 32;
+    };
+    const need = Math.max(needed(masterRows,true), ...tableDefs.map(td=>needed(td.rows,false)));
+    const pageSize = PAGE_SIZES.find(ps=>ps>=need);
+    if(!pageSize) throw new Error("This survey has too much data to export as a GeoPackage.");
+
+    const totalPages = 1 + tableDefs.length;
+    const file = new Uint8Array(pageSize*totalPages);
+    file.set(gpkgBuildLeafPage(pageSize, masterRows, true), 0);
+
+    const header = new Uint8Array(100);
+    header.set(new TextEncoder().encode("SQLite format 3\0"), 0);
+    header.set(gpkgBEU16(pageSize % 65536), 16);
+    header[18]=1; header[19]=1; header[20]=0;
+    header[21]=64; header[22]=32; header[23]=32;
+    header.set(gpkgBEU32(1), 24);
+    header.set(gpkgBEU32(totalPages), 28);
+    header.set(gpkgBEU32(0), 32);
+    header.set(gpkgBEU32(0), 36);
+    header.set(gpkgBEU32(1), 40);
+    header.set(gpkgBEU32(4), 44);
+    header.set(gpkgBEU32(0), 48);
+    header.set(gpkgBEU32(0), 52);
+    header.set(gpkgBEU32(1), 56);
+    header.set(gpkgBEU32(10300), 60);
+    header.set(gpkgBEU32(0), 64);
+    header.set(new TextEncoder().encode("GPKG"), 68);
+    header.set(gpkgBEU32(1), 92);
+    header.set(gpkgBEU32(3045000), 96);
+    file.set(header, 0);
+
+    tableDefs.forEach((td,i)=>{
+      file.set(gpkgBuildLeafPage(pageSize, td.rows, false), pageSize*(i+1));
+    });
+    return file;
+  }
+  const GPKG_MIME = "application/geopackage+sqlite3";
+  function buildGeoPackageBlob(opts){ return new Blob([buildGeoPackageBytes(opts)], { type: GPKG_MIME }); }
+
   // Plain "save to disk" download — no share-sheet attempt, for when the user
   // has explicitly chosen "Download to device" over "Email / Share".
   function triggerDownload(blob, filename){
@@ -749,7 +960,7 @@ window.FHKit = (function(){
     return false;
   }
 
-  return { esc, today, toast, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, triggerDownload, shareFiles, buildPicker, manager, consLabel, consBadge };
+  return { esc, today, toast, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, buildGeoPackageBlob, buildGeoPackageBytes, triggerDownload, shareFiles, buildPicker, manager, consLabel, consBadge };
 })();
 
 </script>
@@ -963,8 +1174,40 @@ window.FHKit = (function(){
     if(rows.some(r=>r.sci===sp.sci)){ FHKit.toast((sp.common||sp.sci)+" is already on the list"); return; }
     // `free` marks a typed name that didn't match the reference list (set by
     // FHKit.buildPicker's "Add “…”" option) — only these can be flagged Uncertain.
-    rows.push({ id:makeRecordId(), sci:sp.sci, common:sp.common||sp.sci, type:sp.type||"indigenous", lf:sp.lf||"", ffg:sp.ffg||"", epbc:sp.epbc||"", fieldNotes:"", free:!!sp.free, uncertain:false, photos:[] });
+    // GPS is NOT captured here — only species flagged "Significant" get a
+    // location (see the data-sig change handler below), so most additions
+    // don't trigger a location prompt at all.
+    rows.push({ id:makeRecordId(), sci:sp.sci, common:sp.common||sp.sci, type:sp.type||"indigenous", lf:sp.lf||"", ffg:sp.ffg||"", epbc:sp.epbc||"", fieldNotes:"", free:!!sp.free, uncertain:false, significant:false, photos:[], gpsStatus:"idle" });
     render(); autosave();
+  }
+  // Captures a GPS fix for one species record (used to georeference it — and,
+  // via its shared record ID, its photos — in the exported GeoPackage). Only
+  // called for species flagged "Significant".
+  function captureLocation(idx){
+    const r = rows[idx];
+    if(!r) return;
+    if(!(window.navigator && navigator.geolocation && navigator.geolocation.getCurrentPosition)){
+      r.gpsStatus = "unsupported"; r.gpsMessage = "Location not supported on this device";
+      render(); autosave(); return;
+    }
+    r.gpsStatus = "locating";
+    render();
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        r.lat = pos.coords.latitude;
+        r.lon = pos.coords.longitude;
+        r.gpsAccuracy = pos.coords.accuracy;
+        r.gpsStatus = "ok";
+        r.gpsMessage = "";
+        render(); autosave();
+      },
+      err => {
+        r.gpsStatus = "error";
+        r.gpsMessage = (err && err.code===1) ? "Location permission denied" : "Location unavailable";
+        render(); autosave();
+      },
+      { enableHighAccuracy:true, timeout:12000, maximumAge:60000 }
+    );
   }
   function render(){
     const tb = $("tbody");
@@ -972,15 +1215,36 @@ window.FHKit = (function(){
       const uncField = r.free
         ? '<label class="unc-field"><input type="checkbox" data-unc="'+i+'" title="Flag this identification as uncertain — highlighted in red on export"'+(r.uncertain?" checked":"")+'> Uncertain</label>'
         : '';
+      const sigField = '<label class="unc-field"><input type="checkbox" data-sig="'+i+'" title="Flag as a significant species — captures its GPS location for the exported GeoPackage"'+(r.significant?" checked":"")+'> Significant</label>';
       const hasNotes = !!(r.fieldNotes && r.fieldNotes.trim());
       const photoCount = (r.photos||[]).length;
       const isOpen = openNotes.has(r);
       const notesBtn = '<button type="button" class="notes-btn'+(hasNotes?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+i+'" title="Field notes for this species">Field Notes'+(hasNotes?' ●':'')+'</button>';
       const photosBtn = '<button type="button" class="notes-btn'+(photoCount?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+i+'" title="Photos for this species">Photos'+(photoCount?' ('+photoCount+')':'')+'</button>';
-      const head = '<div class="sp-name-row"><div>'+FHKit.esc(r.common||r.sci)+(FHKit.consBadge(r.ffg,r.epbc)?' '+FHKit.consBadge(r.ffg,r.epbc):'')+(r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')+'</div><div class="row-actions">'+notesBtn+photosBtn+'</div></div>'
+      // Location is only captured/shown for species flagged "Significant" —
+      // most species get no geo-line at all, and no location prompt.
+      let geoLine = "";
+      if(r.significant){
+        if(r.gpsStatus === "ok" && typeof r.lat === "number"){
+          const acc = (typeof r.gpsAccuracy === "number") ? " (±"+Math.round(r.gpsAccuracy)+"m)" : "";
+          geoLine = '<div class="geo-line ok"><span class="geo-text">📍 '+r.lat.toFixed(5)+', '+r.lon.toFixed(5)+acc+'</span>'
+            + '<button type="button" data-geo-retry="'+i+'" title="Re-capture this species’ location">Update</button></div>';
+        } else if(r.gpsStatus === "locating"){
+          geoLine = '<div class="geo-line"><span class="geo-text">📍 Locating…</span></div>';
+        } else if(r.gpsStatus === "error" || r.gpsStatus === "unsupported"){
+          geoLine = '<div class="geo-line error"><span class="geo-text">📍 '+FHKit.esc(r.gpsMessage||"No location")+'</span>'
+            + '<button type="button" data-geo-retry="'+i+'">Retry</button></div>';
+        } else {
+          geoLine = '<div class="geo-line"><span class="geo-text">📍 No location captured</span>'
+            + '<button type="button" data-geo-retry="'+i+'">Get location</button></div>';
+        }
+      }
+      const head = '<div class="sp-name-row"><div>'+FHKit.esc(r.common||r.sci)+(FHKit.consBadge(r.ffg,r.epbc)?' '+FHKit.consBadge(r.ffg,r.epbc):'')+(r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')+(r.significant?' <span class="badge ind" title="Significant species">SIGNIFICANT</span>':'')+'</div><div class="row-actions">'+notesBtn+photosBtn+'</div></div>'
         + '<div class="sci"><span>'+FHKit.esc(r.sci)+'</span><span class="rec-id" title="Unique identifier for this species record">'+FHKit.esc(r.id||"")+'</span></div>'
+        + geoLine
         + '<div class="species-controls">'
         + '<label class="origin-field"><span>Origin</span><select data-origin="'+i+'"><option value="indigenous"'+(r.type!=="invasive"?" selected":"")+'>Indigenous</option><option value="invasive"'+(r.type==="invasive"?" selected":"")+'>Invasive</option></select></label>'
+        + sigField
         + uncField
         + '<button class="x" data-del="'+i+'" title="Remove" style="margin-left:auto">&times;</button>'
         + '</div>';
@@ -1043,18 +1307,40 @@ window.FHKit = (function(){
     const baseName = (fileSafe(m.site) || "Flora Survey")+" - "+(fileSafe(m.date) || FHKit.today());
     const xlsxFilename = baseName+".xlsx";
 
-    // A photo zip only makes sense if at least one species has a photo attached.
+    // A photo zip only makes sense if there's a photo OR a captured GPS point
+    // to include — the GeoPackage rides along in that same zip. One point per
+    // species flagged Significant that also has a captured location, keyed by
+    // that species' own record ID (the same ID already stamped onto its photos).
     const photoFiles = buildPhotoFiles();
     const hasPhotos = Object.keys(photoFiles).length > 0;
-    const zipBlob = hasPhotos ? FHKit.buildZipBlob(photoFiles) : null;
+    const geoPoints = rows
+      .filter(r=> r.significant && typeof r.lat==="number" && typeof r.lon==="number")
+      .map(r=> ({ id:r.id, sci:r.sci, common:r.common||r.sci, lat:r.lat, lon:r.lon }));
+    const hasPoints = geoPoints.length > 0;
+    let zipBlob = null;
+    if(hasPhotos || hasPoints){
+      const zipFiles = Object.assign({}, photoFiles);
+      if(hasPoints){
+        zipFiles["species_points.gpkg"] = FHKit.buildGeoPackageBytes({
+          tableName: "species_points",
+          identifier: "Flora Survey — "+(m.site||"Site")+" — "+(m.date||FHKit.today()),
+          description: "Species observation points for this Keystone Conservation flora survey.",
+          points: geoPoints
+        });
+      }
+      zipBlob = FHKit.buildZipBlob(zipFiles);
+    }
     const zipFilename = baseName+" photos.zip";
 
-    showExportChooser({ xlsxBlob, xlsxFilename, zipBlob, zipFilename, site:m.site, date:m.date });
+    showExportChooser({ xlsxBlob, xlsxFilename, zipBlob, zipFilename, site:m.site, date:m.date, hasPhotos, hasPoints });
   }
   // Lets the user pick "Email / Share" (OS share sheet — e.g. Mail, with the
   // file(s) already attached) or "Download to device" (plain file download).
   function showExportChooser(ctx){
-    const filesNote = ctx.zipBlob ? "Excel file + photos zip" : "Excel file";
+    const zipParts = [];
+    if(ctx.hasPhotos) zipParts.push("photos");
+    if(ctx.hasPoints) zipParts.push("GPS points (GeoPackage)");
+    const filesNote = ctx.zipBlob ? "Excel file + "+zipParts.join(" + ")+" zip" : "Excel file";
     const ov = document.createElement("div"); ov.className="fh-modal";
     ov.innerHTML = '<div class="fh-modal-card"><h3>Export Survey</h3>'
       + '<div style="padding:16px 18px">'
@@ -1092,9 +1378,18 @@ window.FHKit = (function(){
 
   // events
   $("tbody").addEventListener("change", e=>{
-    const o=e.target.dataset.origin, u=e.target.dataset.unc, pi=e.target.dataset.photoInput;
+    const o=e.target.dataset.origin, u=e.target.dataset.unc, sg=e.target.dataset.sig, pi=e.target.dataset.photoInput;
     if(o!=null && o!==""){ rows[+o].type=e.target.value; render(); autosave(); }
     else if(u!=null && u!==""){ rows[+u].uncertain=e.target.checked; render(); autosave(); }
+    else if(sg!=null && sg!==""){
+      const idx = +sg, r = rows[idx];
+      r.significant = e.target.checked;
+      // Capture a location the moment a species is flagged significant (unless
+      // we already have one, or a request is already in flight); unchecking
+      // just hides the geo-line again — any already-captured fix is kept.
+      if(r.significant && r.gpsStatus!=="ok" && r.gpsStatus!=="locating") captureLocation(idx);
+      else { render(); autosave(); }
+    }
     else if(pi!=null && pi!==""){
       // Copy to a plain array first: input.files is a *live* FileList, so
       // clearing e.target.value below would otherwise empty it out from under us.
@@ -1121,6 +1416,8 @@ window.FHKit = (function(){
     }
     const nt = e.target.closest("[data-notes-toggle]");
     if(nt){ const r = rows[+nt.dataset.notesToggle]; if(openNotes.has(r)) openNotes.delete(r); else openNotes.add(r); render(); }
+    const geo = e.target.closest("[data-geo-retry]");
+    if(geo){ captureLocation(+geo.dataset.geoRetry); return; }
   });
   ["site","date"].forEach(id=> $(id).addEventListener("input", ()=>autosave()));
 
