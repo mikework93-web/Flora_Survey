@@ -28,8 +28,10 @@ header img{max-width:360px;width:72%;height:auto;display:block;margin:0 auto}
   padding:10px 14px;position:sticky;top:0;z-index:50;box-shadow:0 3px 10px rgba(0,0,0,.25)}
 #fh-bar .grow{flex:1;color:var(--gold-light);font-size:12.5px;font-weight:700;letter-spacing:.6px;
   text-transform:uppercase}
+#fh-bar .actions{display:flex;gap:8px;flex-wrap:wrap}
 .btn{border:1px solid var(--gold);background:var(--gold);color:var(--charcoal-deep);font-weight:700;
-  font-size:12.5px;letter-spacing:.3px;padding:8px 14px;border-radius:6px;cursor:pointer;font-family:var(--sans)}
+  font-size:12.5px;letter-spacing:.3px;padding:8px 14px;border-radius:6px;cursor:pointer;font-family:var(--sans);
+  white-space:nowrap}
 .btn.sec{background:transparent;color:var(--gold-light);border-color:#6a6a67}
 .btn.light{background:#fff;color:var(--ink);border-color:var(--border)}
 .btn:active{transform:translateY(1px)}
@@ -151,6 +153,10 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 @media (max-width:480px){
   header img{width:90%}
   .stat{min-width:80px}
+  #fh-bar{padding:8px 10px;gap:6px 8px}
+  #fh-bar .grow{flex:1 1 100%;font-size:11.5px}
+  #fh-bar .actions{gap:6px;flex:1 1 100%}
+  #fh-bar .actions .btn{flex:1 1 auto;padding:7px 8px;font-size:11px;text-align:center}
 }
 </style>
 </head>
@@ -769,7 +775,17 @@ window.FHKit = (function(){
   let autosaveTimer=null;
   function autosave(){
     clearTimeout(autosaveTimer);
-    autosaveTimer = setTimeout(()=>{ try{ localStorage.setItem(WORKING_KEY, JSON.stringify(snapshot())); }catch(e){} }, 400);
+    autosaveTimer = setTimeout(()=>{
+      const snap = snapshot();
+      try{ localStorage.setItem(WORKING_KEY, JSON.stringify(snap)); }catch(e){}
+      // Once a Site/location name has been entered, also keep this survey's
+      // entry in the Saved Folder itself up to date automatically — so work
+      // isn't lost if "Save" is never explicitly tapped. Silent (no toast):
+      // this runs continuously in the background, not just on demand.
+      if(($("site").value||"").trim()){
+        try{ const o = getFolder(); o[folderKey] = snap; putFolder(o); }catch(e){}
+      }
+    }, 400);
   }
   function saveToFolder(){
     const o = getFolder();
@@ -982,6 +998,11 @@ window.FHKit = (function(){
   }
   // Builds the .xlsx and (if there are any) the photos .zip, then asks the
   // user whether to email/share both together or just download them.
+  // Turns free text into something safe to use as a filename on any OS
+  // (strips characters Windows/macOS/Linux all forbid, collapses whitespace).
+  function fileSafe(s){
+    return String(s||"").trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g," ").trim();
+  }
   function exportSurvey(){
     const m = meta();
     const sheet = [], styles = [];
@@ -1010,13 +1031,15 @@ window.FHKit = (function(){
     if(nUnc) push(["Uncertain ID (shown in red above)", nUnc]);
 
     const xlsxBlob = FHKit.buildXLSXBlob("Flora Survey", sheet, styles, [14,26,30,12,8,8,12,34]);
-    const xlsxFilename = "flora-survey-"+(m.date||FHKit.today())+".xlsx";
+    // Filenames follow "Site/Location - Date", e.g. "Reserve East Paddock - 2026-09-10.xlsx".
+    const baseName = (fileSafe(m.site) || "Flora Survey")+" - "+(fileSafe(m.date) || FHKit.today());
+    const xlsxFilename = baseName+".xlsx";
 
     // A photo zip only makes sense if at least one species has a photo attached.
     const photoFiles = buildPhotoFiles();
     const hasPhotos = Object.keys(photoFiles).length > 0;
     const zipBlob = hasPhotos ? FHKit.buildZipBlob(photoFiles) : null;
-    const zipFilename = "flora-survey-photos-"+(m.date||FHKit.today())+".zip";
+    const zipFilename = baseName+" photos.zip";
 
     showExportChooser({ xlsxBlob, xlsxFilename, zipBlob, zipFilename, site:m.site, date:m.date });
   }
@@ -1106,10 +1129,12 @@ window.FHKit = (function(){
   // ── Toolbar: New / Saved Folder / Export (xlsx + photos zip) / Save ──────
   const bar = $("fh-bar");
   bar.innerHTML = '<strong class="grow">Flora Survey</strong>'
+    + '<span class="actions">'
     + '<button class="btn sec" id="fhNew">New</button>'
     + '<button class="btn sec" id="fhLoad" title="All surveys you\'ve saved">Saved Folder</button>'
     + '<button class="btn sec" id="fhExport">Export</button>'
-    + '<button class="btn" id="fhSave">Save</button>';
+    + '<button class="btn" id="fhSave">Save</button>'
+    + '</span>';
   bar.querySelector("#fhNew").onclick    = newSurvey;
   bar.querySelector("#fhLoad").onclick   = loadFromFolder;
   bar.querySelector("#fhSave").onclick   = saveToFolder;
