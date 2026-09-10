@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4a4a4a">
+<title>Flora Survey — Keystone Conservation</title>
+<style>
+:root{
+  --charcoal:#4a4a4a; --charcoal-deep:#333331; --charcoal-2:#3d3d3b;
+  --gold:#cca735; --gold-light:#e0c468; --gold-dark:#a9862a;
+  --cream:#f5f3ee; --card:#fffdf8; --ink:#2a2a28; --muted:#6b6a63;
+  --border:#ded8c8;
+  --red:#b53a3a; --red-bg:#f8e9e9;
+  --radius:8px; --shadow:0 2px 10px rgba(0,0,0,.12);
+  --sans: system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--cream);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;
+  padding-bottom:env(safe-area-inset-bottom)}
+
+header{background:var(--charcoal);padding:20px 20px 18px;text-align:center;border-bottom:4px solid var(--gold);
+  box-shadow:0 3px 14px rgba(0,0,0,.35)}
+header img{max-width:360px;width:72%;height:auto;display:block;margin:0 auto}
+
+#fh-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--charcoal-deep);
+  padding:10px 14px;position:sticky;top:0;z-index:50;box-shadow:0 3px 10px rgba(0,0,0,.25)}
+#fh-bar .grow{flex:1;color:var(--gold-light);font-size:12.5px;font-weight:700;letter-spacing:.6px;
+  text-transform:uppercase}
+.btn{border:1px solid var(--gold);background:var(--gold);color:var(--charcoal-deep);font-weight:700;
+  font-size:12.5px;letter-spacing:.3px;padding:8px 14px;border-radius:6px;cursor:pointer;font-family:var(--sans)}
+.btn.sec{background:transparent;color:var(--gold-light);border-color:#6a6a67}
+.btn:active{transform:translateY(1px)}
+
+.wrap{max-width:900px;margin:0 auto;padding:18px 16px 60px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);
+  margin-bottom:16px;padding:16px 18px}
+.card h2{margin:0 0 14px;font-size:12.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;
+  color:var(--gold-dark);border-bottom:2px solid var(--border);padding-bottom:8px}
+.card h2 .n{color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0}
+
+.row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.row:last-child{margin-bottom:0}
+.field{flex:1;min-width:160px;display:flex;flex-direction:column;gap:4px}
+label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+input,select,textarea{border:1px solid var(--border);border-radius:5px;padding:8px 10px;font-size:13.5px;
+  color:var(--ink);background:#fff;font-family:var(--sans);width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold)}
+textarea{min-height:60px;resize:vertical}
+
+.pick{position:relative}
+.pick-list{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;
+  border:1px solid var(--border);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.18);max-height:320px;
+  overflow-y:auto;z-index:60}
+.pick-list.open{display:block}
+.pick-opt{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;border-bottom:1px solid #f0ede4}
+.pick-opt:last-child{border-bottom:none}
+.pick-opt:hover{background:var(--cream)}
+.pick-opt .cn{font-weight:600;flex:1}
+.pick-opt .sci{font-style:italic;color:var(--muted);font-size:12px}
+.pick-note{padding:8px 12px;font-size:11.5px;color:var(--muted)}
+.badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px;white-space:nowrap}
+.badge.ind{background:#e7f0e3;color:#3a7a4a}
+.badge.inv{background:var(--red-bg);color:var(--red)}
+.muted{color:var(--muted);font-size:12.5px}
+
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--charcoal);color:var(--gold-light);font-size:10.5px;font-weight:700;letter-spacing:.6px;
+  text-transform:uppercase;padding:8px 10px;text-align:left;white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+tbody tr:nth-child(even) td{background:#faf8f2}
+.sci{font-style:italic;color:var(--muted);font-size:11.5px}
+button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight:700;cursor:pointer;
+  line-height:1;padding:2px 6px}
+.sp-name-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.row-actions{display:flex;gap:6px;flex-shrink:0}
+.rec-id{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted);font-size:10px;
+  letter-spacing:.2px;margin-left:6px}
+.notes-btn{border:1px solid var(--border);background:#fff;color:var(--muted);font-size:10px;font-weight:700;
+  letter-spacing:.3px;text-transform:uppercase;padding:4px 9px;border-radius:12px;cursor:pointer;
+  white-space:nowrap;font-family:var(--sans);flex-shrink:0}
+.notes-btn.has-notes{background:var(--gold);color:var(--charcoal-deep);border-color:var(--gold)}
+.notes-btn.open{outline:2px solid var(--gold-dark);outline-offset:1px}
+tr.notes-row{display:none}
+tr.notes-row.open{display:table-row}
+tr.notes-row td{background:#faf6ea;padding:10px 14px}
+.detail-label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);
+  display:block;margin-bottom:6px}
+.field-notes-input{width:100%;min-height:70px;border:1px solid var(--border);border-radius:5px;
+  padding:8px 10px;font-size:13px;font-family:var(--sans);resize:vertical;background:#fff;color:var(--ink)}
+.field-notes-input:focus{outline:none;border-color:var(--gold)}
+.row-photos{margin-top:12px}
+
+.site-note{border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:10px;background:#fff}
+.site-note-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;
+  font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+.site-note-head button.x{font-size:16px;padding:0 4px}
+.site-note textarea{width:100%;min-height:80px;border:1px solid var(--border);border-radius:5px;
+  padding:8px 10px;font-size:13px;font-family:var(--sans);resize:vertical;background:var(--cream);color:var(--ink)}
+.site-note textarea:focus{outline:none;border-color:var(--gold);background:#fff}
+.empty{display:none;text-align:center;color:var(--muted);padding:22px;font-size:13px;
+  border:1px dashed var(--border);border-radius:6px}
+
+.photo-grid{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px}
+.photo-grid:empty{margin-bottom:0}
+.photo-thumb{position:relative;width:84px;height:84px;border:1px solid var(--border);border-radius:6px;
+  overflow:hidden;background:#f0ede4;flex-shrink:0}
+.photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-thumb button.x{position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);color:#fff;border:none;
+  border-radius:50%;width:22px;height:22px;font-size:14px;line-height:1;cursor:pointer;padding:0}
+
+.sum.tabular{display:flex;gap:10px;flex-wrap:wrap}
+.stat{flex:1;min-width:90px;text-align:center;background:var(--cream);border:1px solid var(--border);
+  border-radius:6px;padding:12px 8px}
+.stat b{display:block;font-size:22px;color:var(--gold-dark)}
+.stat span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+  background:var(--charcoal-deep);color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;
+  opacity:0;pointer-events:none;transition:.2s;z-index:200;box-shadow:0 6px 20px rgba(0,0,0,.3)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.fh-modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;
+  justify-content:center;z-index:300;padding:20px}
+.fh-modal-card{background:#fff;border-radius:10px;max-width:420px;width:100%;max-height:80vh;display:flex;
+  flex-direction:column;overflow:hidden}
+.fh-modal-card h3{margin:0;padding:16px 18px;font-size:14px;background:var(--charcoal);color:var(--gold-light)}
+.fh-modal-list{overflow-y:auto;padding:6px}
+.fh-modal-row{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;
+  border-bottom:1px solid var(--border);font-size:13px}
+.fh-modal-row button{border:1px solid var(--border);background:#fff;border-radius:5px;padding:5px 10px;
+  font-size:12px;cursor:pointer;margin-left:6px;font-family:var(--sans)}
+.fh-modal-row button.del{color:var(--red);border-color:#e6c9c9}
+.fh-modal-foot{padding:10px 14px;border-top:1px solid var(--border);text-align:right}
+.fh-modal-foot button.ghost{border:1px solid var(--border);background:#fff;border-radius:5px;padding:7px 14px;
+  font-size:12.5px;cursor:pointer;font-family:var(--sans);color:var(--muted)}
+
+@media (max-width:480px){
+  header img{width:90%}
+  .stat{min-width:80px}
+}
+</style>
+</head>
+<body>
+<header>
+  <img src="data:image/png;base64,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" alt="Keystone Conservation — Ecological Consultancy and Management">
+</header>
+<div id="fh-bar"></div>
+
+<div class="wrap">
+  <div class="card">
+    <h2>Survey details</h2>
+    <div class="row">
+      <div class="field"><label for="site">Site / location</label><input id="site" placeholder="e.g. Reserve — east paddock"></div>
+      <div class="field"><label for="date">Date</label><input id="date" type="date"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Add species</h2>
+    <div class="pick">
+      <input id="pick" type="text" placeholder="Search common or scientific name… (or type a new name)" autocomplete="off">
+      <div class="pick-list" id="pickList"></div>
+    </div>
+    <p class="muted" style="margin:8px 0 0">Tap a species to add it to the checklist. Names not in the reference list are added as free text and tagged invasive — change the origin in the table if needed. Typed names can also be ticked <b>Uncertain</b> in the checklist below if you're not fully confident of the identification; uncertain species are highlighted in red when exported to Excel.</p>
+  </div>
+
+  <div class="card">
+    <h2>Checklist <span class="n" id="count"></span></h2>
+    <div class="tbl-wrap">
+      <table id="tbl">
+        <thead><tr><th>Species</th><th>Origin</th><th style="width:90px">Uncertain</th><th style="width:34px"></th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="empty">No species recorded yet — add some above.</div>
+  </div>
+
+  <div class="card">
+    <h2>Summary</h2>
+    <div class="sum tabular">
+      <div class="stat"><b id="sTotal">0</b><span>Species</span></div>
+      <div class="stat"><b id="sInd">0</b><span>Indigenous</span></div>
+      <div class="stat"><b id="sInv">0</b><span>Invasive</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Field Notes</h2>
+    <p class="muted" style="margin:0 0 10px">General site observations — not tied to any single species. Add an entry for each observation; each one exports as its own paragraph.</p>
+    <div id="siteNotesList"></div>
+    <button type="button" class="btn" id="addFieldNoteBtn" style="margin-top:4px">+ Field Notes</button>
+  </div>
+
+  <div style="text-align:center;margin-top:22px;color:var(--muted);font-size:11.5px;letter-spacing:.3px">
+    Keystone Conservation &middot; Ecological Consultancy and Management
+  </div>
+</div>
+
+<script>
+/* Keystone Conservation shared species reference — Gippsland Plain (lowland Victoria).
+   338 indigenous (from the Flora EVC list) + 62 common invasive species. */
+window.FH_LIFEFORM = {"T": "Tree", "MS": "Medium shrub", "SS": "Small shrub", "SH": "Shrub", "PS": "Prostrate shrub", "SC": "Scrambler/climber", "GF": "Herb", "LH": "Large herb", "MH": "Medium herb", "BL": "Bryophyte/lichen", "CT": "Tree-fern", "EP": "Epiphyte", "LNG": "Large non-tufted graminoid", "MNG": "Med non-tufted graminoid", "LTG": "Large tufted graminoid", "MTG": "Med tufted graminoid"};
+window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","type":"indigenous"},{"sci":"Acacia dealbata","common":"Silver Wattle","lf":"T","type":"indigenous"},{"sci":"Acacia implexa","common":"Lightwood","lf":"T","type":"indigenous"},{"sci":"Acacia mearnsii","common":"Black Wattle","lf":"T","type":"indigenous"},{"sci":"Acacia melanoxylon","common":"Blackwood","lf":"T","type":"indigenous"},{"sci":"Acacia oxycedrus","common":"Spike Wattle","lf":"MS","type":"indigenous"},{"sci":"Acacia paradoxa","common":"Hedge Wattle","lf":"MS","type":"indigenous"},{"sci":"Acacia pycnantha","common":"Golden Wattle","lf":"MS","type":"indigenous"},{"sci":"Acacia stricta","common":"Hop Wattle","lf":"MS","type":"indigenous"},{"sci":"Acacia verticillata subsp. verticillata","common":"Prickly Moses","lf":"MS","type":"indigenous"},{"sci":"Acaena agnipila","common":"Hairy Sheep's Burr","lf":"MH","type":"indigenous"},{"sci":"Acaena echinata","common":"Sheep's Burr","lf":"MH","type":"indigenous"},{"sci":"Acaena novae-zelandiae","common":"Bidgee-widgee","lf":"MH","type":"indigenous"},{"sci":"Acaena X ovina","common":"Australian Sheep's Burr","lf":"MH","type":"indigenous"},{"sci":"Acer pseudoplatanus","common":"Sycamore Maple","lf":"T","type":"invasive"},{"sci":"Acianthus caudatus","common":"Mayfly Orchid","lf":"MH","type":"indigenous"},{"sci":"Acianthus exsertus s.l.","common":"Gnat Orchid","lf":"MH","type":"indigenous"},{"sci":"Acrotriche serrulata","common":"Honey-pots","lf":"PS","type":"indigenous"},{"sci":"Adiantum aethiopicum","common":"Common Maidenhair","lf":"GF","type":"indigenous"},{"sci":"Aira caryophyllea","common":"Silvery Hair-grass","lf":"MTG","type":"invasive"},{"sci":"Alisma plantago-aquatica","common":"Water Plantain","lf":"LH","type":"indigenous"},{"sci":"Allittia cardiocarpa","common":"Swamp Daisy","lf":"MH","type":"indigenous"},{"sci":"Allium triquetrum","common":"Angled Onion","lf":"GF","type":"invasive"},{"sci":"Allocasuarina littoralis","common":"Black Sheoak","lf":"T","type":"indigenous"},{"sci":"Allocasuarina paludosa","common":"Scrub Sheoak","lf":"MS","type":"indigenous"},{"sci":"Alternanthera denticulata s.l.","common":"Lesser Joyweed","lf":"MH","type":"indigenous"},{"sci":"Amperea xiphoclada var. xiphoclada","common":"Broom Spurge","lf":"SS","type":"indigenous"},{"sci":"Amphibromus archeri","common":"Pointed Swamp Wallaby-grass","lf":"LTG","type":"indigenous"},{"sci":"Amphibromus fluitans","common":"River Swamp Wallaby-grass","lf":"LTG","type":"indigenous"},{"sci":"Amphibromus nervosus","common":"Common Swamp Wallaby-grass","lf":"LTG","type":"indigenous"},{"sci":"Amyema pendula","common":"Drooping Mistletoe","lf":"EP","type":"indigenous"},{"sci":"Amyema quandang var. quandang","common":"Grey Mistletoe","lf":"EP","type":"indigenous"},{"sci":"Anthosachne scabra s.l.","common":"Common Wheat-grass","lf":"MTG","type":"indigenous"},{"sci":"Anthoxanthum odoratum","common":"Sweet Vernal-grass","lf":"MTG","type":"invasive"},{"sci":"Aotus spp.","common":"Aotus","lf":"SS","type":"indigenous"},{"sci":"Aphelia gracilis","common":"Slender Aphelia","lf":"MNG","type":"indigenous"},{"sci":"Apodasmia brownii","common":"Coarse Twine-rush","lf":"LNG","type":"indigenous"},{"sci":"Arctotheca calendula","common":"Capeweed","lf":"LH","type":"invasive"},{"sci":"Arthropodium strictum s.l.","common":"Chocolate Lily","lf":"MTG","type":"indigenous"},{"sci":"Asparagus asparagoides","common":"Bridal Creeper","lf":"SC","type":"invasive"},{"sci":"Asperula conferta","common":"Common Woodruff","lf":"MH","type":"indigenous"},{"sci":"Austrostipa mollis","common":"Supple Spear-grass","lf":"LTG","type":"indigenous"},{"sci":"Austrostipa rudis","common":"Veined Spear-grass","lf":"LTG","type":"indigenous"},{"sci":"Austrostipa semibarbata","common":"Fibrous Spear-grass","lf":"LTG","type":"indigenous"},{"sci":"Avena fatua","common":"Wild Oat","lf":"MTG","type":"invasive"},{"sci":"Azolla rubra","common":"Pacific Azolla","lf":"SH","type":"indigenous"},{"sci":"Banksia marginata","common":"Silver Banksia","lf":"MS","type":"indigenous"},{"sci":"Billardiera mutabilis","common":"Common Apple-berry","lf":"SC","type":"indigenous"},{"sci":"Bolboschoenus medianus","common":"Marsh Club-sedge","lf":"MNG","type":"indigenous"},{"sci":"Bossiaea prostrata","common":"Creeping Bossiaea","lf":"PS","type":"indigenous"},{"sci":"Briza maxima","common":"Large Quaking-grass","lf":"MTG","type":"invasive"},{"sci":"Briza minor","common":"Lesser Quaking-grass","lf":"MTG","type":"invasive"},{"sci":"Bromus catharticus","common":"Prairie Grass","lf":"MTG","type":"invasive"},{"sci":"Bryophytes/Lichens","common":"Bryophytes/Lichens","lf":"BL","type":"indigenous"},{"sci":"Bulbine bulbosa","common":"Bulbine Lily","lf":"LH","type":"indigenous"},{"sci":"Burchardia umbellata","common":"Milkmaids","lf":"MTG","type":"indigenous"},{"sci":"Bursaria spinosa subsp. spinosa","common":"Sweet Bursaria","lf":"MS","type":"indigenous"},{"sci":"Caesia calliantha","common":"Blue Grass-lily","lf":"MTG","type":"indigenous"},{"sci":"Caesia parviflora","common":"Pale Grass-lily","lf":"MTG","type":"indigenous"},{"sci":"Caladenia carnea sensu Willis (1970)","common":"Pink Fingers","lf":"MH","type":"indigenous"},{"sci":"Callitriche spp.","common":"Water Starwort","lf":"SH","type":"indigenous"},{"sci":"Calocephalus lacteus","common":"Milky Beauty-heads","lf":"MH","type":"indigenous"},{"sci":"Calystegia sepium subsp. roseata","common":"Large Bindweed","lf":"SC","type":"indigenous"},{"sci":"Carduus pycnocephalus","common":"Slender Thistle","lf":"LH","type":"invasive"},{"sci":"Carex appressa","common":"Tall Sedge","lf":"LTG","type":"indigenous"},{"sci":"Carex breviculmis","common":"Common Grass-sedge","lf":"MTG","type":"indigenous"},{"sci":"Carex brownii","common":"Stream Sedge","lf":"LTG","type":"indigenous"},{"sci":"Carex fascicularis","common":"Tassel Sedge","lf":"LTG","type":"indigenous"},{"sci":"Carex gaudichaudiana","common":"Fen Sedge","lf":"MTG","type":"indigenous"},{"sci":"Carex inversa","common":"Knob Sedge","lf":"MTG","type":"indigenous"},{"sci":"Carex tereticaulis","common":"Poong'ort","lf":"MTG","type":"indigenous"},{"sci":"Cassinia aculeata subsp. aculeata","common":"Common Cassinia","lf":"MS","type":"indigenous"},{"sci":"Cassinia longifolia","common":"Shiny Cassinia","lf":"MS","type":"indigenous"},{"sci":"Cassytha glabella","common":"Slender Dodder-laurel","lf":"SC","type":"indigenous"},{"sci":"Centella cordifolia","common":"Centella","lf":"MH","type":"indigenous"},{"sci":"Centipeda elatinoides","common":"Elatine Sneezeweed","lf":"SH","type":"indigenous"},{"sci":"Centrolepis aristata","common":"Pointed Centrolepis","lf":"MNG","type":"indigenous"},{"sci":"Centrolepis strigosa subsp. strigosa","common":"Hairy Centrolepis","lf":"MNG","type":"indigenous"},{"sci":"Chiloglottis trapeziformis","common":"Dainty Wasp-orchid","lf":"MH","type":"indigenous"},{"sci":"Chloris truncata","common":"Windmill Grass","lf":"MTG","type":"indigenous"},{"sci":"Chorizandra cymbaria s.l.","common":"Heron Bristle-sedge","lf":"MNG","type":"indigenous"},{"sci":"Chrysanthemoides monilifera","common":"Boneseed","lf":"MS","type":"invasive"},{"sci":"Chrysocephalum semipapposum","common":"Clustered Everlasting","lf":"MH","type":"indigenous"},{"sci":"Cirsium vulgare","common":"Spear Thistle","lf":"LH","type":"invasive"},{"sci":"Cladium procerum","common":"Leafy Twig-sedge","lf":"LNG","type":"indigenous"},{"sci":"Clematis aristata","common":"Mountain Clematis","lf":"SC","type":"indigenous"},{"sci":"Clematis microphylla var. microphylla spp. agg.","common":"Small-leaved Clematis","lf":"SC","type":"indigenous"},{"sci":"Comesperma calymega","common":"Blue-spike Milkwort","lf":"MH","type":"indigenous"},{"sci":"Comesperma volubile","common":"Love Creeper","lf":"SC","type":"indigenous"},{"sci":"Conyza bonariensis","common":"Tall Fleabane","lf":"LH","type":"invasive"},{"sci":"Coprosma quadrifida","common":"Prickly Currant-bush","lf":"MS","type":"indigenous"},{"sci":"Coprosma repens","common":"Mirror Bush","lf":"MS","type":"invasive"},{"sci":"Coronidium scorpioides s.s.","common":"Button Everlasting","lf":"MH","type":"indigenous"},{"sci":"Correa reflexa","common":"Common Correa","lf":"MS","type":"indigenous"},{"sci":"Cortaderia selloana","common":"Pampas Grass","lf":"LTG","type":"invasive"},{"sci":"Corybas diemenicus s.l.","common":"Veined Helmet-orchid","lf":"SH","type":"indigenous"},{"sci":"Cotula australis","common":"Common Cotula","lf":"SH","type":"indigenous"},{"sci":"Craspedia canens","common":"Grey Billy-buttons","lf":"LH","type":"indigenous"},{"sci":"Craspedia paludicola","common":"Common Billy-buttons","lf":"LH","type":"indigenous"},{"sci":"Crassula decumbens var. decumbens","common":"Spreading Crassula","lf":"SH","type":"indigenous"},{"sci":"Crassula helmsii","common":"Swamp Crassula","lf":"SH","type":"indigenous"},{"sci":"Crassula sieberiana s.l.","common":"Sieber Crassula","lf":"SH","type":"indigenous"},{"sci":"Crataegus monogyna","common":"Hawthorn","lf":"MS","type":"invasive"},{"sci":"Cycnogeton alcockiae","common":"Southern Water-ribbons","lf":"MTG","type":"indigenous"},{"sci":"Cycnogeton procerum s.s.","common":"Common Water-ribbons","lf":"MTG","type":"indigenous"},{"sci":"Cytisus scoparius","common":"English Broom","lf":"MS","type":"invasive"},{"sci":"Dactylis glomerata","common":"Cocksfoot","lf":"LTG","type":"invasive"},{"sci":"Delairea odorata","common":"Cape Ivy","lf":"SC","type":"invasive"},{"sci":"Deyeuxia quadriseta","common":"Reed Bent-grass","lf":"LTG","type":"indigenous"},{"sci":"Dianella longifolia var. longifolia s.l.","common":"Pale Flax-lily","lf":"MTG","type":"indigenous"},{"sci":"Dianella revoluta var. revoluta s.l.","common":"Black-anther Flax-lily","lf":"MTG","type":"indigenous"},{"sci":"Dianella tasmanica","common":"Tasman Flax-lily","lf":"MTG","type":"indigenous"},{"sci":"Dichelachne crinita","common":"Long-hair Plume-grass","lf":"MTG","type":"indigenous"},{"sci":"Dichondra repens","common":"Kidney-weed","lf":"SH","type":"indigenous"},{"sci":"Dillwynia cinerascens s.l.","common":"Grey Parrot-pea","lf":"SS","type":"indigenous"},{"sci":"Dillwynia glaberrima","common":"Smooth Parrot-pea","lf":"SS","type":"indigenous"},{"sci":"Dillwynia sericea","common":"Showy Parrot-pea","lf":"SS","type":"indigenous"},{"sci":"Dipodium punctatum s.l.","common":"Hyacinth Orchid","lf":"LH","type":"indigenous"},{"sci":"Diuris lanceolata s.l.","common":"Golden Moths","lf":"MH","type":"indigenous"},{"sci":"Diuris pardina","common":"Leopard Orchid","lf":"MH","type":"indigenous"},{"sci":"Diuris sulphurea","common":"Tiger Orchid","lf":"MH","type":"indigenous"},{"sci":"Drosera aberrans","common":"Scented Sundew","lf":"MH","type":"indigenous"},{"sci":"Drosera auriculata","common":"Tall Sundew","lf":"MH","type":"indigenous"},{"sci":"Drosera macrantha subsp. planchonii","common":"Climbing Sundew","lf":"MH","type":"indigenous"},{"sci":"Drosera peltata s.l.","common":"Pale Sundew","lf":"MH","type":"indigenous"},{"sci":"Echium plantagineum","common":"Paterson's Curse","lf":"LH","type":"invasive"},{"sci":"Ehrharta erecta","common":"Panic Veldt-grass","lf":"MTG","type":"invasive"},{"sci":"Einadia nutans","common":"Nodding Saltbush","lf":"MH","type":"indigenous"},{"sci":"Eleocharis acuta","common":"Common Spike-sedge","lf":"MNG","type":"indigenous"},{"sci":"Eleocharis pusilla","common":"Small Spike-sedge","lf":"MNG","type":"indigenous"},{"sci":"Eleocharis sphacelata","common":"Tall Spike-sedge","lf":"LNG","type":"indigenous"},{"sci":"Epacris impressa","common":"Common Heath","lf":"MS","type":"indigenous"},{"sci":"Epilobium billardiereanum subsp. billardiereanum","common":"Smooth Willow-herb","lf":"LH","type":"indigenous"},{"sci":"Epilobium billardiereanum subsp. cinereum","common":"Grey Willow-herb","lf":"LH","type":"indigenous"},{"sci":"Epilobium hirtigerum","common":"Hairy Willow-herb","lf":"LH","type":"indigenous"},{"sci":"Eragrostis brownii","common":"Common Love-grass","lf":"MTG","type":"indigenous"},{"sci":"Erica lusitanica","common":"Spanish Heath","lf":"MS","type":"invasive"},{"sci":"Eriochilus cucullatus s.l.","common":"Parson's Bands","lf":"MH","type":"indigenous"},{"sci":"Eryngium vesiculosum","common":"Prickfoot","lf":"SH","type":"indigenous"},{"sci":"Eucalyptus camaldulensis subsp. camaldulensis","common":"River Red-gum","lf":"CT","type":"indigenous"},{"sci":"Eucalyptus cephalocarpa s.s.","common":"Mealy Stringybark","lf":"CT","type":"indigenous"},{"sci":"Eucalyptus melliodora","common":"Yellow Box","lf":"CT","type":"indigenous"},{"sci":"Eucalyptus ovata subsp. ovata","common":"Swamp Gum","lf":"CT","type":"indigenous"},{"sci":"Eucalyptus pauciflora","common":"Snow Gum","lf":"CT","type":"indigenous"},{"sci":"Eucalyptus radiata subsp. radiata","common":"Narrow-leaf Peppermint","lf":"CT","type":"indigenous"},{"sci":"Eucalyptus viminalis subsp. pryoriana","common":"Coast Manna-gum","lf":"CT","type":"indigenous"},{"sci":"Eucalyptus viminalis subsp. viminalis","common":"Manna Gum","lf":"CT","type":"indigenous"},{"sci":"Eucalyptus X studleyensis","common":"Studley Park Gum","lf":"CT","type":"indigenous"},{"sci":"Eucalyptus yarraensis","common":"Yarra Gum","lf":"CT","type":"indigenous"},{"sci":"Euchiton japonicus s.s.","common":"Creeping Cudweed","lf":"MH","type":"indigenous"},{"sci":"Euchiton sphaericus","common":"Annual Cudweed","lf":"MH","type":"indigenous"},{"sci":"Exocarpos cupressiformis","common":"Cherry Ballart","lf":"T","type":"indigenous"},{"sci":"Ficinia nodosa","common":"Knobby Club-sedge","lf":"MNG","type":"indigenous"},{"sci":"Foeniculum vulgare","common":"Fennel","lf":"LH","type":"invasive"},{"sci":"Fraxinus angustifolia","common":"Desert Ash","lf":"T","type":"invasive"},{"sci":"Freesia alba x leichtlinii","common":"Freesia","lf":"GF","type":"invasive"},{"sci":"Gahnia radula","common":"Thatch Saw-sedge","lf":"LNG","type":"indigenous"},{"sci":"Gahnia sieberiana","common":"Red-fruit Saw-sedge","lf":"LTG","type":"indigenous"},{"sci":"Galenia pubescens","common":"Galenia","lf":"GF","type":"invasive"},{"sci":"Gaudium myrsinoides","common":"Heath Tea-tree","lf":"MS","type":"indigenous"},{"sci":"Genista monspessulana","common":"Cape Broom","lf":"MS","type":"invasive"},{"sci":"Geranium gardneri","common":"Rough Crane's-bill","lf":"MH","type":"indigenous"},{"sci":"Geranium potentilloides","common":"Soft Crane's-bill","lf":"MH","type":"indigenous"},{"sci":"Geranium retrorsum s.l.","common":"Grassland Crane's-bill","lf":"MH","type":"indigenous"},{"sci":"Geranium sp. 2","common":"Variable Crane's-bill","lf":"MH","type":"indigenous"},{"sci":"Glyceria australis","common":"Australian Sweet-grass","lf":"LNG","type":"indigenous"},{"sci":"Glycine clandestina","common":"Twining Glycine","lf":"SC","type":"indigenous"},{"sci":"Gonocarpus micranthus subsp. micranthus","common":"Creeping Raspwort","lf":"SH","type":"indigenous"},{"sci":"Gonocarpus tetragynus","common":"Common Raspwort","lf":"MH","type":"indigenous"},{"sci":"Goodenia humilis","common":"Swamp Goodenia","lf":"MH","type":"indigenous"},{"sci":"Goodenia ovata","common":"Hop Goodenia","lf":"MS","type":"indigenous"},{"sci":"Gratiola peruviana","common":"Austral Brooklime","lf":"MH","type":"indigenous"},{"sci":"Gratiola pubescens","common":"Glandular Brooklime","lf":"MH","type":"indigenous"},{"sci":"Gynatrix pulchella s.s.","common":"Hemp Bush","lf":"MS","type":"indigenous"},{"sci":"Hakea decurrens","common":"Bushy Needlewood","lf":"MS","type":"indigenous"},{"sci":"Hakea nodosa","common":"Yellow Hakea","lf":"MS","type":"indigenous"},{"sci":"Hakea ulicina","common":"Furze Hakea","lf":"MS","type":"indigenous"},{"sci":"Haloragis heterophylla","common":"Varied Raspwort","lf":"LH","type":"indigenous"},{"sci":"Hedera helix","common":"English Ivy","lf":"SC","type":"invasive"},{"sci":"Hemarthria uncinata var. uncinata","common":"Mat Grass","lf":"MNG","type":"indigenous"},{"sci":"Hibbertia fasciculata var. prostrata","common":"Bundled Guinea-flower","lf":"SS","type":"indigenous"},{"sci":"Hibbertia riparia","common":"Erect Guinea-flower","lf":"SS","type":"indigenous"},{"sci":"Hibbertia sericea s.l.","common":"Silky Guinea-flower","lf":"SS","type":"indigenous"},{"sci":"Holcus lanatus","common":"Yorkshire Fog","lf":"MTG","type":"invasive"},{"sci":"Hovea heterophylla","common":"Common Hovea","lf":"SS","type":"indigenous"},{"sci":"Hydrocotyle foveolata","common":"Yellow Pennywort","lf":"SH","type":"indigenous"},{"sci":"Hydrocotyle hirta","common":"Hairy Pennywort","lf":"MH","type":"indigenous"},{"sci":"Hydrocotyle laxiflora","common":"Stinking Pennywort","lf":"SH","type":"indigenous"},{"sci":"Hypericum gramineum","common":"Small St John's Wort","lf":"MH","type":"indigenous"},{"sci":"Hypericum japonicum","common":"Matted St John's Wort","lf":"SH","type":"indigenous"},{"sci":"Hypochaeris radicata","common":"Flatweed","lf":"LH","type":"invasive"},{"sci":"Hypoxis hygrometrica","common":"Golden Weather-glass","lf":"MH","type":"indigenous"},{"sci":"Imperata cylindrica","common":"Blady Grass","lf":"MNG","type":"indigenous"},{"sci":"Indigofera australis subsp. australis","common":"Austral Indigo","lf":"MS","type":"indigenous"},{"sci":"Isolepis cernua s.s.","common":"Nodding Club-sedge","lf":"MTG","type":"indigenous"},{"sci":"Isolepis fluitans","common":"Floating Club-sedge","lf":"MTG","type":"indigenous"},{"sci":"Isolepis hookeriana","common":"Grassy Club-sedge","lf":"MTG","type":"indigenous"},{"sci":"Isolepis inundata","common":"Swamp Club-sedge","lf":"MTG","type":"indigenous"},{"sci":"Isolepis platycarpa","common":"Broad-fruit Club-sedge","lf":"MTG","type":"indigenous"},{"sci":"Isotoma fluviatilis subsp. australis","common":"Swamp Isotome","lf":"SH","type":"indigenous"},{"sci":"Juncus amabilis","common":"Hollow Rush","lf":"MTG","type":"indigenous"},{"sci":"Juncus australis","common":"Austral Rush","lf":"LTG","type":"indigenous"},{"sci":"Juncus bufonius","common":"Toad Rush","lf":"MNG","type":"indigenous"},{"sci":"Juncus caespiticius","common":"Grassy Rush","lf":"MTG","type":"indigenous"},{"sci":"Juncus flavidus","common":"Gold Rush","lf":"MTG","type":"indigenous"},{"sci":"Juncus gregiflorus","common":"Green Rush","lf":"MTG","type":"indigenous"},{"sci":"Juncus holoschoenus","common":"Joint-leaf Rush","lf":"MNG","type":"indigenous"},{"sci":"Juncus pallidus","common":"Pale Rush","lf":"LTG","type":"indigenous"},{"sci":"Juncus pauciflorus","common":"Loose-flower Rush","lf":"MTG","type":"indigenous"},{"sci":"Juncus planifolius","common":"Broad-leaf Rush","lf":"MTG","type":"indigenous"},{"sci":"Juncus procerus","common":"Tall Rush","lf":"LTG","type":"indigenous"},{"sci":"Juncus radula","common":"Hoary Rush","lf":"MTG","type":"indigenous"},{"sci":"Juncus sarophorus","common":"Broom Rush","lf":"LTG","type":"indigenous"},{"sci":"Juncus sp. 1","common":"Juncus sp. 1","lf":"MTG","type":"indigenous"},{"sci":"Juncus sp. 2","common":"Juncus sp. 2","lf":"MTG","type":"indigenous"},{"sci":"Juncus sp. 3","common":"Juncus sp. 3","lf":"MTG","type":"indigenous"},{"sci":"Juncus sp. 4","common":"Juncus sp. 4","lf":"MTG","type":"indigenous"},{"sci":"Juncus sp. 5","common":"Juncus sp. 5","lf":"MTG","type":"indigenous"},{"sci":"Juncus subsecundus","common":"Finger Rush","lf":"MTG","type":"indigenous"},{"sci":"Juncus vaginatus","common":"Clustered Rush","lf":"MTG","type":"indigenous"},{"sci":"Kennedia prostrata","common":"Running Postman","lf":"SC","type":"indigenous"},{"sci":"Kunzea sp.","common":"Burgan","lf":"MS","type":"indigenous"},{"sci":"Lachnagrostis aemula s.l.","common":"Leafy Blown-grass","lf":"MTG","type":"indigenous"},{"sci":"Lachnagrostis filiformis s.l.","common":"Common Blown-grass","lf":"MTG","type":"indigenous"},{"sci":"Lagenophora stipitata s.l.","common":"Common Bottle-daisy","lf":"MH","type":"indigenous"},{"sci":"Lagenophora sublyrata","common":"Slender Bottle-daisy","lf":"MH","type":"indigenous"},{"sci":"Laphangium luteoalbum","common":"Jersey Cudweed","lf":"MH","type":"indigenous"},{"sci":"Lemna disperma","common":"Common Duckweed","lf":"SH","type":"indigenous"},{"sci":"Lepidosperma gunnii","common":"Slender Sword-sedge","lf":"MTG","type":"indigenous"},{"sci":"Lepidosperma laterale","common":"Variable Sword-sedge","lf":"MTG","type":"indigenous"},{"sci":"Lepidosperma longitudinale","common":"Pithy Sword-sedge","lf":"LNG","type":"indigenous"},{"sci":"Lepidosperma semiteres","common":"Wire Rapier-sedge","lf":"MNG","type":"indigenous"},{"sci":"Lepidosperma sieberi","common":"Sandhill Sword-sedge","lf":"MTG","type":"indigenous"},{"sci":"Leptorhynchos squamatus","common":"Scaly Buttons","lf":"MH","type":"indigenous"},{"sci":"Leptorhynchos tenuifolius","common":"Wiry Buttons","lf":"MH","type":"indigenous"},{"sci":"Leptospermum continentale","common":"Prickly Tea-tree","lf":"MS","type":"indigenous"},{"sci":"Leptospermum laevigatum","common":"Coast Tea-tree","lf":"MS","type":"invasive"},{"sci":"Leptospermum lanigerum","common":"Woolly Tea-tree","lf":"T","type":"indigenous"},{"sci":"Lindsaea linearis","common":"Screw Fern","lf":"GF","type":"indigenous"},{"sci":"Lobelia anceps","common":"Angled Lobelia","lf":"MH","type":"indigenous"},{"sci":"Lobelia pedunculata s.l.","common":"Matted Pratia","lf":"SH","type":"indigenous"},{"sci":"Lobelia pratioides","common":"Poison Lobelia","lf":"SH","type":"indigenous"},{"sci":"Lolium perenne","common":"Perennial Ryegrass","lf":"MTG","type":"invasive"},{"sci":"Lomandra filiformis subsp. coriacea","common":"Wattle Mat-rush","lf":"MTG","type":"indigenous"},{"sci":"Lomandra filiformis subsp. filiformis","common":"Wattle Mat-rush","lf":"MTG","type":"indigenous"},{"sci":"Lomandra longifolia subsp. longifolia","common":"Spiny-headed Mat-rush","lf":"LTG","type":"indigenous"},{"sci":"Lomandra multiflora subsp. multiflora","common":"Many-flowered Mat-rush","lf":"MTG","type":"indigenous"},{"sci":"Lomandra nana","common":"Dwarf Mat-rush","lf":"MTG","type":"indigenous"},{"sci":"Lonicera japonica","common":"Japanese Honeysuckle","lf":"SC","type":"invasive"},{"sci":"Luzula meridionalis var. densiflora","common":"Common Woodrush","lf":"MTG","type":"indigenous"},{"sci":"Luzula meridionalis var. meridionalis","common":"Common Woodrush","lf":"MTG","type":"indigenous"},{"sci":"Lycopus australis","common":"Australian Gipsywort","lf":"LH","type":"indigenous"},{"sci":"Lythrum hyssopifolia","common":"Small Loosestrife","lf":"MH","type":"indigenous"},{"sci":"Lythrum salicaria","common":"Purple Loosestrife","lf":"LH","type":"indigenous"},{"sci":"Machaerina acuta","common":"Pale Twig-sedge","lf":"MNG","type":"indigenous"},{"sci":"Machaerina arthrophylla","common":"Fine Twig-sedge","lf":"MNG","type":"indigenous"},{"sci":"Machaerina juncea","common":"Bare Twig-sedge","lf":"MNG","type":"indigenous"},{"sci":"Machaerina rubiginosa s.l.","common":"Soft Twig-rush","lf":"MNG","type":"indigenous"},{"sci":"Machaerina tetragona","common":"Square Twig-sedge","lf":"MNG","type":"indigenous"},{"sci":"Melaleuca ericifolia","common":"Swamp Paperbark","lf":"MS","type":"indigenous"},{"sci":"Melaleuca squarrosa","common":"Scented Paperbark","lf":"MS","type":"indigenous"},{"sci":"Melicytus dentatus s.l.","common":"Tree Violet","lf":"MS","type":"indigenous"},{"sci":"Microlaena stipoides var. stipoides","common":"Weeping Grass","lf":"MNG","type":"indigenous"},{"sci":"Microtis parviflora","common":"Slender Onion-orchid","lf":"MH","type":"indigenous"},{"sci":"Microtis unifolia","common":"Common Onion-orchid","lf":"MH","type":"indigenous"},{"sci":"Modiola caroliniana","common":"Red-flowered Mallow","lf":"GF","type":"invasive"},{"sci":"Monotoca scoparia","common":"Prickly Broom-heath","lf":"MS","type":"indigenous"},{"sci":"Montia australasica","common":"White Purslane","lf":"SH","type":"indigenous"},{"sci":"Muellerina eucalyptoides","common":"Creeping Mistletoe","lf":"SC","type":"indigenous"},{"sci":"Myriophyllum crispatum","common":"Upright Water-milfoil","lf":"MH","type":"indigenous"},{"sci":"Myriophyllum integrifolium","common":"Tiny Water-milfoil","lf":"SH","type":"indigenous"},{"sci":"Myriophyllum verrucosum","common":"Red Water-milfoil","lf":"MH","type":"indigenous"},{"sci":"Myrsine howittiana","common":"Mutton-wood","lf":"T","type":"indigenous"},{"sci":"Olearia lirata","common":"Snowy Daisy-bush","lf":"MS","type":"indigenous"},{"sci":"Olearia ramulosa","common":"Twiggy Daisy-bush","lf":"MS","type":"indigenous"},{"sci":"Opercularia ovata","common":"Broad-leaf Stinkweed","lf":"SH","type":"indigenous"},{"sci":"Opercularia varia","common":"Variable Stinkweed","lf":"SH","type":"indigenous"},{"sci":"Ornduffia aff. reniformis (non-stoloniferous)","common":"Solitary Marsh-flower","lf":"LH","type":"indigenous"},{"sci":"Ornduffia reniformis","common":"Running Marsh-flower","lf":"LH","type":"indigenous"},{"sci":"Ottelia ovalifolia subsp. ovalifolia","common":"Swamp Lily","lf":"LH","type":"indigenous"},{"sci":"Oxalis exilis","common":"Shade Wood-sorrel","lf":"SH","type":"indigenous"},{"sci":"Oxalis perennans","common":"Grassland Wood-sorrel","lf":"MH","type":"indigenous"},{"sci":"Oxalis pes-caprae","common":"Soursob","lf":"GF","type":"invasive"},{"sci":"Oxalis radicosa","common":"Stout-rooted Wood-sorrel","lf":"SH","type":"indigenous"},{"sci":"Ozothamnus ferrugineus","common":"Tree Everlasting","lf":"MS","type":"indigenous"},{"sci":"Paspalum dilatatum","common":"Paspalum","lf":"MTG","type":"invasive"},{"sci":"Pauridia vaginata","common":"Yellow Star","lf":"SH","type":"indigenous"},{"sci":"Pelargonium australe","common":"Austral Stork's-bill","lf":"MH","type":"indigenous"},{"sci":"Pelargonium inodorum","common":"Kopata","lf":"MH","type":"indigenous"},{"sci":"Pennisetum clandestinum","common":"Kikuyu","lf":"MTG","type":"invasive"},{"sci":"Pentapogon quadrifidus var. quadrifidus","common":"Five-awned Spear-grass","lf":"MTG","type":"indigenous"},{"sci":"Persicaria decipiens","common":"Slender Knotweed","lf":"LH","type":"indigenous"},{"sci":"Persicaria subsessilis","common":"Hairy Knotweed","lf":"LH","type":"indigenous"},{"sci":"Phalaris aquatica","common":"Phalaris","lf":"LTG","type":"invasive"},{"sci":"Phragmites australis","common":"Common Reed","lf":"LNG","type":"indigenous"},{"sci":"Pimelea humilis","common":"Common Rice-flower","lf":"SS","type":"indigenous"},{"sci":"Pinus radiata","common":"Radiata Pine","lf":"T","type":"invasive"},{"sci":"Pittosporum undulatum","common":"Sweet Pittosporum","lf":"T","type":"invasive"},{"sci":"Plantago gaudichaudii","common":"Narrow Plantain","lf":"MH","type":"indigenous"},{"sci":"Plantago lanceolata","common":"Ribwort Plantain","lf":"LH","type":"invasive"},{"sci":"Plantago varia","common":"Variable Plantain","lf":"MH","type":"indigenous"},{"sci":"Platylobium obtusangulum","common":"Common Flat-pea","lf":"SS","type":"indigenous"},{"sci":"Poa clelandii","common":"Noah's Ark","lf":"MTG","type":"indigenous"},{"sci":"Poa labillardierei var. labillardierei","common":"Common Tussock-grass","lf":"LTG","type":"indigenous"},{"sci":"Poa morrisii","common":"Soft Tussock-grass","lf":"MTG","type":"indigenous"},{"sci":"Poa rodwayi","common":"Velvet Tussock-grass","lf":"MTG","type":"indigenous"},{"sci":"Poa sieberiana","common":"Grey Tussock-grass","lf":"MTG","type":"indigenous"},{"sci":"Poa tenera","common":"Slender Tussock-grass","lf":"MNG","type":"indigenous"},{"sci":"Polygala myrtifolia","common":"Myrtle-leaf Milkwort","lf":"MS","type":"invasive"},{"sci":"Poranthera microphylla s.l.","common":"Small Poranthera","lf":"MH","type":"indigenous"},{"sci":"Potamogeton cheesemanii","common":"Red Pondweed","lf":"MH","type":"indigenous"},{"sci":"Potamogeton ochreatus","common":"Blunt Pondweed","lf":"MH","type":"indigenous"},{"sci":"Prunus cerasifera","common":"Cherry Plum","lf":"T","type":"invasive"},{"sci":"Pteridium esculentum subsp. esculentum","common":"Austral Bracken","lf":"GF","type":"indigenous"},{"sci":"Pterostylis concinna","common":"Trim Greenhood","lf":"MH","type":"indigenous"},{"sci":"Pterostylis curta","common":"Blunt Greenhood","lf":"MH","type":"indigenous"},{"sci":"Pterostylis nana","common":"Dwarf Greenhood","lf":"MH","type":"indigenous"},{"sci":"Pterostylis nutans","common":"Nodding Greenhood","lf":"MH","type":"indigenous"},{"sci":"Pterostylis parviflora s.l.","common":"Tiny Greenhood","lf":"MH","type":"indigenous"},{"sci":"Pterostylis pedunculata","common":"Maroonhood","lf":"MH","type":"indigenous"},{"sci":"Pterostylis sanguinea","common":"Banded Greenhood","lf":"MH","type":"indigenous"},{"sci":"Pyrorchis nigricans","common":"Red-beaks","lf":"MH","type":"indigenous"},{"sci":"Ranunculus inundatus","common":"River Buttercup","lf":"MH","type":"indigenous"},{"sci":"Ranunculus papulentus","common":"Large River Buttercup","lf":"MH","type":"indigenous"},{"sci":"Romulea rosea","common":"Onion Grass","lf":"GF","type":"invasive"},{"sci":"Rubus fruticosus agg.","common":"Blackberry","lf":"SC","type":"invasive"},{"sci":"Rubus parvifolius","common":"Small-leaf Bramble","lf":"SS","type":"indigenous"},{"sci":"Rumex acetosella","common":"Sheep Sorrel","lf":"LH","type":"invasive"},{"sci":"Rumex bidens","common":"Mud Dock","lf":"MH","type":"indigenous"},{"sci":"Rumex brownii","common":"Slender Dock","lf":"MH","type":"indigenous"},{"sci":"Rumex crispus","common":"Curled Dock","lf":"LH","type":"invasive"},{"sci":"Rytidosperma caespitosum","common":"Common Wallaby-grass","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma duttonianum","common":"Brown-back Wallaby-grass","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma fulvum","common":"Copper-awned Wallaby-grass","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma geniculatum","common":"Kneed Wallaby-grass","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma laeve","common":"Smooth Wallaby-grass","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma penicillatum","common":"Weeping Wallaby-grass","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma pilosum","common":"Velvet Wallaby-grass","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma racemosum var. racemosum","common":"Slender Wallaby-grass","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma semiannulare","common":"Wetland Wallaby-grass","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma setaceum","common":"Bristly Wallaby-grass","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma sp. 1","common":"Rytidosperma sp. 1","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma sp. 2","common":"Rytidosperma sp. 2","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma sp. 3","common":"Rytidosperma sp. 3","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma sp. 4","common":"Rytidosperma sp. 4","lf":"MTG","type":"indigenous"},{"sci":"Rytidosperma sp. 5","common":"Rytidosperma sp. 5","lf":"MTG","type":"indigenous"},{"sci":"Salix cinerea","common":"Grey Sallow","lf":"MS","type":"invasive"},{"sci":"Salix fragilis","common":"Crack Willow","lf":"T","type":"invasive"},{"sci":"Samolus repens","common":"Creeping Brookweed","lf":"MH","type":"indigenous"},{"sci":"Schoenoplectus tabernaemontani","common":"River Club-sedge","lf":"LNG","type":"indigenous"},{"sci":"Schoenus apogon","common":"Common Bog-sedge","lf":"MTG","type":"indigenous"},{"sci":"Schoenus tesquorum","common":"Soft Bog-sedge","lf":"MTG","type":"indigenous"},{"sci":"Senecio biserratus","common":"Jagged Fireweed","lf":"LH","type":"indigenous"},{"sci":"Senecio campylocarpus","common":"Floodplain Fireweed","lf":"LH","type":"indigenous"},{"sci":"Senecio glomeratus","common":"Annual Fireweed","lf":"LH","type":"indigenous"},{"sci":"Senecio hispidulus s.l.","common":"Rough Fireweed","lf":"LH","type":"indigenous"},{"sci":"Senecio jacobaea","common":"Ragwort","lf":"LH","type":"invasive"},{"sci":"Senecio quadridentatus","common":"Cotton Fireweed","lf":"LH","type":"indigenous"},{"sci":"Silybum marianum","common":"Variegated Thistle","lf":"LH","type":"invasive"},{"sci":"Solanum aviculare","common":"Kangaroo Apple","lf":"MS","type":"indigenous"},{"sci":"Solanum laciniatum","common":"Large Kangaroo Apple","lf":"MS","type":"indigenous"},{"sci":"Solanum nigrum","common":"Black Nightshade","lf":"LH","type":"invasive"},{"sci":"Solanum pseudocapsicum","common":"Madeira Winter-cherry","lf":"MS","type":"invasive"},{"sci":"Solenogyne dominii","common":"Smooth Solenogyne","lf":"SH","type":"indigenous"},{"sci":"Spirodela punctata","common":"Thin Duckweed","lf":"SH","type":"indigenous"},{"sci":"Stackhousia monogyna s.l.","common":"Creamy Stackhousia","lf":"MH","type":"indigenous"},{"sci":"Stellaria pungens","common":"Prickly Starwort","lf":"MH","type":"indigenous"},{"sci":"Stuckenia pectinata","common":"Fennel Pondweed","lf":"MH","type":"indigenous"},{"sci":"Stylidium despectum","common":"Hundreds and Thousands","lf":"SH","type":"indigenous"},{"sci":"Stylidium graminifolium s.l.","common":"Grass Triggerplant","lf":"MH","type":"indigenous"},{"sci":"Thelymitra pauciflora s.l.","common":"Slender Sun-orchid","lf":"MNG","type":"indigenous"},{"sci":"Themeda triandra","common":"Kangaroo Grass","lf":"MTG","type":"indigenous"},{"sci":"Thyridia repens","common":"Creeping Monkey-flower","lf":"SH","type":"indigenous"},{"sci":"Thysanotus patersonii","common":"Twining Fringe-lily","lf":"SC","type":"indigenous"},{"sci":"Thysanotus tuberosus","common":"Common Fringe-lily","lf":"MTG","type":"indigenous"},{"sci":"Trachymene composita var. composita","common":"Parsnip Trachymene","lf":"MH","type":"indigenous"},{"sci":"Tradescantia fluminensis","common":"Wandering Trad","lf":"GF","type":"invasive"},{"sci":"Tricoryne elatior","common":"Yellow Rush-lily","lf":"LH","type":"indigenous"},{"sci":"Trifolium repens","common":"White Clover","lf":"GF","type":"invasive"},{"sci":"Trifolium subterraneum","common":"Subterranean Clover","lf":"GF","type":"invasive"},{"sci":"Triglochin striata","common":"Streaked Arrowgrass","lf":"MNG","type":"indigenous"},{"sci":"Typha domingensis","common":"Narrow-leaf Cumbungi","lf":"LNG","type":"indigenous"},{"sci":"Typha orientalis","common":"Broad-leaf Cumbungi","lf":"LNG","type":"indigenous"},{"sci":"Ulex europaeus","common":"Gorse","lf":"MS","type":"invasive"},{"sci":"Utricularia dichotoma s.l.","common":"Fairies' Aprons","lf":"MH","type":"indigenous"},{"sci":"Veronica calycina","common":"Hairy Speedwell","lf":"MH","type":"indigenous"},{"sci":"Veronica gracilis","common":"Slender Speedwell","lf":"LH","type":"indigenous"},{"sci":"Veronica plebeia","common":"Trailing Speedwell","lf":"MH","type":"indigenous"},{"sci":"Viminaria juncea","common":"Golden Spray","lf":"MS","type":"indigenous"},{"sci":"Vinca major","common":"Blue Periwinkle","lf":"SC","type":"invasive"},{"sci":"Viola hederacea ","common":"Ivy-leaf Violet","lf":"MH","type":"indigenous"},{"sci":"Vulpia bromoides","common":"Squirrel-tail Fescue","lf":"MTG","type":"invasive"},{"sci":"Wahlenbergia multicaulis","common":"Branching Bluebell","lf":"LH","type":"indigenous"},{"sci":"Watsonia meriana","common":"Bulbil Watsonia","lf":"LH","type":"invasive"},{"sci":"Wolffia australiana","common":"Tiny Duckweed","lf":"SH","type":"indigenous"},{"sci":"Wurmbea dioica","common":"Common Early Nancy","lf":"MH","type":"indigenous"},{"sci":"Xanthorrhoea minor subsp. lutea","common":"Small Grass-tree","lf":"LTG","type":"indigenous"},{"sci":"Xanthosia dissecta s.l.","common":"Cut-leaf Xanthosia","lf":"SH","type":"indigenous"},{"sci":"Xyris gracilis","common":"Slender Yellow-eye","lf":"MTG","type":"indigenous"},{"sci":"Zantedeschia aethiopica","common":"Arum Lily","lf":"LH","type":"invasive"}];
+
+</script>
+<script>
+/* VicFlora species autocomplete client.
+   Sources the species selection for the survey tools and the Weed Threat tool
+   from the Royal Botanic Gardens Victoria VicFlora GraphQL API:
+   https://vicflora.rbg.vic.gov.au/graphql
+
+   Notes:
+   - Query verified against the published schema: a TaxonConcept exposes
+     taxonName { fullName } (scientific name) and preferredVernacularName { name }
+     (common name).  establishmentMeans is the Darwin Core enum
+     NATIVE / NATIVE_REINTRODUCED / INTRODUCED / UNCERTAIN.
+   - Tries GET first (no CORS preflight), falls back to POST, then to the caller's
+     local list.  Successful results are cached in memory + localStorage so
+     previously-searched terms keep working offline.
+   - The Flora Assessment tool does NOT use this — it keeps its own curated list.
+*/
+(function () {
+  "use strict";
+  var ENDPOINT = "https://vicflora.rbg.vic.gov.au/graphql";
+  var QUERY =
+    "query($q:String!){taxonConceptAutocomplete(q:$q){" +
+    "id taxonomicStatus establishmentMeans epbc ffg " +
+    "taxonName{fullName} preferredVernacularName{name}}}";
+
+  var mem = new Map();
+  var CACHE_KEY = "fh_vicflora_cache_v2";   // v2: previous query had a bad field
+  var disk = {};
+  try { disk = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}") || {}; } catch (e) { disk = {}; }
+
+  function mapType(em) {
+    return (em && String(em).toUpperCase().indexOf("NATIVE") === 0) ? "indigenous" : "invasive";
+  }
+
+  function normalise(json) {
+    var arr = (json && json.data && json.data.taxonConceptAutocomplete) || [];
+    var out = [], seen = {};
+    for (var i = 0; i < arr.length; i++) {
+      var t = arr[i] || {};
+      var sci = t.taxonName && t.taxonName.fullName;
+      if (!sci || seen[sci]) continue;
+      seen[sci] = 1;
+      out.push({
+        sci: sci,
+        common: (t.preferredVernacularName && t.preferredVernacularName.name) || "",
+        lf: "",
+        type: mapType(t.establishmentMeans),
+        ffg: t.ffg || "",
+        epbc: t.epbc || "",
+        status: t.taxonomicStatus || "",
+        source: "vicflora"
+      });
+    }
+    return out;
+  }
+
+  function persist(key, val) {
+    try {
+      disk[key] = val;
+      var keys = Object.keys(disk);
+      while (keys.length > 500) { delete disk[keys.shift()]; }
+      localStorage.setItem(CACHE_KEY, JSON.stringify(disk));
+    } catch (e) { /* ignore */ }
+  }
+
+  function gql(method, q) {
+    var url, opts;
+    if (method === "GET") {
+      url = ENDPOINT + "?query=" + encodeURIComponent(QUERY) +
+            "&variables=" + encodeURIComponent(JSON.stringify({ q: q }));
+      opts = { method: "GET", headers: { "Accept": "application/json" } };
+    } else {
+      url = ENDPOINT;
+      opts = {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ query: QUERY, variables: { q: q } })
+      };
+    }
+    return fetch(url, opts).then(function (res) {
+      if (!res.ok) throw new Error("VicFlora HTTP " + res.status);
+      return res.json();
+    }).then(function (json) {
+      if (json && json.errors && json.errors.length) throw new Error("VicFlora GraphQL error");
+      return normalise(json);
+    });
+  }
+
+  // Resolves to an array of {sci, common, lf, type, status, source}.
+  // Rejects only if BOTH GET and POST fail, so callers can fall back to local.
+  function search(q) {
+    q = (q || "").trim();
+    if (q.length < 2) return Promise.resolve([]);
+    var key = q.toLowerCase();
+    if (mem.has(key)) return Promise.resolve(mem.get(key));
+    if (disk[key]) { mem.set(key, disk[key]); return Promise.resolve(disk[key]); }
+    return gql("GET", q)
+      .catch(function () { return gql("POST", q); })
+      .then(function (out) { mem.set(key, out); persist(key, out); return out; });
+  }
+
+  window.FHVicFlora = { search: search, endpoint: ENDPOINT };
+})();
+
+</script>
+<script>
+/* Keystone Conservation — shared kit for the survey tools.
+   Provides: species picker, Save/Load manager (localStorage, same
+   fh_<key>_saved / fh_<key>_working pattern the home screen reads),
+   CSV download, and a toast. Requires species.js to be loaded first. */
+window.FHKit = (function(){
+  const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const today = () => new Date().toISOString().slice(0,10);
+
+  // Conservation listing (FFG = Vic Flora & Fauna Guarantee Act, EPBC = Cth Act).
+  // Skips "not listed" codes so only species of conservation significance show a tag.
+  const CONS_SKIP = {"":1,"LC":1,"NE":1,"NA":1,"NULL":1,"NONE":1};
+  function consParts(ffg,epbc){
+    const out=[]; const ok=v=>{ v=(v==null?"":String(v)).trim().toUpperCase(); return v && !CONS_SKIP[v]; };
+    if(ok(ffg)) out.push("FFG "+String(ffg).trim());
+    if(ok(epbc)) out.push("EPBC "+String(epbc).trim());
+    return out;
+  }
+  function consLabel(ffg,epbc){ return consParts(ffg,epbc).join(" \u00b7 "); }
+  function consBadge(ffg,epbc){ const t=consLabel(ffg,epbc); return t ? '<span class="badge cons" style="background:#7a1f2b;color:#fff">'+esc(t)+'</span>' : ""; }
+
+  let toastT;
+  function toast(msg){
+    let t = document.getElementById("fhToast");
+    if(!t){ t = document.createElement("div"); t.id="fhToast"; t.className="toast"; document.body.appendChild(t); }
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove("show"), 1800);
+  }
+
+  function csvCell(v){ v = String(v==null?"":v); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
+  async function downloadCSV(filename, rows){
+    const csv = rows.map(r=>r.map(csvCell).join(",")).join("\r\n");
+    const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8"});
+    // On phones, offer the share sheet so the file can go to OneDrive/Dropbox/Drive/email.
+    try{
+      const file = new File([blob], filename, {type:"text/csv"});
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        await navigator.share({files:[file], title:filename, text:"Keystone Conservation export"});
+        toast("Shared "+filename); return;
+      }
+    }catch(e){ if(e && e.name==="AbortError") return; /* else fall through to download */ }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+    toast("CSV exported");
+  }
+
+  /* species picker: type-ahead sourced from the VicFlora API (with the bundled
+     FH_SPECIES list as an instant + offline fallback). */
+  const noteStyle = 'style="padding:7px 12px;font-size:11px;color:var(--text-dim,#888)"';
+  function buildPicker(input, list, onPick){
+    let current = [];   // objects currently shown in the dropdown
+    let seq = 0;        // guards against out-of-order async responses
+    let timer = null;
+
+    function bySci(a,b){ return (a.sci||"").toLowerCase().localeCompare((b.sci||"").toLowerCase()); }
+    // Word-boundary prefix match: the name (or one of its words) must START with the
+    // query — so "Xan" matches "Xanthorrhoea" but not "Anthoxanthum". Multi-word
+    // queries (e.g. "euca vim") match when every query word prefixes a name word.
+    function matchQuery(text, q){
+      text = (text||"").toLowerCase(); q = (q||"").toLowerCase().trim();
+      if(!q) return true;
+      if(text.indexOf(q) === 0) return true;
+      const nt = text.split(/\s+/).map(w=>w.replace(/^[^a-z]+/,""));
+      return q.split(/\s+/).filter(Boolean).every(qt => nt.some(w => w.indexOf(qt) === 0));
+    }
+    function localFilter(q){
+      const SP = window.FH_SPECIES || [];
+      q = (q||"").trim();
+      const arr = !q ? SP.slice() : SP.filter(s=>matchQuery(s.sci,q)||matchQuery(s.common,q));
+      arr.sort(bySci);
+      return arr.slice(0, q ? 80 : 50);
+    }
+    function draw(items, q, note){
+      current = items || [];
+      let html = note ? '<div class="pick-note" '+noteStyle+'>'+esc(note)+'</div>' : '';
+      html += current.map((s,i)=>{
+        const inv = s.type==="invasive";
+        return '<div class="pick-opt" data-i="'+i+'">'
+          + '<span class="cn">'+esc(s.common||s.sci)+'</span>'
+          + '<span class="sci">'+esc(s.sci)+'</span>'
+          + '<span class="badge '+(inv?"inv":"ind")+'">'+(inv?"Invasive":"Indigenous")+'</span>'
+          + consBadge(s.ffg, s.epbc) + '</div>';
+      }).join("");
+      if((q||"").trim()){
+        const nm = esc(input.value.trim());
+        html += '<div class="pick-opt" data-free="1"><span class="cn">Add &ldquo;'+nm+'&rdquo;</span>'
+          + '<span class="sci">not in list — added as free text</span></div>';
+      } else if(!current.length){
+        html += '<div class="pick-note" '+noteStyle+'>Type at least 2 letters to search VicFlora…</div>';
+      }
+      list.innerHTML = html;
+    }
+    async function render(q){
+      const trimmed = (q||"").trim();
+      // Short query or no API available -> instant local list.
+      if(trimmed.length < 2 || !window.FHVicFlora){
+        draw(localFilter(trimmed), q, null);
+        return;
+      }
+      const my = ++seq;
+      draw(localFilter(trimmed), q, "Searching VicFlora…");  // show local hits while we wait
+      try{
+        const results = await window.FHVicFlora.search(trimmed);
+        if(my !== seq) return;                               // superseded by a newer keystroke
+        const hits = (results||[]).filter(s=>matchQuery(s.sci,trimmed)||matchQuery(s.common,trimmed)).sort(bySci);
+        if(hits.length) draw(hits, q, null);
+        else draw(localFilter(trimmed), q, "No VicFlora matches — showing local list");
+      }catch(e){
+        if(my !== seq) return;
+        draw(localFilter(trimmed), q, "Offline — showing local list");
+      }
+    }
+    function schedule(q){ clearTimeout(timer); timer = setTimeout(()=>render(q), 250); }
+
+    input.addEventListener("focus", ()=>{ render(input.value); list.classList.add("open"); });
+    input.addEventListener("input", ()=>{ list.classList.add("open"); schedule(input.value); });
+    // Guard against a stale timer: if the input has already been refocused
+    // (e.g. picking a second species right after the first) by the time this
+    // fires, don't yank the list closed out from under that new interaction.
+    input.addEventListener("blur", ()=>{ setTimeout(()=>{ if(document.activeElement !== input) list.classList.remove("open"); }, 160); });
+    list.addEventListener("click", e=>{
+      const opt = e.target.closest(".pick-opt"); if(!opt) return;
+      if(opt.dataset.free){
+        const nm = input.value.trim();
+        if(nm) onPick({ sci:nm, common:nm, lf:"", type:"invasive", free:true });
+      } else if(opt.dataset.i !== undefined){
+        const s = current[+opt.dataset.i];
+        if(s) onPick(Object.assign({}, s));
+      }
+      input.value=""; list.classList.remove("open");
+    });
+  }
+
+  /* Save/Load manager — builds buttons in #fh-bar and handles storage */
+  function manager(opts){
+    const KEY = opts.key, WORKING = "fh_"+KEY+"_working", SAVED = "fh_"+KEY+"_saved";
+    const bar = document.getElementById("fh-bar");
+    const getSaved = ()=>{ try{ return JSON.parse(localStorage.getItem(SAVED))||{}; }catch(e){ return {}; } };
+    const putSaved = o => { try{ localStorage.setItem(SAVED, JSON.stringify(o)); }catch(e){} };
+
+    let at=null;
+    function autosave(){
+      clearTimeout(at);
+      at = setTimeout(()=>{ try{ localStorage.setItem(WORKING, JSON.stringify(opts.snapshot())); }catch(e){} }, 400);
+    }
+    function save(){
+      let name = prompt("Name this saved sheet:", opts.suggestName ? opts.suggestName() : "");
+      if(name==null) return; name = name.trim(); if(!name) return;
+      const o = getSaved();
+      if(o[name] && !confirm("A saved sheet called \""+name+"\" exists. Overwrite it?")) return;
+      o[name] = opts.snapshot();
+      putSaved(o); toast("Saved \u201C"+name+"\u201D");
+    }
+    function load(){
+      const o = getSaved();
+      const names = Object.keys(o).sort((a,b)=> new Date(o[b].savedAt||0) - new Date(o[a].savedAt||0));
+      if(!names.length){ toast("No saved sheets yet"); return; }
+      const ov = document.createElement("div"); ov.className="fh-modal";
+      ov.innerHTML = '<div class="fh-modal-card"><h3>Saved sheets</h3><div class="fh-modal-list">'
+        + names.map(n=>'<div class="fh-modal-row"><span>'+esc(n)
+            + (o[n].savedAt ? '<small> &middot; '+new Date(o[n].savedAt).toLocaleDateString()+'</small>' : '')
+            + '</span><span><button data-load="'+esc(n)+'">Load</button>'
+            + '<button class="del" data-del="'+esc(n)+'">Delete</button></span></div>').join("")
+        + '</div><div class="fh-modal-foot"><button class="ghost" data-close="1">Close</button></div></div>';
+      document.body.appendChild(ov);
+      ov.addEventListener("click", e=>{
+        if(e.target===ov || e.target.dataset.close){ ov.remove(); return; }
+        const ln = e.target.dataset.load, dn = e.target.dataset.del;
+        if(ln){ opts.restore(o[ln]); autosave(); toast("Loaded \u201C"+ln+"\u201D"); ov.remove(); }
+        if(dn && confirm("Delete saved sheet \""+dn+"\"?")){
+          delete o[dn]; putSaved(o);
+          const row = e.target.closest(".fh-modal-row"); if(row) row.remove();
+          if(!Object.keys(o).length) ov.remove();
+        }
+      });
+    }
+    function newSheet(){
+      if(!confirm("Start a new, empty sheet?\n\nSave first if you want to keep the current one.")) return;
+      try{ localStorage.removeItem(WORKING); }catch(e){}
+      location.reload();
+    }
+    bar.innerHTML = '<strong class="grow">'+esc(opts.title||"")+'</strong>'
+      + '<button class="btn sec" id="fhNew">New</button>'
+      + '<button class="btn sec" id="fhLoad">Load</button>'
+      + '<button class="btn sec" id="fhCsv">'+esc(opts.exportLabel||"CSV")+'</button>'
+      + '<button class="btn" id="fhSave">Save</button>';
+    bar.querySelector("#fhNew").onclick  = newSheet;
+    bar.querySelector("#fhLoad").onclick = load;
+    bar.querySelector("#fhSave").onclick = save;
+    bar.querySelector("#fhCsv").onclick  = ()=>{ if(opts.exportCSV) opts.exportCSV(); };
+
+    let working = null;
+    try{ working = JSON.parse(localStorage.getItem(WORKING)); }catch(e){}
+    if(working) { try{ opts.restore(working); }catch(e){} }
+
+    return { autosave, save, load };
+  }
+
+  /* ---- Minimal, dependency-free .xlsx writer -------------------------------
+     Real Excel files need actual cell styling to show colored text — plain
+     CSV can't carry that. Rather than pull in a third-party spreadsheet
+     library (extra download, extra thing to keep cached for offline use),
+     this hand-builds the handful of XML parts an .xlsx needs (a ZIP archive
+     under the hood) and zips them with stored/uncompressed entries — no
+     compression library required either. Good enough for report-style
+     exports: text/number cells, and three row styles (default, "bold" for
+     headings/totals, "red" for flagged rows). Not a general spreadsheet engine. */
+  const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+  function xesc(v){ return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function colName(n){ // 0-based column index -> A, B, ... Z, AA, AB, ...
+    n = n + 1; let s = "";
+    while(n > 0){ const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+    return s;
+  }
+  function xlsxSheetXML(rows, styles, colWidths){
+    let body = "";
+    (rows||[]).forEach((cells, ri) => {
+      const r = ri + 1;
+      const st = styles && styles[ri];
+      const sIdx = st === "bold" ? 1 : (st === "red" ? 2 : (st === "wrap" ? 3 : 0));
+      let rowXml = "";
+      (cells||[]).forEach((v, ci) => {
+        if(v === null || v === undefined || v === "") return;
+        const ref = colName(ci) + r;
+        if(typeof v === "number" && isFinite(v)){
+          rowXml += '<c r="'+ref+'" s="'+sIdx+'"><v>'+v+'</v></c>';
+        } else {
+          rowXml += '<c r="'+ref+'" t="inlineStr" s="'+sIdx+'"><is><t xml:space="preserve">'+xesc(v)+'</t></is></c>';
+        }
+      });
+      body += '<row r="'+r+'">'+rowXml+'</row>';
+    });
+    const cols = (colWidths && colWidths.length)
+      ? '<cols>'+colWidths.map((w,i)=>'<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>').join("")+'</cols>'
+      : "";
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+      + cols + '<sheetData>'+body+'</sheetData></worksheet>';
+  }
+
+  const XLSX_CONTENT_TYPES =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    + '<Default Extension="xml" ContentType="application/xml"/>'
+    + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+    + '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+    + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+    + '</Types>';
+  const XLSX_RELS =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+    + '</Relationships>';
+  const XLSX_WORKBOOK_RELS =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+    + '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+    + '</Relationships>';
+  const XLSX_STYLES =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    + '<fonts count="3">'
+    + '<font><sz val="11"/><name val="Calibri"/></font>'
+    + '<font><b/><sz val="11"/><name val="Calibri"/></font>'
+    + '<font><sz val="11"/><color rgb="FFB53A3A"/><name val="Calibri"/></font>'
+    + '</fonts>'
+    + '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
+    + '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+    + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+    + '<cellXfs count="4">'
+    + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+    + '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+    + '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+    + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf>'
+    + '</cellXfs>'
+    + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+    + '</styleSheet>';
+  function xlsxWorkbookXML(sheetName){
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+      + '<sheets><sheet name="'+xesc((sheetName||"Sheet1").slice(0,31))+'" sheetId="1" r:id="rId1"/></sheets>'
+      + '</workbook>';
+  }
+
+  // Table-based CRC32 (needed for the ZIP entries — files are small so no
+  // compression is used, just "stored" entries; every mainstream Excel/zip
+  // reader accepts that).
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for(let n=0;n<256;n++){
+      let c = n;
+      for(let k=0;k<8;k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(bytes){
+    let c = 0xFFFFFFFF;
+    for(let i=0;i<bytes.length;i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function u16(n){ return new Uint8Array([n & 0xFF, (n>>>8) & 0xFF]); }
+  function u32(n){ return new Uint8Array([n & 0xFF, (n>>>8) & 0xFF, (n>>>16) & 0xFF, (n>>>24) & 0xFF]); }
+  function u8concat(arrays){
+    let len = 0; arrays.forEach(a=>len+=a.length);
+    const out = new Uint8Array(len); let o = 0;
+    arrays.forEach(a=>{ out.set(a,o); o += a.length; });
+    return out;
+  }
+  function dosDateTime(d){
+    d = d || new Date();
+    const time = ((d.getHours()&0x1F)<<11) | ((d.getMinutes()&0x3F)<<5) | ((Math.floor(d.getSeconds()/2))&0x1F);
+    const date = (((d.getFullYear()-1980)&0x7F)<<9) | (((d.getMonth()+1)&0xF)<<5) | (d.getDate()&0x1F);
+    return { time, date };
+  }
+  /* files[name] may be a string (UTF-8 encoded, e.g. XML parts) or a raw
+     Uint8Array (e.g. JPEG bytes for a photos zip) — either is stored
+     uncompressed, same as the .xlsx writer above. */
+  function zipBlob(files, mimeType){
+    const enc = new TextEncoder();
+    const { time, date } = dosDateTime();
+    const names = Object.keys(files);
+    const localParts = [], centralParts = [];
+    let offset = 0;
+    names.forEach(name => {
+      const nameBytes = enc.encode(name);
+      const raw = files[name];
+      const dataBytes = (raw instanceof Uint8Array) ? raw : enc.encode(raw);
+      const crc = crc32(dataBytes);
+      const localHeader = u8concat([
+        u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(time), u16(date),
+        u32(crc), u32(dataBytes.length), u32(dataBytes.length),
+        u16(nameBytes.length), u16(0)
+      ]);
+      const localEntry = u8concat([localHeader, nameBytes, dataBytes]);
+      localParts.push(localEntry);
+      const centralHeader = u8concat([
+        u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(time), u16(date),
+        u32(crc), u32(dataBytes.length), u32(dataBytes.length),
+        u16(nameBytes.length), u16(0), u16(0), u16(0), u16(0), u32(0),
+        u32(offset)
+      ]);
+      centralParts.push(u8concat([centralHeader, nameBytes]));
+      offset += localEntry.length;
+    });
+    const centralDir = u8concat(centralParts);
+    const centralOffset = offset;
+    const eocd = u8concat([
+      u32(0x06054b50), u16(0), u16(0),
+      u16(names.length), u16(names.length),
+      u32(centralDir.length), u32(centralOffset), u16(0)
+    ]);
+    return new Blob([u8concat([...localParts, centralDir, eocd])], { type: mimeType });
+  }
+
+  /* rows: array of arrays of cell values (strings/numbers). styles: parallel
+     array, each entry undefined/null (default), "bold" or "red". colWidths:
+     optional array of column widths (characters). */
+  async function downloadXLSX(filename, sheetName, rows, styles, colWidths){
+    const blob = zipBlob({
+      "[Content_Types].xml": XLSX_CONTENT_TYPES,
+      "_rels/.rels": XLSX_RELS,
+      "xl/workbook.xml": xlsxWorkbookXML(sheetName),
+      "xl/_rels/workbook.xml.rels": XLSX_WORKBOOK_RELS,
+      "xl/styles.xml": XLSX_STYLES,
+      "xl/worksheets/sheet1.xml": xlsxSheetXML(rows, styles, colWidths)
+    }, XLSX_MIME);
+    try{
+      const file = new File([blob], filename, { type: XLSX_MIME });
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        await navigator.share({files:[file], title:filename, text:"Keystone Conservation export"});
+        toast("Shared "+filename); return;
+      }
+    }catch(e){ if(e && e.name==="AbortError") return; /* else fall through to download */ }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+    toast("Excel file exported");
+  }
+
+  const ZIP_MIME = "application/zip";
+  /* files: { "name.jpg": Uint8Array, ... } — a flat zip, no compression (same
+     "stored" approach as the .xlsx writer), good enough for a folder of photos. */
+  async function downloadZip(filename, files){
+    const blob = zipBlob(files, ZIP_MIME);
+    try{
+      const file = new File([blob], filename, { type: ZIP_MIME });
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        await navigator.share({files:[file], title:filename, text:"Keystone Conservation photos"});
+        toast("Shared "+filename); return;
+      }
+    }catch(e){ if(e && e.name==="AbortError") return; /* else fall through to download */ }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+    toast("Photos zip exported");
+  }
+
+  return { esc, today, toast, downloadCSV, downloadXLSX, downloadZip, buildPicker, manager, consLabel, consBadge };
+})();
+
+</script>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  let rows = [];         // {id, sci, common, type, lf, fieldNotes, free, uncertain, photos:[{id,dataUrl,addedAt}]}
+  let openNotes = new Set();   // row objects whose field-notes/photos editor is expanded (UI-only state)
+  let siteNotes = [];    // site-level field notes log: {id, text, ts} — not tied to a species
+  let noteSeq = 0;
+
+  // ── Saved Survey folder (localStorage) ──────────────────────────────────
+  // The unique identifier lives on each SPECIES RECORD (rows[i].id), not the
+  // survey — folderKey below is purely an internal storage key so the same
+  // survey can be re-saved/updated in place, never shown in the UI.
+  const FH_KEY = "florasurvey";
+  const WORKING_KEY = "fh_"+FH_KEY+"_working";   // in-progress autosave draft (crash recovery)
+  const FOLDER_KEY  = "fh_"+FH_KEY+"_folder";    // { [folderKey]: snapshot } — explicit saves
+  let folderKey = makeFolderKey();
+
+  function makeFolderKey(){ return "s_"+Date.now()+"_"+Math.random().toString(36).slice(2,8); }
+  function makeRecordId(){
+    const d = new Date();
+    const ymd = String(d.getFullYear()).slice(2) + String(d.getMonth()+1).padStart(2,"0") + String(d.getDate()).padStart(2,"0");
+    const rand = Math.random().toString(36).slice(2,6).toUpperCase();
+    return "FS-"+ymd+"-"+rand;
+  }
+  function getFolder(){ try{ return JSON.parse(localStorage.getItem(FOLDER_KEY))||{}; }catch(e){ return {}; } }
+  function putFolder(o){ try{ localStorage.setItem(FOLDER_KEY, JSON.stringify(o)); }catch(e){} }
+
+  let autosaveTimer=null;
+  function autosave(){
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(()=>{ try{ localStorage.setItem(WORKING_KEY, JSON.stringify(snapshot())); }catch(e){} }, 400);
+  }
+  function saveToFolder(){
+    const o = getFolder();
+    o[folderKey] = snapshot();
+    putFolder(o);
+    FHKit.toast("Saved to survey folder");
+    autosave();
+  }
+  function loadFromFolder(){
+    const o = getFolder();
+    const keys = Object.keys(o).sort((a,b)=> new Date(o[b].savedAt||0) - new Date(o[a].savedAt||0));
+    if(!keys.length){ FHKit.toast("No saved surveys yet"); return; }
+    const ov = document.createElement("div"); ov.className="fh-modal";
+    ov.innerHTML = '<div class="fh-modal-card"><h3>Saved Surveys</h3><div class="fh-modal-list">'
+      + keys.map(key=>{
+          const s = o[key]||{}; const m = s.meta||{};
+          const nSp = (s.species||[]).length;
+          const nPh = (s.species||[]).reduce((n,r)=> n + ((r.photos||[]).length), 0);
+          return '<div class="fh-modal-row"><span><b>'+FHKit.esc(m.site||"(no site)")+'</b>'
+            + '<br><small>'+FHKit.esc(m.date||"")+' &middot; '+nSp+' species'
+            + (nPh?(' &middot; '+nPh+' photo'+(nPh===1?"":"s")):'')+'</small></span>'
+            + '<span><button data-load="'+FHKit.esc(key)+'">Load</button>'
+            + '<button class="del" data-del="'+FHKit.esc(key)+'">Delete</button></span></div>';
+        }).join("")
+      + '</div><div class="fh-modal-foot"><button class="ghost" data-close="1">Close</button></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener("click", e=>{
+      if(e.target===ov || e.target.dataset.close){ ov.remove(); return; }
+      const ln = e.target.dataset.load, dn = e.target.dataset.del;
+      if(ln){ restore(o[ln]); autosave(); FHKit.toast("Loaded survey"); ov.remove(); }
+      if(dn && confirm("Delete this saved survey?")){
+        delete o[dn]; putFolder(o);
+        const row = e.target.closest(".fh-modal-row"); if(row) row.remove();
+        if(!Object.keys(o).length) ov.remove();
+      }
+    });
+  }
+  function newSurvey(){
+    if(!confirm("Start a new, empty survey?\n\nSave it to the survey folder first if you want to keep the current one.")) return;
+    try{ localStorage.removeItem(WORKING_KEY); }catch(e){}
+    location.reload();
+  }
+
+  function meta(){ return { site:$("site").value, date:$("date").value }; }
+  function snapshot(){ return { folderKey:folderKey, meta:meta(), species:rows.map(r=>Object.assign({},r, {photos:(r.photos||[]).map(p=>Object.assign({},p))})), siteNotes:siteNotes.map(n=>Object.assign({},n)), savedAt:new Date().toISOString() }; }
+  function restore(s){
+    if(!s) return; const m = s.meta||{};
+    folderKey = s.folderKey || s.id || makeFolderKey();
+    $("site").value=m.site||""; $("date").value=m.date||FHKit.today();
+    rows = (s.species||[]).map(r=>{
+      const o = Object.assign({}, r);
+      if(!o.id) o.id = makeRecordId();                          // migrate older records lacking one
+      o.photos = Array.isArray(o.photos) ? o.photos.map(p=>Object.assign({},p)) : [];
+      return o;
+    });
+    openNotes = new Set();
+    if(Array.isArray(s.siteNotes)) siteNotes = s.siteNotes.map(n=>Object.assign({},n));
+    // Migrate an older single free-text "siteFieldNotes" sheet into the new list format.
+    else if(m.siteFieldNotes && m.siteFieldNotes.trim()) siteNotes = [{ id:"legacy_"+Date.now(), text:m.siteFieldNotes, ts:s.savedAt||new Date().toISOString() }];
+    else siteNotes = [];
+    render(); renderSiteNotes();
+  }
+  function suggestName(){ const s=($("site").value||"Site").trim()||"Site"; return s+" — "+($("date").value||FHKit.today()); }
+
+  // ── Per-species photos (multi-attach, each discreetly stamped with that
+  // species record's own unique identifier) ──
+  function stampImage(file, idText){
+    return new Promise((resolve,reject)=>{
+      const reader = new FileReader();
+      reader.onerror = ()=>reject(reader.error||new Error("Could not read file"));
+      reader.onload = ()=>{
+        const img = new Image();
+        img.onerror = ()=>reject(new Error("Could not decode image"));
+        img.onload = ()=>{
+          try{
+            const MAXDIM = 1600;
+            let w = img.naturalWidth||img.width, h = img.naturalHeight||img.height;
+            const scale = Math.min(1, MAXDIM/Math.max(w||1,h||1));
+            w = Math.max(1, Math.round(w*scale)); h = Math.max(1, Math.round(h*scale));
+            const canvas = document.createElement("canvas");
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, w, h);
+            // Discreet corner watermark — small, semi-transparent, bottom-right.
+            const fontSize = Math.max(11, Math.round(w*0.02));
+            ctx.font = fontSize+"px sans-serif";
+            const label = String(idText||"");
+            const padX = Math.round(fontSize*0.55), padY = Math.round(fontSize*0.4);
+            const textW = (ctx.measureText(label).width)||(label.length*fontSize*0.6);
+            const boxW = textW + padX*2, boxH = fontSize + padY*2;
+            const bx = Math.max(0, w - boxW - 8), by = Math.max(0, h - boxH - 8);
+            ctx.fillStyle = "rgba(0,0,0,0.45)";
+            ctx.fillRect(bx, by, boxW, boxH);
+            ctx.fillStyle = "rgba(255,255,255,0.9)";
+            ctx.textBaseline = "middle";
+            ctx.fillText(label, bx+padX, by+boxH/2);
+            resolve(canvas.toDataURL("image/jpeg", 0.82));
+          }catch(err){ reject(err); }
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  async function addPhotosToRow(idx, fileList){
+    const r = rows[idx];
+    if(!r) return;
+    if(!Array.isArray(r.photos)) r.photos = [];
+    const files = Array.from(fileList||[]);
+    for(const f of files){
+      try{
+        const dataUrl = await stampImage(f, r.id);
+        r.photos.push({ id:"p_"+Date.now()+"_"+Math.random().toString(36).slice(2,8), dataUrl, addedAt:new Date().toISOString() });
+      }catch(e){ FHKit.toast("Couldn't process a photo"); }
+    }
+    render();
+    autosave();
+  }
+  // dataURL ("data:image/jpeg;base64,....") -> raw bytes, for zipping photos.
+  function dataUrlToBytes(dataUrl){
+    const comma = dataUrl.indexOf(",");
+    const b64 = comma>=0 ? dataUrl.slice(comma+1) : dataUrl;
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  // Builds the { "<record id>[-n].jpg": Uint8Array } map for the photos zip.
+  function buildPhotoFiles(){
+    const files = {};
+    rows.forEach((r,ri)=>{
+      const ph = r.photos||[];
+      ph.forEach((p,pi)=>{
+        const base = r.id || ("species"+(ri+1));
+        const name = (ph.length>1 ? (base+"-"+(pi+1)) : base) + ".jpg";
+        files[name] = dataUrlToBytes(p.dataUrl);
+      });
+    });
+    return files;
+  }
+
+  // ── Site-level field notes (a repeatable log, not tied to any species) ──
+  function fmtNoteTime(iso){
+    const d = new Date(iso);
+    return isNaN(d) ? "" : d.toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"});
+  }
+  function addSiteNote(){
+    const n = { id:"n"+(++noteSeq)+"_"+Date.now(), text:"", ts:new Date().toISOString() };
+    siteNotes.push(n);
+    renderSiteNotes();
+    const ta = document.querySelector('textarea[data-site-note="'+n.id+'"]');
+    if(ta) ta.focus();
+    autosave();
+  }
+  function renderSiteNotes(){
+    const list = $("siteNotesList");
+    list.innerHTML = siteNotes.map(n=>
+      '<div class="site-note">'
+      + '<div class="site-note-head"><span>'+FHKit.esc(fmtNoteTime(n.ts))+'</span>'
+      + '<button type="button" class="x" data-del-note="'+n.id+'" title="Remove this note">&times;</button></div>'
+      + '<textarea data-site-note="'+n.id+'" placeholder="Weather, access, fauna observed, recommendations…">'+FHKit.esc(n.text||"")+'</textarea>'
+      + '</div>'
+    ).join("") || '<p class="muted" style="margin:0 0 10px">No field notes yet — tap “+ Field Notes” to add one.</p>';
+  }
+
+  function add(sp){
+    if(rows.some(r=>r.sci===sp.sci)){ FHKit.toast((sp.common||sp.sci)+" is already on the list"); return; }
+    // `free` marks a typed name that didn't match the reference list (set by
+    // FHKit.buildPicker's "Add “…”" option) — only these can be flagged Uncertain.
+    rows.push({ id:makeRecordId(), sci:sp.sci, common:sp.common||sp.sci, type:sp.type||"indigenous", lf:sp.lf||"", ffg:sp.ffg||"", epbc:sp.epbc||"", fieldNotes:"", free:!!sp.free, uncertain:false, photos:[] });
+    render(); autosave();
+  }
+  function render(){
+    const tb = $("tbody");
+    tb.innerHTML = rows.map((r,i)=>{
+      const uncCell = r.free
+        ? '<input type="checkbox" data-unc="'+i+'" title="Flag this identification as uncertain — highlighted in red on export"'+(r.uncertain?" checked":"")+'>'
+        : '<span class="muted" title="Only species typed as free text (not matched to the reference list) can be flagged uncertain">—</span>';
+      const hasNotes = !!(r.fieldNotes && r.fieldNotes.trim());
+      const photoCount = (r.photos||[]).length;
+      const isOpen = openNotes.has(r);
+      const notesBtn = '<button type="button" class="notes-btn'+(hasNotes?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+i+'" title="Field notes for this species">Field Notes'+(hasNotes?' ●':'')+'</button>';
+      const photosBtn = '<button type="button" class="notes-btn'+(photoCount?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+i+'" title="Photos for this species">Photos'+(photoCount?' ('+photoCount+')':'')+'</button>';
+      const trStyle = r.uncertain ? ' style="background:rgba(181,58,58,.12);box-shadow:inset 3px 0 0 var(--red)"' : '';
+      const mainRow = '<tr'+trStyle+'><td><div class="sp-name-row"><div>'+FHKit.esc(r.common||r.sci)+(FHKit.consBadge(r.ffg,r.epbc)?' '+FHKit.consBadge(r.ffg,r.epbc):'')+(r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')+'</div><div class="row-actions">'+notesBtn+photosBtn+'</div></div><div class="sci">'+FHKit.esc(r.sci)+' <span class="rec-id" title="Unique identifier for this species record">'+FHKit.esc(r.id||"")+'</span></div></td>'
+        + '<td><select data-origin="'+i+'"><option value="indigenous"'+(r.type!=="invasive"?" selected":"")+'>Indigenous</option><option value="invasive"'+(r.type==="invasive"?" selected":"")+'>Invasive</option></select></td>'
+        + '<td style="text-align:center">'+uncCell+'</td>'
+        + '<td><button class="x" data-del="'+i+'" title="Remove">&times;</button></td></tr>';
+      const photoThumbs = (r.photos||[]).map(p=>
+        '<div class="photo-thumb"><img src="'+p.dataUrl+'" alt="Species photo"><button type="button" class="x" data-del-photo="'+i+'|'+p.id+'" title="Remove photo">&times;</button></div>'
+      ).join("");
+      const notesRow = '<tr class="notes-row'+(isOpen?' open':'')+'"><td colspan="4">'
+        + '<label class="detail-label">Field notes</label>'
+        + '<textarea class="field-notes-input" data-fn="'+i+'" placeholder="Field notes for '+FHKit.esc(r.common||r.sci)+'…">'+FHKit.esc(r.fieldNotes||"")+'</textarea>'
+        + '<div class="row-photos">'
+        + '<label class="detail-label">Photos <span class="muted" style="text-transform:none;font-weight:600">— stamped with '+FHKit.esc(r.id||"")+'</span></label>'
+        + '<div class="photo-grid">'+photoThumbs+'</div>'
+        + '<input type="file" accept="image/*" multiple style="display:none" data-photo-input="'+i+'">'
+        + '<button type="button" class="btn sec" data-add-photo="'+i+'">+ Add Photos</button>'
+        + '</div></td></tr>';
+      return mainRow + notesRow;
+    }).join("");
+    $("empty").style.display = rows.length ? "none" : "block";
+    $("count").textContent = rows.length ? "("+rows.length+")" : "";
+    $("sTotal").textContent = rows.length;
+    $("sInd").textContent = rows.filter(r=>r.type!=="invasive").length;
+    $("sInv").textContent = rows.filter(r=>r.type==="invasive").length;
+  }
+  async function exportXLSX(){
+    const m = meta();
+    const sheet = [], styles = [];
+    const push = (cells, style) => { sheet.push(cells); styles.push(style||null); };
+
+    push(["Keystone Conservation — Flora Survey"], "bold");
+    push(["Site", m.site]); push(["Date", m.date]);
+    if(siteNotes.length){
+      push([]);
+      push(["Site Field Notes"], "bold");
+      siteNotes.forEach(n=>{ if((n.text||"").trim()) push([fmtNoteTime(n.ts), n.text], "wrap"); });
+    }
+    push([]);
+    // Record ID first (matches each row to its photo in the exported zip);
+    // Field Notes goes last (far right) per-species, as requested.
+    push(["Record ID","Common name","Scientific name","Origin","FFG","EPBC","Uncertain ID","Field Notes"], "bold");
+    rows.forEach(r=> push(
+      [r.id||"", r.common, r.sci, r.type==="invasive"?"Invasive":"Indigenous", r.ffg||"", r.epbc||"", r.uncertain?"Yes":"", r.fieldNotes||""],
+      r.uncertain ? "red" : null
+    ));
+    push([]);
+    push(["Total species", rows.length]);
+    push(["Indigenous", rows.filter(r=>r.type!=="invasive").length]);
+    push(["Invasive", rows.filter(r=>r.type==="invasive").length]);
+    const nUnc = rows.filter(r=>r.uncertain).length;
+    if(nUnc) push(["Uncertain ID (shown in red above)", nUnc]);
+
+    await FHKit.downloadXLSX("flora-survey-"+(m.date||FHKit.today())+".xlsx", "Flora Survey", sheet, styles, [14,26,30,12,8,8,12,34]);
+
+    // A photo zip only makes sense if at least one species has a photo attached.
+    const photoFiles = buildPhotoFiles();
+    if(Object.keys(photoFiles).length){
+      await FHKit.downloadZip("flora-survey-photos-"+(m.date||FHKit.today())+".zip", photoFiles);
+    }
+  }
+
+  // events
+  $("tbody").addEventListener("change", e=>{
+    const o=e.target.dataset.origin, u=e.target.dataset.unc, pi=e.target.dataset.photoInput;
+    if(o!=null && o!==""){ rows[+o].type=e.target.value; render(); autosave(); }
+    else if(u!=null && u!==""){ rows[+u].uncertain=e.target.checked; render(); autosave(); }
+    else if(pi!=null && pi!==""){
+      // Copy to a plain array first: input.files is a *live* FileList, so
+      // clearing e.target.value below would otherwise empty it out from under us.
+      const files = Array.from(e.target.files||[]);
+      e.target.value = "";
+      addPhotosToRow(+pi, files);   // renders + autosaves once the async stamping finishes
+    }
+  });
+  $("tbody").addEventListener("input", e=>{
+    const fn = e.target.dataset.fn;
+    if(fn!=null && fn!==""){ rows[+fn].fieldNotes = e.target.value; autosave(); }
+  });
+  $("tbody").addEventListener("click", e=>{
+    const d=e.target.dataset.del;
+    if(d!=null){ const r = rows[+d]; openNotes.delete(r); rows.splice(+d,1); render(); autosave(); return; }
+    const addP = e.target.closest("[data-add-photo]");
+    if(addP){ const idx = addP.dataset.addPhoto; const input = $("tbody").querySelector('input[data-photo-input="'+idx+'"]'); if(input) input.click(); return; }
+    const delP = e.target.dataset.delPhoto;
+    if(delP){
+      const [idx, photoId] = delP.split("|");
+      const r = rows[+idx];
+      if(r){ r.photos = (r.photos||[]).filter(p=>p.id!==photoId); render(); autosave(); }
+      return;
+    }
+    const nt = e.target.closest("[data-notes-toggle]");
+    if(nt){ const r = rows[+nt.dataset.notesToggle]; if(openNotes.has(r)) openNotes.delete(r); else openNotes.add(r); render(); }
+  });
+  ["site","date"].forEach(id=> $(id).addEventListener("input", ()=>autosave()));
+
+  $("addFieldNoteBtn").addEventListener("click", addSiteNote);
+  $("siteNotesList").addEventListener("input", e=>{
+    const id = e.target.dataset.siteNote;
+    if(id){ const n = siteNotes.find(x=>x.id===id); if(n){ n.text = e.target.value; autosave(); } }
+  });
+  $("siteNotesList").addEventListener("click", e=>{
+    const id = e.target.dataset.delNote;
+    if(id){ siteNotes = siteNotes.filter(n=>n.id!==id); renderSiteNotes(); autosave(); }
+  });
+
+  // ── Toolbar: New / Load (saved survey folder) / XLSX export / Save ──────
+  const bar = $("fh-bar");
+  bar.innerHTML = '<strong class="grow">Flora Survey</strong>'
+    + '<button class="btn sec" id="fhNew">New</button>'
+    + '<button class="btn sec" id="fhLoad">Load</button>'
+    + '<button class="btn sec" id="fhCsv">XLSX</button>'
+    + '<button class="btn" id="fhSave">Save</button>';
+  bar.querySelector("#fhNew").onclick  = newSurvey;
+  bar.querySelector("#fhLoad").onclick = loadFromFolder;
+  bar.querySelector("#fhSave").onclick = saveToFolder;
+  bar.querySelector("#fhCsv").onclick  = exportXLSX;
+
+  FHKit.buildPicker($("pick"), $("pickList"), add);
+  if(!$("date").value) $("date").value = FHKit.today();
+
+  let working = null;
+  try{ working = JSON.parse(localStorage.getItem(WORKING_KEY)); }catch(e){}
+  if(working){ try{ restore(working); }catch(e){} }
+
+  render();
+  renderSiteNotes();
+})();
+</script>
+</body>
+</html>
