@@ -66,27 +66,37 @@ textarea{min-height:60px;resize:vertical}
 .badge.inv{background:var(--red-bg);color:var(--red)}
 .muted{color:var(--muted);font-size:12.5px}
 
-.tbl-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{background:var(--charcoal);color:var(--gold-light);font-size:10.5px;font-weight:700;letter-spacing:.6px;
-  text-transform:uppercase;padding:8px 10px;text-align:left;white-space:nowrap}
-td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
-tbody tr:nth-child(even) td{background:#faf8f2}
-.sci{font-style:italic;color:var(--muted);font-size:11.5px}
+.species-list{display:flex;flex-direction:column;gap:10px}
+.species-row{border:1px solid var(--border);border-radius:6px;padding:10px 12px;background:#faf8f2;
+  min-width:0}
+.species-row:nth-child(odd){background:#fff}
+.species-row.uncertain{background:rgba(181,58,58,.1);box-shadow:inset 3px 0 0 var(--red)}
+.sci{font-style:italic;color:var(--muted);font-size:11.5px;display:flex;flex-wrap:wrap;gap:2px 8px;
+  align-items:baseline;min-width:0}
+.sci > span:first-child{overflow-wrap:anywhere}
 button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight:700;cursor:pointer;
-  line-height:1;padding:2px 6px}
-.sp-name-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-.row-actions{display:flex;gap:6px;flex-shrink:0}
+  line-height:1;padding:2px 6px;flex-shrink:0}
+.sp-name-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;min-width:0}
+.sp-name-row > div:first-child{min-width:0;overflow-wrap:anywhere}
+.row-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap}
 .rec-id{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted);font-size:10px;
-  letter-spacing:.2px;margin-left:6px}
+  letter-spacing:.2px}
 .notes-btn{border:1px solid var(--border);background:#fff;color:var(--muted);font-size:10px;font-weight:700;
   letter-spacing:.3px;text-transform:uppercase;padding:4px 9px;border-radius:12px;cursor:pointer;
   white-space:nowrap;font-family:var(--sans);flex-shrink:0}
 .notes-btn.has-notes{background:var(--gold);color:var(--charcoal-deep);border-color:var(--gold)}
 .notes-btn.open{outline:2px solid var(--gold-dark);outline-offset:1px}
-tr.notes-row{display:none}
-tr.notes-row.open{display:table-row}
-tr.notes-row td{background:#faf6ea;padding:10px 14px}
+.species-controls{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-top:10px;
+  padding-top:10px;border-top:1px solid var(--border)}
+.origin-field{display:flex;align-items:center;gap:6px;flex:1 1 150px;min-width:0;font-size:11px;
+  font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+.origin-field select{flex:1;min-width:0;text-transform:none;font-weight:400;letter-spacing:normal;
+  font-size:13.5px}
+.unc-field{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12.5px;color:var(--ink);
+  flex-shrink:0}
+.unc-field input{width:auto}
+.notes-row{display:none}
+.notes-row.open{display:block;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
 .detail-label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);
   display:block;margin-bottom:6px}
 .field-notes-input{width:100%;min-height:70px;border:1px solid var(--border);border-radius:5px;
@@ -170,12 +180,7 @@ tr.notes-row td{background:#faf6ea;padding:10px 14px}
 
   <div class="card">
     <h2>Checklist <span class="n" id="count"></span></h2>
-    <div class="tbl-wrap">
-      <table id="tbl">
-        <thead><tr><th>Species</th><th>Origin</th><th style="width:90px">Uncertain</th><th style="width:34px"></th></tr></thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
+    <div id="tbody" class="species-list"></div>
     <div class="empty" id="empty">No species recorded yet — add some above.</div>
   </div>
 
@@ -940,23 +945,25 @@ window.FHKit = (function(){
   function render(){
     const tb = $("tbody");
     tb.innerHTML = rows.map((r,i)=>{
-      const uncCell = r.free
-        ? '<input type="checkbox" data-unc="'+i+'" title="Flag this identification as uncertain — highlighted in red on export"'+(r.uncertain?" checked":"")+'>'
-        : '<span class="muted" title="Only species typed as free text (not matched to the reference list) can be flagged uncertain">—</span>';
+      const uncField = r.free
+        ? '<label class="unc-field"><input type="checkbox" data-unc="'+i+'" title="Flag this identification as uncertain — highlighted in red on export"'+(r.uncertain?" checked":"")+'> Uncertain</label>'
+        : '';
       const hasNotes = !!(r.fieldNotes && r.fieldNotes.trim());
       const photoCount = (r.photos||[]).length;
       const isOpen = openNotes.has(r);
       const notesBtn = '<button type="button" class="notes-btn'+(hasNotes?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+i+'" title="Field notes for this species">Field Notes'+(hasNotes?' ●':'')+'</button>';
       const photosBtn = '<button type="button" class="notes-btn'+(photoCount?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+i+'" title="Photos for this species">Photos'+(photoCount?' ('+photoCount+')':'')+'</button>';
-      const trStyle = r.uncertain ? ' style="background:rgba(181,58,58,.12);box-shadow:inset 3px 0 0 var(--red)"' : '';
-      const mainRow = '<tr'+trStyle+'><td><div class="sp-name-row"><div>'+FHKit.esc(r.common||r.sci)+(FHKit.consBadge(r.ffg,r.epbc)?' '+FHKit.consBadge(r.ffg,r.epbc):'')+(r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')+'</div><div class="row-actions">'+notesBtn+photosBtn+'</div></div><div class="sci">'+FHKit.esc(r.sci)+' <span class="rec-id" title="Unique identifier for this species record">'+FHKit.esc(r.id||"")+'</span></div></td>'
-        + '<td><select data-origin="'+i+'"><option value="indigenous"'+(r.type!=="invasive"?" selected":"")+'>Indigenous</option><option value="invasive"'+(r.type==="invasive"?" selected":"")+'>Invasive</option></select></td>'
-        + '<td style="text-align:center">'+uncCell+'</td>'
-        + '<td><button class="x" data-del="'+i+'" title="Remove">&times;</button></td></tr>';
+      const head = '<div class="sp-name-row"><div>'+FHKit.esc(r.common||r.sci)+(FHKit.consBadge(r.ffg,r.epbc)?' '+FHKit.consBadge(r.ffg,r.epbc):'')+(r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')+'</div><div class="row-actions">'+notesBtn+photosBtn+'</div></div>'
+        + '<div class="sci"><span>'+FHKit.esc(r.sci)+'</span><span class="rec-id" title="Unique identifier for this species record">'+FHKit.esc(r.id||"")+'</span></div>'
+        + '<div class="species-controls">'
+        + '<label class="origin-field"><span>Origin</span><select data-origin="'+i+'"><option value="indigenous"'+(r.type!=="invasive"?" selected":"")+'>Indigenous</option><option value="invasive"'+(r.type==="invasive"?" selected":"")+'>Invasive</option></select></label>'
+        + uncField
+        + '<button class="x" data-del="'+i+'" title="Remove" style="margin-left:auto">&times;</button>'
+        + '</div>';
       const photoThumbs = (r.photos||[]).map(p=>
         '<div class="photo-thumb"><img src="'+p.dataUrl+'" alt="Species photo"><button type="button" class="x" data-del-photo="'+i+'|'+p.id+'" title="Remove photo">&times;</button></div>'
       ).join("");
-      const notesRow = '<tr class="notes-row'+(isOpen?' open':'')+'"><td colspan="4">'
+      const notesRow = '<div class="notes-row'+(isOpen?' open':'')+'">'
         + '<label class="detail-label">Field notes</label>'
         + '<textarea class="field-notes-input" data-fn="'+i+'" placeholder="Field notes for '+FHKit.esc(r.common||r.sci)+'…">'+FHKit.esc(r.fieldNotes||"")+'</textarea>'
         + '<div class="row-photos">'
@@ -964,8 +971,8 @@ window.FHKit = (function(){
         + '<div class="photo-grid">'+photoThumbs+'</div>'
         + '<input type="file" accept="image/*" multiple style="display:none" data-photo-input="'+i+'">'
         + '<button type="button" class="btn sec" data-add-photo="'+i+'">+ Add Photos</button>'
-        + '</div></td></tr>';
-      return mainRow + notesRow;
+        + '</div></div>';
+      return '<div class="species-row'+(r.uncertain?' uncertain':'')+'">'+head+notesRow+'</div>';
     }).join("");
     $("empty").style.display = rows.length ? "none" : "block";
     $("count").textContent = rows.length ? "("+rows.length+")" : "";
