@@ -197,7 +197,7 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
       <input id="pick" type="text" placeholder="Search common or scientific name… (or type a new name)" autocomplete="off">
       <div class="pick-list" id="pickList"></div>
     </div>
-    <p class="muted" style="margin:8px 0 0">Tap a species to add it to the checklist. Names not in the reference list are added as free text and tagged invasive — change the origin in the table if needed. Typed names can also be ticked <b>Uncertain</b> in the checklist below if you're not fully confident of the identification; uncertain species are highlighted in red when exported to Excel.</p>
+    <p class="muted" style="margin:8px 0 0">Tap a species to add it to the checklist. Names not in the reference list are added as free text and tagged invasive — change the origin in the table if needed. Typed names are automatically highlighted in red when exported to Excel; they can also be ticked <b>Uncertain</b> in the checklist below if you're not fully confident of the identification.</p>
   </div>
 
   <div class="card">
@@ -1170,14 +1170,32 @@ window.FHKit = (function(){
     ).join("") || '<p class="muted" style="margin:0 0 10px">No field notes yet — tap “+ Field Notes” to add one.</p>';
   }
 
+  // Keeps the checklist ordered with the most recently added species pinned
+  // at the top, and every other species (including anything that was the
+  // "most recent" a moment ago) sorted alphabetically by scientific name
+  // beneath it. `pinnedId`, when given, is the record just added/moved to
+  // the front; omit it to just sort the whole list alphabetically.
+  function sortRows(pinnedId){
+    const bySci = (a,b) => (a.sci||"").localeCompare(b.sci||"", undefined, { sensitivity:"base", numeric:true });
+    if(pinnedId){
+      const pinned = rows.find(r=>r.id===pinnedId);
+      const rest = rows.filter(r=>r.id!==pinnedId).sort(bySci);
+      rows = pinned ? [pinned, ...rest] : rest;
+    } else {
+      rows.sort(bySci);
+    }
+  }
   function add(sp){
     if(rows.some(r=>r.sci===sp.sci)){ FHKit.toast((sp.common||sp.sci)+" is already on the list"); return; }
     // `free` marks a typed name that didn't match the reference list (set by
-    // FHKit.buildPicker's "Add “…”" option) — only these can be flagged Uncertain.
+    // FHKit.buildPicker's "Add “…”" option) — only these can be flagged Uncertain,
+    // and these rows are always highlighted red on export (see exportSurvey()).
     // GPS is NOT captured here — only species flagged "Significant" get a
     // location (see the data-sig change handler below), so most additions
     // don't trigger a location prompt at all.
-    rows.push({ id:makeRecordId(), sci:sp.sci, common:sp.common||sp.sci, type:sp.type||"indigenous", lf:sp.lf||"", ffg:sp.ffg||"", epbc:sp.epbc||"", fieldNotes:"", free:!!sp.free, uncertain:false, significant:false, photos:[], gpsStatus:"idle" });
+    const row = { id:makeRecordId(), sci:sp.sci, common:sp.common||sp.sci, type:sp.type||"indigenous", lf:sp.lf||"", ffg:sp.ffg||"", epbc:sp.epbc||"", fieldNotes:"", free:!!sp.free, uncertain:false, significant:false, photos:[], gpsStatus:"idle" };
+    rows.push(row);
+    sortRows(row.id);   // newest species to the top, everything else alphabetical
     render(); autosave();
   }
   // Captures a GPS fix for one species record (used to georeference it — and,
@@ -1290,10 +1308,12 @@ window.FHKit = (function(){
     push([]);
     // Record ID first (matches each row to its photo in the exported zip);
     // Field Notes goes last (far right) per-species, as requested.
-    push(["Record ID","Common name","Scientific name","Origin","FFG","EPBC","Uncertain ID","Field Notes"], "bold");
+    push(["Record ID","Common name","Scientific name","Origin","FFG","EPBC","Uncertain ID","Significant","Field Notes"], "bold");
     rows.forEach(r=> push(
-      [r.id||"", r.common, r.sci, r.type==="invasive"?"Invasive":"Indigenous", r.ffg||"", r.epbc||"", r.uncertain?"Yes":"", r.fieldNotes||""],
-      r.uncertain ? "red" : null
+      [r.id||"", r.common, r.sci, r.type==="invasive"?"Invasive":"Indigenous", r.ffg||"", r.epbc||"", r.uncertain?"Yes":"", r.significant?"X":"", r.fieldNotes||""],
+      // Free-text species (typed names not matched to the reference list) are
+      // always highlighted red — whether or not Uncertain is also ticked.
+      r.free ? "red" : null
     ));
     push([]);
     push(["Total species", rows.length]);
@@ -1301,8 +1321,10 @@ window.FHKit = (function(){
     push(["Invasive", rows.filter(r=>r.type==="invasive").length]);
     const nUnc = rows.filter(r=>r.uncertain).length;
     if(nUnc) push(["Uncertain ID (shown in red above)", nUnc]);
+    const nSig = rows.filter(r=>r.significant).length;
+    if(nSig) push(["Significant species", nSig]);
 
-    const xlsxBlob = FHKit.buildXLSXBlob("Flora Survey", sheet, styles, [14,26,30,12,8,8,12,34]);
+    const xlsxBlob = FHKit.buildXLSXBlob("Flora Survey", sheet, styles, [14,26,30,12,8,8,12,10,34]);
     // Filenames follow "Site/Location - Date", e.g. "Reserve East Paddock - 2026-09-10.xlsx".
     const baseName = (fileSafe(m.site) || "Flora Survey")+" - "+(fileSafe(m.date) || FHKit.today());
     const xlsxFilename = baseName+".xlsx";
