@@ -117,6 +117,16 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 .notes-row.open{display:block;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
 .detail-label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);
   display:block;margin-bottom:6px}
+
+.added-by{font-style:normal;color:var(--muted);font-size:10.5px}
+.live-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.live-pill{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.3px;padding:2px 8px;
+  border-radius:10px;background:#eee;color:var(--muted);text-transform:none;vertical-align:middle}
+.live-pill.on{background:#e7f0e3;color:#3a7a4a}
+.live-pill.err{background:var(--red-bg);color:var(--red)}
+.live-code{font:700 24px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:4px;
+  background:var(--cream);border:1px dashed var(--gold-dark);border-radius:8px;padding:12px 14px;
+  text-align:center;color:var(--charcoal-deep)}
 .field-notes-input{width:100%;min-height:70px;border:1px solid var(--border);border-radius:5px;
   padding:8px 10px;font-size:13px;font-family:var(--sans);resize:vertical;background:#fff;color:var(--ink)}
 .field-notes-input:focus{outline:none;border-color:var(--gold)}
@@ -173,6 +183,9 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
   #fh-bar .grow{flex:1 1 100%;font-size:11.5px}
   #fh-bar .actions{gap:6px;flex:1 1 100%}
   #fh-bar .actions .btn{flex:1 1 auto;padding:7px 8px;font-size:11px;text-align:center}
+  .live-row{flex-direction:column;align-items:stretch}
+  .live-row input, .live-row button{max-width:none!important;width:100%}
+  .live-row span{text-align:center}
 }
 </style>
 </head>
@@ -188,6 +201,26 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
     <div class="row">
       <div class="field"><label for="site">Site / location</label><input id="site" placeholder="e.g. Reserve — east paddock"></div>
       <div class="field"><label for="date">Date</label><input id="date" type="date"></div>
+    </div>
+  </div>
+
+  <div class="card" id="liveCard">
+    <h2>Team Sync <span class="live-pill" id="livePill" hidden></span></h2>
+    <div id="liveSetup">
+      <div class="field"><label for="userName">Your name</label><input id="userName" placeholder="e.g. Mike" autocomplete="name"></div>
+      <p class="muted" style="margin:8px 0 12px">Survey with your team live — everyone sees the same checklist as species are added, and nothing gets logged twice. Photos stay on each person's own phone and are combined when you export.</p>
+      <div class="live-row">
+        <button class="btn sec" type="button" id="liveStartBtn">Start a live survey</button>
+        <span class="muted" style="font-size:12px">or</span>
+        <input id="liveJoinCode" placeholder="Enter code" maxlength="6" style="max-width:110px;text-transform:uppercase;letter-spacing:2px">
+        <button class="btn sec" type="button" id="liveJoinBtn">Join</button>
+      </div>
+      <p class="muted" id="liveUnconfigured" style="margin:10px 0 0;display:none">Team Sync hasn't been set up for this copy of the tool yet — this survey will stay local to this device.</p>
+    </div>
+    <div id="liveActive" hidden>
+      <p class="muted" style="margin:0 0 8px">Live survey code — share this with your team:</p>
+      <div class="live-code" id="liveCodeDisplay"></div>
+      <button class="btn sec" type="button" id="liveLeaveBtn" style="margin-top:12px">Leave live sync</button>
     </div>
   </div>
 
@@ -960,7 +993,122 @@ window.FHKit = (function(){
     return false;
   }
 
-  return { esc, today, toast, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, buildGeoPackageBlob, buildGeoPackageBytes, triggerDownload, shareFiles, buildPicker, manager, consLabel, consBadge };
+  /* ---- Team Sync: Firestore + Firebase Auth (Anonymous) REST client -------
+     No SDK — plain fetch() against Google's public REST APIs, matching the
+     exact request/response shapes the official client libraries use. A
+     Firebase Web "API key" is meant to be public in client-side code —
+     safety comes from the Firestore Security Rules published on the
+     project, not from hiding this value. See the app's Team Sync card for
+     where the config is filled in and what rules to publish. */
+  const liveEndpoints = {
+    identity: "https://identitytoolkit.googleapis.com/v1",
+    token: "https://securetoken.googleapis.com/v1",
+    firestore: "https://firestore.googleapis.com/v1"
+  };
+  function setLiveEndpoints(overrides){ Object.assign(liveEndpoints, overrides||{}); }
+
+  function fsValueOf(v){
+    if(v === null || v === undefined) return { nullValue: null };
+    if(typeof v === "boolean") return { booleanValue: v };
+    if(typeof v === "number") return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+    if(v instanceof Date) return { timestampValue: v.toISOString() };
+    return { stringValue: String(v) };
+  }
+  function fsFieldsOf(obj){
+    const fields = {};
+    Object.keys(obj||{}).forEach(k=>{ if(obj[k] !== undefined) fields[k] = fsValueOf(obj[k]); });
+    return fields;
+  }
+  function fsValueTo(v){
+    if(!v) return null;
+    if("stringValue" in v) return v.stringValue;
+    if("integerValue" in v) return parseInt(v.integerValue, 10);
+    if("doubleValue" in v) return v.doubleValue;
+    if("booleanValue" in v) return v.booleanValue;
+    if("timestampValue" in v) return v.timestampValue;
+    return null; // nullValue or an unsupported type — treat as absent
+  }
+  function fsDocToObject(doc){
+    if(!doc) return null;
+    const out = {};
+    const f = doc.fields||{};
+    Object.keys(f).forEach(k=> out[k] = fsValueTo(f[k]));
+    const parts = String(doc.name||"").split("/");
+    out._id = parts[parts.length-1];
+    out._updateTime = doc.updateTime || "";
+    return out;
+  }
+  async function fsFetch(url, opts){
+    let res;
+    try{ res = await fetch(url, opts); }
+    catch(e){ const err = new Error("Network error"); err.network = true; throw err; }
+    let body = null;
+    try{ body = await res.json(); }catch(e){}
+    if(!res.ok){
+      const status = (body && body.error && body.error.status) || String(res.status);
+      const err = new Error((body && body.error && body.error.message) || ("HTTP "+res.status));
+      err.httpStatus = res.status; err.status = status; err.body = body;
+      throw err;
+    }
+    return body;
+  }
+  // Anonymous sign-in — no password, no user-visible prompt. Firestore
+  // Security Rules key off `request.auth != null`, so this is only about
+  // proving "this is a real client of the app", not identifying a person —
+  // the typed "Your name" field is what attributes each entry to someone.
+  async function authAnon(apiKey){
+    const body = await fsFetch(liveEndpoints.identity+"/accounts:signUp?key="+encodeURIComponent(apiKey), {
+      method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ returnSecureToken:true })
+    });
+    return { idToken: body.idToken, refreshToken: body.refreshToken, localId: body.localId, expiresAt: Date.now() + (Number(body.expiresIn||3600)*1000) };
+  }
+  async function authRefresh(apiKey, refreshToken){
+    const body = await fsFetch(liveEndpoints.token+"/token?key="+encodeURIComponent(apiKey), {
+      method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"},
+      body: "grant_type=refresh_token&refresh_token="+encodeURIComponent(refreshToken)
+    });
+    return { idToken: body.id_token, refreshToken: body.refresh_token, localId: body.user_id, expiresAt: Date.now() + (Number(body.expires_in||3600)*1000) };
+  }
+  function fsBase(projectId){ return liveEndpoints.firestore+"/projects/"+encodeURIComponent(projectId)+"/databases/(default)/documents"; }
+  // Creates a doc with a caller-chosen ID — fails with status "ALREADY_EXISTS"
+  // (409) if that ID is already taken. That failure IS the de-duplication
+  // mechanism: two people creating "themeda-triandra" at once can never both
+  // succeed, so a survey can never end up with the same species twice.
+  async function fsCreateDoc(projectId, idToken, collectionPath, docId, obj){
+    const url = fsBase(projectId)+"/"+collectionPath+"?documentId="+encodeURIComponent(docId);
+    const body = await fsFetch(url, { method:"POST", headers:{"Content-Type":"application/json","Authorization":"Bearer "+idToken}, body: JSON.stringify({ fields: fsFieldsOf(obj) }) });
+    return fsDocToObject(body);
+  }
+  async function fsGetDoc(projectId, idToken, docPath){
+    const url = fsBase(projectId)+"/"+docPath;
+    try{ return fsDocToObject(await fsFetch(url, { headers:{"Authorization":"Bearer "+idToken} })); }
+    catch(e){ if(e.status==="NOT_FOUND") return null; throw e; }
+  }
+  async function fsListDocs(projectId, idToken, collectionPath){
+    let out = [], pageToken = "";
+    do{
+      const url = fsBase(projectId)+"/"+collectionPath+"?pageSize=300"+(pageToken?"&pageToken="+encodeURIComponent(pageToken):"");
+      const body = await fsFetch(url, { headers:{"Authorization":"Bearer "+idToken} });
+      (body.documents||[]).forEach(d=> out.push(fsDocToObject(d)));
+      pageToken = body.nextPageToken||"";
+    } while(pageToken);
+    return out;
+  }
+  async function fsPatchDoc(projectId, idToken, docPath, obj){
+    const fieldNames = Object.keys(obj||{});
+    const mask = fieldNames.map(f=>"updateMask.fieldPaths="+encodeURIComponent(f)).join("&");
+    const url = fsBase(projectId)+"/"+docPath+(mask?"?"+mask:"");
+    const body = await fsFetch(url, { method:"PATCH", headers:{"Content-Type":"application/json","Authorization":"Bearer "+idToken}, body: JSON.stringify({ fields: fsFieldsOf(obj) }) });
+    return fsDocToObject(body);
+  }
+  async function fsDeleteDoc(projectId, idToken, docPath){
+    const url = fsBase(projectId)+"/"+docPath;
+    try{ await fsFetch(url, { method:"DELETE", headers:{"Authorization":"Bearer "+idToken} }); }
+    catch(e){ if(e.status!=="NOT_FOUND") throw e; }
+  }
+  const live = { setLiveEndpoints, authAnon, authRefresh, fsCreateDoc, fsGetDoc, fsListDocs, fsPatchDoc, fsDeleteDoc };
+
+  return { esc, today, toast, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, buildGeoPackageBlob, buildGeoPackageBytes, triggerDownload, shareFiles, buildPicker, manager, consLabel, consBadge, live };
 })();
 
 </script>
@@ -972,6 +1120,20 @@ window.FHKit = (function(){
   let siteNotes = [];    // site-level field notes log: {id, text, ts} — not tied to a species
   let noteSeq = 0;
 
+  // ── Team Sync (Firebase) config ───────────────────────────────────────
+  // Fill these in with your own Firebase project's values (Firebase Console
+  // → Project settings → General → Your apps → Web app → the
+  // "firebaseConfig" object needs just apiKey + projectId here). This key
+  // is meant to be public in client-side code — safety comes from the
+  // Firestore Security Rules published on the project, not from hiding
+  // this value. Leave the placeholders as-is to keep Team Sync turned off;
+  // everything else in the app works exactly the same, fully offline.
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyBFE3PbRswTdb_2rl7PXOLuJY58X4wR0Go",
+    projectId: "flora-survey-bf874"
+  };
+  const LIVE_CONFIGURED = FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY" && !!FIREBASE_CONFIG.projectId && FIREBASE_CONFIG.projectId !== "YOUR_PROJECT_ID";
+
   // ── Saved Survey folder (localStorage) ──────────────────────────────────
   // The unique identifier lives on each SPECIES RECORD (rows[i].id), not the
   // survey — folderKey below is purely an internal storage key so the same
@@ -979,7 +1141,289 @@ window.FHKit = (function(){
   const FH_KEY = "florasurvey";
   const WORKING_KEY = "fh_"+FH_KEY+"_working";   // in-progress autosave draft (crash recovery)
   const FOLDER_KEY  = "fh_"+FH_KEY+"_folder";    // { [folderKey]: snapshot } — explicit saves
+  const NAME_KEY  = "fh_"+FH_KEY+"_username";    // remembered "Your name" for this device
+  const LIVE_KEY  = "fh_"+FH_KEY+"_live";        // { code, refreshToken } — so a reload can silently rejoin
+  const LIVE_QUEUE_KEY = "fh_"+FH_KEY+"_livequeue"; // ops that couldn't reach the server yet (offline)
   let folderKey = makeFolderKey();
+
+  // ── Team Sync (live, multi-person) state — see the FHKit.live REST client
+  // for the actual Firestore/Auth calls. Species are the only thing synced
+  // live; photos always stay local to whichever device took them. ──
+  let live = { active:false, status:"idle", code:null, idToken:null, refreshToken:null, tokenExpiresAt:0 };
+  let pollTimer = null;
+  const recentlyCreated = new Set();  // live slugs created by THIS device in the last ~15s — guards
+                                       // against a delete-reconciliation race right after creating one
+  const noteSyncTimers = new Map();   // per-row debounce timers for syncing Field Notes while typing
+  function userName(){ const el = $("userName"); return el ? (el.value||"").trim() : ""; }
+  function saveUserName(n){ try{ localStorage.setItem(NAME_KEY, n); }catch(e){} }
+  function sciSlug(sci){
+    return String(sci||"").toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"") || ("sp"+Date.now());
+  }
+  function makeLiveCode(){
+    const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I — easy to read aloud/type
+    let s = ""; for(let i=0;i<6;i++) s += ALPHABET[Math.floor(Math.random()*ALPHABET.length)];
+    return s;
+  }
+  function markRecentlyCreated(slug){ recentlyCreated.add(slug); setTimeout(()=>recentlyCreated.delete(slug), 15000); }
+  function applyAuth(auth){ live.idToken=auth.idToken; live.refreshToken=auth.refreshToken; live.tokenExpiresAt=auth.expiresAt; }
+  async function ensureAuth(){
+    if(live.idToken && Date.now() < live.tokenExpiresAt - 60000) return;
+    const auth = live.refreshToken
+      ? await FHKit.live.authRefresh(FIREBASE_CONFIG.apiKey, live.refreshToken)
+      : await FHKit.live.authAnon(FIREBASE_CONFIG.apiKey);
+    applyAuth(auth);
+  }
+  function persistLiveSession(){
+    try{ localStorage.setItem(LIVE_KEY, JSON.stringify({ code: live.code, refreshToken: live.refreshToken })); }catch(e){}
+  }
+  function loadLiveQueue(){ try{ return JSON.parse(localStorage.getItem(LIVE_QUEUE_KEY))||[]; }catch(e){ return []; } }
+  function saveLiveQueue(q){ try{ localStorage.setItem(LIVE_QUEUE_KEY, JSON.stringify(q)); }catch(e){} }
+  function queueLiveOp(op){ const q = loadLiveQueue(); q.push(op); saveLiveQueue(q); }
+
+  function setLiveStatus(s){ live.status = s; renderLiveUI(); }
+  function renderLiveUI(){
+    const pill = $("livePill"), setup = $("liveSetup"), active = $("liveActive");
+    if(!pill) return;
+    if(!LIVE_CONFIGURED){
+      const u = $("liveUnconfigured"); if(u) u.style.display = "block";
+      $("liveStartBtn").disabled = true; $("liveJoinBtn").disabled = true;
+    }
+    if(live.active){
+      pill.hidden = false;
+      pill.className = "live-pill "+(live.status==="connected"?"on":(live.status==="error"?"err":""));
+      pill.textContent = live.status==="connected" ? "🟢 Live" : (live.status==="connecting" ? "🟡 Connecting…" : "🔴 Offline — retrying");
+      setup.hidden = true; active.hidden = false;
+      $("liveCodeDisplay").textContent = live.code||"";
+    } else {
+      pill.hidden = true;
+      setup.hidden = false; active.hidden = true;
+    }
+  }
+  function liveSpeciesFields(row){
+    return {
+      sci:row.sci, common:row.common||row.sci, type:row.type||"indigenous", lf:row.lf||"", ffg:row.ffg||"", epbc:row.epbc||"",
+      fieldNotes:row.fieldNotes||"", free:!!row.free, uncertain:!!row.uncertain, significant:!!row.significant,
+      lat: typeof row.lat==="number"?row.lat:null, lon: typeof row.lon==="number"?row.lon:null,
+      gpsAccuracy: typeof row.gpsAccuracy==="number"?row.gpsAccuracy:null, gpsStatus: row.gpsStatus||"idle", gpsMessage: row.gpsMessage||"",
+      recordId: row.id, addedBy: row.addedBy||userName()||"", updatedBy: userName()||row.addedBy||"", updatedAt: new Date().toISOString()
+    };
+  }
+  // Turns a Firestore species doc into a local row object. Used both for
+  // species a teammate already has (so we never create a duplicate) and for
+  // species discovered on the periodic poll.
+  function mergeRemoteSpeciesIntoRow(doc){
+    return {
+      id: doc.recordId || makeRecordId(),
+      sci: doc.sci, common: doc.common||doc.sci, type: doc.type||"indigenous", lf: doc.lf||"", ffg: doc.ffg||"", epbc: doc.epbc||"",
+      fieldNotes: doc.fieldNotes||"", free: !!doc.free, uncertain: !!doc.uncertain, significant: !!doc.significant,
+      lat: typeof doc.lat==="number"?doc.lat:undefined, lon: typeof doc.lon==="number"?doc.lon:undefined,
+      gpsAccuracy: typeof doc.gpsAccuracy==="number"?doc.gpsAccuracy:undefined, gpsStatus: doc.gpsStatus||"idle", gpsMessage: doc.gpsMessage||"",
+      photos: [], // photos are always device-local — never synced
+      addedBy: doc.addedBy||"", updatedBy: doc.updatedBy||"",
+      _liveSlug: doc._id, _liveUpdatedAt: doc._updateTime||""
+    };
+  }
+  // Creates this row's shared doc. Returns true on success, or the remote
+  // doc (an object, not `true`) if a teammate had already created it first —
+  // Firestore's per-document create is atomic, so that 409 IS the guarantee
+  // that a species can never end up duplicated in the shared list.
+  async function liveCreateSpeciesForRow(row){
+    await ensureAuth();
+    const slug = sciSlug(row.sci);
+    try{
+      const doc = await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species", slug, liveSpeciesFields(row));
+      row._liveSlug = slug; row._liveUpdatedAt = doc._updateTime;
+      markRecentlyCreated(slug);
+      return true;
+    }catch(e){
+      if(e.status==="ALREADY_EXISTS"){
+        return await FHKit.live.fsGetDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+slug);
+      }
+      throw e;
+    }
+  }
+  // Patches specific fields on a row's shared doc — used for every edit
+  // (origin, uncertain, significant, GPS, field notes). Best-effort: queued
+  // for the next poll tick if the device is offline right now.
+  function liveSyncField(row, partial){
+    if(!live.active) return;
+    row._liveUpdatedAt = new Date().toISOString(); // optimistic — the poll reconciles the real value
+    const slug = row._liveSlug || sciSlug(row.sci);
+    const fields = Object.assign({}, partial, { updatedBy: userName()||row.addedBy||"", updatedAt: new Date().toISOString() });
+    ensureAuth()
+      .then(()=> FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+slug, fields))
+      .catch(()=> queueLiveOp({ op:"patch", slug, fields }));
+  }
+  function liveSyncFieldDebounced(row, partial, delay){
+    if(!live.active) return;
+    const key = row.id;
+    clearTimeout(noteSyncTimers.get(key));
+    noteSyncTimers.set(key, setTimeout(()=> liveSyncField(row, partial), delay||800));
+  }
+  function liveDeleteSpecies(row){
+    if(!live.active || !row._liveSlug) return;
+    const slug = row._liveSlug;
+    ensureAuth()
+      .then(()=> FHKit.live.fsDeleteDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+slug))
+      .catch(()=> queueLiveOp({ op:"delete", slug }));
+  }
+  // Applies a freshly-fetched remote species doc onto an existing local row —
+  // skips overwriting Field Notes while the user is actively typing in that
+  // row's notes box, so a teammate's sync can't steal mid-sentence keystrokes.
+  function applyRemoteToRow(local, doc, rowIndex){
+    const remoteTime = doc._updateTime || "";
+    if(local._liveUpdatedAt && remoteTime && remoteTime <= local._liveUpdatedAt){ local._liveSlug = doc._id; return; }
+    const active = document.activeElement;
+    const notesFocused = !!(active && active.dataset && active.dataset.fn === String(rowIndex));
+    local._liveSlug = doc._id;
+    local.common = doc.common || local.common;
+    local.type = doc.type || local.type;
+    local.free = !!doc.free; local.uncertain = !!doc.uncertain; local.significant = !!doc.significant;
+    if(typeof doc.lat === "number") local.lat = doc.lat;
+    if(typeof doc.lon === "number") local.lon = doc.lon;
+    if(typeof doc.gpsAccuracy === "number") local.gpsAccuracy = doc.gpsAccuracy;
+    if(doc.gpsStatus) local.gpsStatus = doc.gpsStatus;
+    local.gpsMessage = doc.gpsMessage||"";
+    if(!notesFocused && typeof doc.fieldNotes === "string") local.fieldNotes = doc.fieldNotes;
+    local.addedBy = doc.addedBy || local.addedBy;
+    local.updatedBy = doc.updatedBy || local.updatedBy;
+    local._liveUpdatedAt = remoteTime;
+  }
+  // Pulls the full shared species list and reconciles it into `rows`: adds
+  // anything a teammate created that we don't have yet, updates anything
+  // that changed elsewhere, and drops anything a teammate deleted (unless
+  // WE just created it a moment ago — see `recentlyCreated`).
+  async function pullRemoteSpecies(){
+    const remoteDocs = await FHKit.live.fsListDocs(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species");
+    let mostRecent = null;
+    remoteDocs.forEach(doc=>{
+      let local = rows.find(r=>r._liveSlug===doc._id);
+      if(!local) local = rows.find(r=>!r._liveSlug && sciSlug(r.sci)===doc._id);
+      if(local){ applyRemoteToRow(local, doc, rows.indexOf(local)); }
+      else { rows.push(mergeRemoteSpeciesIntoRow(doc)); }
+      if(!mostRecent || (doc._updateTime||"") > (mostRecent._updateTime||"")) mostRecent = doc;
+    });
+    const remoteSlugs = new Set(remoteDocs.map(d=>d._id));
+    rows = rows.filter(r=> !r._liveSlug || remoteSlugs.has(r._liveSlug) || recentlyCreated.has(r._liveSlug));
+    const pinned = mostRecent && rows.find(r=>r._liveSlug===mostRecent._id);
+    sortRows(pinned ? pinned.id : null);
+    render(); autosave();
+  }
+  function startPolling(){
+    stopPolling();
+    pollTimer = setInterval(()=>{ pullRemoteSpecies().catch(()=>{}); flushLiveQueue().catch(()=>{}); }, 5000);
+  }
+  function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+  // Retries anything that couldn't reach the server while this device was
+  // offline. Stops at the first still-offline failure (keeping the rest
+  // queued for next time) rather than hammering a dead connection.
+  async function flushLiveQueue(){
+    if(!live.active) return;
+    let q = loadLiveQueue();
+    if(!q.length) return;
+    try{ await ensureAuth(); }catch(e){ return; }
+    const remaining = [];
+    for(const op of q){
+      try{
+        if(op.op==="create"){
+          try{
+            const doc = await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species", op.slug, op.fields);
+            const local = rows.find(r=> sciSlug(r.sci)===op.slug);
+            if(local){ local._liveSlug = op.slug; local._liveUpdatedAt = doc._updateTime; }
+            markRecentlyCreated(op.slug);
+          }catch(e){
+            if(e.status==="ALREADY_EXISTS"){ const local = rows.find(r=>sciSlug(r.sci)===op.slug); if(local) local._liveSlug = op.slug; }
+            else if(e.network){ remaining.push(op); }
+          }
+        } else if(op.op==="patch"){
+          await FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+op.slug, op.fields);
+        } else if(op.op==="delete"){
+          await FHKit.live.fsDeleteDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+op.slug);
+        }
+      }catch(e){ if(e && e.network) remaining.push(op); }
+    }
+    saveLiveQueue(remaining);
+    if(remaining.length !== q.length) render();
+  }
+  async function startLive(){
+    if(!LIVE_CONFIGURED){ FHKit.toast("Team Sync isn't set up yet"); return; }
+    const name = userName();
+    if(!name){ FHKit.toast("Enter your name first"); $("userName").focus(); return; }
+    saveUserName(name);
+    setLiveStatus("connecting");
+    try{
+      await ensureAuth();
+      let code = null, attempts = 0;
+      while(!code && attempts<5){
+        const candidate = makeLiveCode();
+        try{
+          await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys", candidate, { site:$("site").value||"", date:$("date").value||"", createdAt:new Date().toISOString(), createdBy:name });
+          code = candidate;
+        }catch(e){ if(e.status!=="ALREADY_EXISTS") throw e; attempts++; }
+      }
+      if(!code) throw new Error("Could not generate a unique code");
+      live.code = code; live.active = true;
+      for(const r of rows){ try{ await liveCreateSpeciesForRow(r); }catch(e){} }
+      persistLiveSession();
+      setLiveStatus("connected");
+      startPolling();
+      FHKit.toast("Live survey started — code "+code);
+    }catch(e){
+      live.active = false; setLiveStatus("idle");
+      FHKit.toast("Couldn't start a live survey — check your connection");
+    }
+  }
+  async function joinLive(){
+    if(!LIVE_CONFIGURED){ FHKit.toast("Team Sync isn't set up yet"); return; }
+    const name = userName();
+    const code = (($("liveJoinCode").value)||"").trim().toUpperCase();
+    if(!name){ FHKit.toast("Enter your name first"); $("userName").focus(); return; }
+    if(!code){ FHKit.toast("Enter the code your teammate shared"); return; }
+    saveUserName(name);
+    setLiveStatus("connecting");
+    try{
+      await ensureAuth();
+      const survey = await FHKit.live.fsGetDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+code);
+      if(!survey){ live.active=false; setLiveStatus("idle"); FHKit.toast("No live survey found with that code"); return; }
+      live.code = code; live.active = true;
+      if(survey.site && !($("site").value||"").trim()) $("site").value = survey.site;
+      if(survey.date && !($("date").value||"").trim()) $("date").value = survey.date;
+      await pullRemoteSpecies();
+      for(const r of rows.filter(r=>!r._liveSlug)){ try{ await liveCreateSpeciesForRow(r); }catch(e){} }
+      persistLiveSession();
+      setLiveStatus("connected");
+      startPolling();
+      FHKit.toast("Joined live survey "+code);
+    }catch(e){
+      live.active = false; setLiveStatus("idle");
+      FHKit.toast("Couldn't join — check the code and your connection");
+    }
+  }
+  function leaveLive(){
+    stopPolling();
+    live = { active:false, status:"idle", code:null, idToken:null, refreshToken:null, tokenExpiresAt:0 };
+    try{ localStorage.removeItem(LIVE_KEY); }catch(e){}
+    rows.forEach(r=>{ delete r._liveSlug; delete r._liveUpdatedAt; });
+    renderLiveUI();
+    FHKit.toast("Left live sync — this survey now stays local to this device");
+  }
+  async function tryAutoRejoinLive(){
+    if(!LIVE_CONFIGURED) return;
+    let saved = null;
+    try{ saved = JSON.parse(localStorage.getItem(LIVE_KEY)); }catch(e){}
+    if(!saved || !saved.code || !saved.refreshToken) return;
+    try{
+      const auth = await FHKit.live.authRefresh(FIREBASE_CONFIG.apiKey, saved.refreshToken);
+      applyAuth(auth);
+      const survey = await FHKit.live.fsGetDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+saved.code);
+      if(!survey) return; // that code no longer exists — quietly stay local
+      live.code = saved.code; live.active = true;
+      await pullRemoteSpecies();
+      persistLiveSession();
+      setLiveStatus("connected");
+      startPolling();
+    }catch(e){ /* offline or expired — stays local for now; retried next load */ }
+  }
 
   function makeFolderKey(){ return "s_"+Date.now()+"_"+Math.random().toString(36).slice(2,8); }
   function makeRecordId(){
@@ -1045,11 +1489,14 @@ window.FHKit = (function(){
   function newSurvey(){
     if(!confirm("Start a new, empty survey?\n\nSave it to the survey folder first if you want to keep the current one.")) return;
     try{ localStorage.removeItem(WORKING_KEY); }catch(e){}
+    // A "new" survey is a clean break — don't silently rejoin the live
+    // session this device was just part of when the page reloads.
+    try{ localStorage.removeItem(LIVE_KEY); localStorage.removeItem(LIVE_QUEUE_KEY); }catch(e){}
     location.reload();
   }
 
   function meta(){ return { site:$("site").value, date:$("date").value }; }
-  function snapshot(){ return { folderKey:folderKey, meta:meta(), species:rows.map(r=>Object.assign({},r, {photos:(r.photos||[]).map(p=>Object.assign({},p))})), siteNotes:siteNotes.map(n=>Object.assign({},n)), savedAt:new Date().toISOString() }; }
+  function snapshot(){ return { folderKey:folderKey, meta:meta(), species:rows.map(r=>{ const o = Object.assign({},r, {photos:(r.photos||[]).map(p=>Object.assign({},p))}); delete o._liveSlug; delete o._liveUpdatedAt; return o; }), siteNotes:siteNotes.map(n=>Object.assign({},n)), savedAt:new Date().toISOString() }; }
   function restore(s){
     if(!s) return; const m = s.meta||{};
     folderKey = s.folderKey || s.id || makeFolderKey();
@@ -1058,6 +1505,9 @@ window.FHKit = (function(){
       const o = Object.assign({}, r);
       if(!o.id) o.id = makeRecordId();                          // migrate older records lacking one
       o.photos = Array.isArray(o.photos) ? o.photos.map(p=>Object.assign({},p)) : [];
+      // Live-sync bookkeeping is per-session, not part of a saved survey —
+      // drop it so a loaded survey doesn't carry stale links to an old code.
+      delete o._liveSlug; delete o._liveUpdatedAt;
       return o;
     });
     openNotes = new Set();
@@ -1185,7 +1635,7 @@ window.FHKit = (function(){
       rows.sort(bySci);
     }
   }
-  function add(sp){
+  async function add(sp){
     if(rows.some(r=>r.sci===sp.sci)){ FHKit.toast((sp.common||sp.sci)+" is already on the list"); return; }
     // `free` marks a typed name that didn't match the reference list (set by
     // FHKit.buildPicker's "Add “…”" option) — only these can be flagged Uncertain,
@@ -1193,7 +1643,29 @@ window.FHKit = (function(){
     // GPS is NOT captured here — only species flagged "Significant" get a
     // location (see the data-sig change handler below), so most additions
     // don't trigger a location prompt at all.
-    const row = { id:makeRecordId(), sci:sp.sci, common:sp.common||sp.sci, type:sp.type||"indigenous", lf:sp.lf||"", ffg:sp.ffg||"", epbc:sp.epbc||"", fieldNotes:"", free:!!sp.free, uncertain:false, significant:false, photos:[], gpsStatus:"idle" };
+    const row = { id:makeRecordId(), sci:sp.sci, common:sp.common||sp.sci, type:sp.type||"indigenous", lf:sp.lf||"", ffg:sp.ffg||"", epbc:sp.epbc||"", fieldNotes:"", free:!!sp.free, uncertain:false, significant:false, photos:[], gpsStatus:"idle", addedBy:userName() };
+    if(live.active){
+      // Try to create the shared doc FIRST. Firestore's atomic create means
+      // only one device can ever win the race for a given species — if we
+      // lose, a teammate already logged it, so we merge THEIRS in instead of
+      // adding a second copy (this is the whole "species aren't doubled up"
+      // guarantee, not just a client-side check-then-add).
+      try{
+        const result = await liveCreateSpeciesForRow(row);
+        if(result && result !== true){
+          if(rows.some(r=>r.sci===result.sci)) return; // very rare double-fire guard
+          const merged = mergeRemoteSpeciesIntoRow(result);
+          rows.push(merged);
+          sortRows(merged.id);
+          render(); autosave();
+          FHKit.toast((merged.common||merged.sci)+" was already added by "+(merged.addedBy||"a teammate"));
+          return;
+        }
+      }catch(e){
+        FHKit.toast(e && e.network ? "Offline — added locally, will sync once connected" : "Couldn't sync — added locally, will retry");
+        queueLiveOp({ op:"create", slug:sciSlug(row.sci), fields:liveSpeciesFields(row) });
+      }
+    }
     rows.push(row);
     sortRows(row.id);   // newest species to the top, everything else alphabetical
     render(); autosave();
@@ -1218,11 +1690,13 @@ window.FHKit = (function(){
         r.gpsStatus = "ok";
         r.gpsMessage = "";
         render(); autosave();
+        liveSyncField(r, { lat:r.lat, lon:r.lon, gpsAccuracy:r.gpsAccuracy, gpsStatus:r.gpsStatus, gpsMessage:r.gpsMessage });
       },
       err => {
         r.gpsStatus = "error";
         r.gpsMessage = (err && err.code===1) ? "Location permission denied" : "Location unavailable";
         render(); autosave();
+        liveSyncField(r, { gpsStatus:r.gpsStatus, gpsMessage:r.gpsMessage });
       },
       { enableHighAccuracy:true, timeout:12000, maximumAge:60000 }
     );
@@ -1258,7 +1732,8 @@ window.FHKit = (function(){
         }
       }
       const head = '<div class="sp-name-row"><div>'+FHKit.esc(r.common||r.sci)+(FHKit.consBadge(r.ffg,r.epbc)?' '+FHKit.consBadge(r.ffg,r.epbc):'')+(r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')+(r.significant?' <span class="badge ind" title="Significant species">SIGNIFICANT</span>':'')+'</div><div class="row-actions">'+notesBtn+photosBtn+'</div></div>'
-        + '<div class="sci"><span>'+FHKit.esc(r.sci)+'</span><span class="rec-id" title="Unique identifier for this species record">'+FHKit.esc(r.id||"")+'</span></div>'
+        + '<div class="sci"><span>'+FHKit.esc(r.sci)+'</span><span class="rec-id" title="Unique identifier for this species record">'+FHKit.esc(r.id||"")+'</span>'
+        + (r.addedBy ? '<span class="added-by" title="Recorded by">— '+FHKit.esc(r.addedBy)+'</span>' : '') + '</div>'
         + geoLine
         + '<div class="species-controls">'
         + '<label class="origin-field"><span>Origin</span><select data-origin="'+i+'"><option value="indigenous"'+(r.type!=="invasive"?" selected":"")+'>Indigenous</option><option value="invasive"'+(r.type==="invasive"?" selected":"")+'>Invasive</option></select></label>'
@@ -1308,9 +1783,9 @@ window.FHKit = (function(){
     push([]);
     // Record ID first (matches each row to its photo in the exported zip);
     // Field Notes goes last (far right) per-species, as requested.
-    push(["Record ID","Common name","Scientific name","Origin","FFG","EPBC","Uncertain ID","Significant","Field Notes"], "bold");
+    push(["Record ID","Common name","Scientific name","Origin","FFG","EPBC","Uncertain ID","Significant","Recorded By","Field Notes"], "bold");
     rows.forEach(r=> push(
-      [r.id||"", r.common, r.sci, r.type==="invasive"?"Invasive":"Indigenous", r.ffg||"", r.epbc||"", r.uncertain?"Yes":"", r.significant?"X":"", r.fieldNotes||""],
+      [r.id||"", r.common, r.sci, r.type==="invasive"?"Invasive":"Indigenous", r.ffg||"", r.epbc||"", r.uncertain?"Yes":"", r.significant?"X":"", r.addedBy||"", r.fieldNotes||""],
       // Free-text species (typed names not matched to the reference list) are
       // always highlighted red — whether or not Uncertain is also ticked.
       r.free ? "red" : null
@@ -1324,7 +1799,7 @@ window.FHKit = (function(){
     const nSig = rows.filter(r=>r.significant).length;
     if(nSig) push(["Significant species", nSig]);
 
-    const xlsxBlob = FHKit.buildXLSXBlob("Flora Survey", sheet, styles, [14,26,30,12,8,8,12,10,34]);
+    const xlsxBlob = FHKit.buildXLSXBlob("Flora Survey", sheet, styles, [14,26,30,12,8,8,12,10,14,34]);
     // Filenames follow "Site/Location - Date", e.g. "Reserve East Paddock - 2026-09-10.xlsx".
     const baseName = (fileSafe(m.site) || "Flora Survey")+" - "+(fileSafe(m.date) || FHKit.today());
     const xlsxFilename = baseName+".xlsx";
@@ -1401,11 +1876,12 @@ window.FHKit = (function(){
   // events
   $("tbody").addEventListener("change", e=>{
     const o=e.target.dataset.origin, u=e.target.dataset.unc, sg=e.target.dataset.sig, pi=e.target.dataset.photoInput;
-    if(o!=null && o!==""){ rows[+o].type=e.target.value; render(); autosave(); }
-    else if(u!=null && u!==""){ rows[+u].uncertain=e.target.checked; render(); autosave(); }
+    if(o!=null && o!==""){ const r=rows[+o]; r.type=e.target.value; render(); autosave(); liveSyncField(r, {type:r.type}); }
+    else if(u!=null && u!==""){ const r=rows[+u]; r.uncertain=e.target.checked; render(); autosave(); liveSyncField(r, {uncertain:r.uncertain}); }
     else if(sg!=null && sg!==""){
       const idx = +sg, r = rows[idx];
       r.significant = e.target.checked;
+      liveSyncField(r, {significant:r.significant});
       // Capture a location the moment a species is flagged significant (unless
       // we already have one, or a request is already in flight); unchecking
       // just hides the geo-line again — any already-captured fix is kept.
@@ -1422,11 +1898,11 @@ window.FHKit = (function(){
   });
   $("tbody").addEventListener("input", e=>{
     const fn = e.target.dataset.fn;
-    if(fn!=null && fn!==""){ rows[+fn].fieldNotes = e.target.value; autosave(); }
+    if(fn!=null && fn!==""){ const r=rows[+fn]; r.fieldNotes = e.target.value; autosave(); liveSyncFieldDebounced(r, {fieldNotes:r.fieldNotes}); }
   });
   $("tbody").addEventListener("click", e=>{
     const d=e.target.dataset.del;
-    if(d!=null){ const r = rows[+d]; openNotes.delete(r); rows.splice(+d,1); render(); autosave(); return; }
+    if(d!=null){ const r = rows[+d]; openNotes.delete(r); rows.splice(+d,1); render(); autosave(); liveDeleteSpecies(r); return; }
     const addP = e.target.closest("[data-add-photo]");
     if(addP){ const idx = addP.dataset.addPhoto; const input = $("tbody").querySelector('input[data-photo-input="'+idx+'"]'); if(input) input.click(); return; }
     const delP = e.target.dataset.delPhoto;
@@ -1442,6 +1918,14 @@ window.FHKit = (function(){
     if(geo){ captureLocation(+geo.dataset.geoRetry); return; }
   });
   ["site","date"].forEach(id=> $(id).addEventListener("input", ()=>autosave()));
+
+  // ── Team Sync: name, start/join/leave ─────────────────────────────────
+  try{ $("userName").value = localStorage.getItem(NAME_KEY) || ""; }catch(e){}
+  $("userName").addEventListener("input", ()=> saveUserName($("userName").value));
+  $("liveStartBtn").addEventListener("click", startLive);
+  $("liveJoinBtn").addEventListener("click", joinLive);
+  $("liveLeaveBtn").addEventListener("click", leaveLive);
+  renderLiveUI();
 
   $("addFieldNoteBtn").addEventListener("click", addSiteNote);
   $("siteNotesList").addEventListener("input", e=>{
@@ -1476,6 +1960,7 @@ window.FHKit = (function(){
 
   render();
   renderSiteNotes();
+  tryAutoRejoinLive();   // silently reconnects to a live survey this device was already in
 })();
 </script>
 </body>
