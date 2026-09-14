@@ -118,6 +118,17 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 .detail-label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);
   display:block;margin-bottom:6px}
 
+/* Compact "brief" row for every previously-listed species (everything except
+   the one just added) — a scannable name/name line instead of a full card;
+   tap it to expand into the same editable card the newest species shows. */
+.species-row.brief{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;
+  padding:9px 12px}
+.species-row.brief:active{background:var(--cream)}
+.brief-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 8px;min-width:0}
+.brief-line .cn{font-weight:600;overflow-wrap:anywhere}
+.brief-line .sci-inline{font-style:italic;color:var(--muted);font-size:11.5px;overflow-wrap:anywhere}
+.brief-chev{color:var(--muted);flex-shrink:0;font-size:15px;line-height:1}
+
 .added-by{font-style:normal;color:var(--muted);font-size:10.5px}
 .live-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .live-pill{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.3px;padding:2px 8px;
@@ -1117,6 +1128,8 @@ window.FHKit = (function(){
   const $ = id => document.getElementById(id);
   let rows = [];         // {id, sci, common, type, lf, fieldNotes, free, uncertain, photos:[{id,dataUrl,addedAt}]}
   let openNotes = new Set();   // row objects whose field-notes/photos editor is expanded (UI-only state)
+  let expandedRows = new Set();  // record IDs shown as a full editable card instead of the brief line
+                                  // (the single most-recently-added species is always full — see render())
   let siteNotes = [];    // site-level field notes log: {id, text, ts} — not tied to a species
   let noteSeq = 0;
 
@@ -1511,6 +1524,7 @@ window.FHKit = (function(){
       return o;
     });
     openNotes = new Set();
+    expandedRows = new Set();
     if(Array.isArray(s.siteNotes)) siteNotes = s.siteNotes.map(n=>Object.assign({},n));
     // Migrate an older single free-text "siteFieldNotes" sheet into the new list format.
     else if(m.siteFieldNotes && m.siteFieldNotes.trim()) siteNotes = [{ id:"legacy_"+Date.now(), text:m.siteFieldNotes, ts:s.savedAt||new Date().toISOString() }];
@@ -1701,59 +1715,83 @@ window.FHKit = (function(){
       { enableHighAccuracy:true, timeout:12000, maximumAge:60000 }
     );
   }
+  // A compact, scannable line for a previously-listed species — just the
+  // common + scientific name (already in alphabetical order, per sortRows)
+  // plus small status badges, so a long checklist doesn't turn into a wall
+  // of open cards. Tap it to expand into the same editable card below.
+  function briefRowHtml(r, i){
+    const badges = (r.type==="invasive"?' <span class="badge inv">INVASIVE</span>':'')
+      + (r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')
+      + (r.significant?' <span class="badge ind">SIGNIFICANT</span>':'');
+    return '<div class="species-row brief" data-expand="'+i+'" role="button" tabindex="0" title="Tap to edit Origin, Uncertain, Significant…">'
+      + '<div class="brief-line"><span class="cn">'+FHKit.esc(r.common||r.sci)+'</span>'
+      + '<span class="sci-inline">'+FHKit.esc(r.sci)+'</span>'+badges+'</div>'
+      + '<span class="brief-chev">›</span></div>';
+  }
+  function fullRowHtml(r, i, collapsible){
+    const uncField = r.free
+      ? '<label class="unc-field"><input type="checkbox" data-unc="'+i+'" title="Flag this identification as uncertain — highlighted in red on export"'+(r.uncertain?" checked":"")+'> Uncertain</label>'
+      : '';
+    const sigField = '<label class="unc-field"><input type="checkbox" data-sig="'+i+'" title="Flag as a significant species — captures its GPS location for the exported GeoPackage"'+(r.significant?" checked":"")+'> Significant</label>';
+    const hasNotes = !!(r.fieldNotes && r.fieldNotes.trim());
+    const photoCount = (r.photos||[]).length;
+    const isOpen = openNotes.has(r);
+    // Only a previously-listed species (opened by tapping its brief row) gets
+    // a way to collapse back — the newest species stays expanded regardless.
+    const collapseBtn = collapsible ? '<button type="button" class="notes-btn" data-expand="'+i+'" title="Collapse">▲ Collapse</button>' : '';
+    const notesBtn = '<button type="button" class="notes-btn'+(hasNotes?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+i+'" title="Field notes for this species">Field Notes'+(hasNotes?' ●':'')+'</button>';
+    const photosBtn = '<button type="button" class="notes-btn'+(photoCount?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+i+'" title="Photos for this species">Photos'+(photoCount?' ('+photoCount+')':'')+'</button>';
+    // Location is only captured/shown for species flagged "Significant" —
+    // most species get no geo-line at all, and no location prompt.
+    let geoLine = "";
+    if(r.significant){
+      if(r.gpsStatus === "ok" && typeof r.lat === "number"){
+        const acc = (typeof r.gpsAccuracy === "number") ? " (±"+Math.round(r.gpsAccuracy)+"m)" : "";
+        geoLine = '<div class="geo-line ok"><span class="geo-text">📍 '+r.lat.toFixed(5)+', '+r.lon.toFixed(5)+acc+'</span>'
+          + '<button type="button" data-geo-retry="'+i+'" title="Re-capture this species’ location">Update</button></div>';
+      } else if(r.gpsStatus === "locating"){
+        geoLine = '<div class="geo-line"><span class="geo-text">📍 Locating…</span></div>';
+      } else if(r.gpsStatus === "error" || r.gpsStatus === "unsupported"){
+        geoLine = '<div class="geo-line error"><span class="geo-text">📍 '+FHKit.esc(r.gpsMessage||"No location")+'</span>'
+          + '<button type="button" data-geo-retry="'+i+'">Retry</button></div>';
+      } else {
+        geoLine = '<div class="geo-line"><span class="geo-text">📍 No location captured</span>'
+          + '<button type="button" data-geo-retry="'+i+'">Get location</button></div>';
+      }
+    }
+    const head = '<div class="sp-name-row"><div>'+FHKit.esc(r.common||r.sci)+(FHKit.consBadge(r.ffg,r.epbc)?' '+FHKit.consBadge(r.ffg,r.epbc):'')+(r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')+(r.significant?' <span class="badge ind" title="Significant species">SIGNIFICANT</span>':'')+'</div><div class="row-actions">'+collapseBtn+notesBtn+photosBtn+'</div></div>'
+      + '<div class="sci"><span>'+FHKit.esc(r.sci)+'</span><span class="rec-id" title="Unique identifier for this species record">'+FHKit.esc(r.id||"")+'</span>'
+      + (r.addedBy ? '<span class="added-by" title="Recorded by">— '+FHKit.esc(r.addedBy)+'</span>' : '') + '</div>'
+      + geoLine
+      + '<div class="species-controls">'
+      + '<label class="origin-field"><span>Origin</span><select data-origin="'+i+'"><option value="indigenous"'+(r.type!=="invasive"?" selected":"")+'>Indigenous</option><option value="invasive"'+(r.type==="invasive"?" selected":"")+'>Invasive</option></select></label>'
+      + sigField
+      + uncField
+      + '<button class="x" data-del="'+i+'" title="Remove" style="margin-left:auto">&times;</button>'
+      + '</div>';
+    const photoThumbs = (r.photos||[]).map(p=>
+      '<div class="photo-thumb"><img src="'+p.dataUrl+'" alt="Species photo"><button type="button" class="x" data-del-photo="'+i+'|'+p.id+'" title="Remove photo">&times;</button></div>'
+    ).join("");
+    const notesRow = '<div class="notes-row'+(isOpen?' open':'')+'">'
+      + '<label class="detail-label">Field notes</label>'
+      + '<textarea class="field-notes-input" data-fn="'+i+'" placeholder="Field notes for '+FHKit.esc(r.common||r.sci)+'…">'+FHKit.esc(r.fieldNotes||"")+'</textarea>'
+      + '<div class="row-photos">'
+      + '<label class="detail-label">Photos <span class="muted" style="text-transform:none;font-weight:600">— stamped with '+FHKit.esc(r.id||"")+'</span></label>'
+      + '<div class="photo-grid">'+photoThumbs+'</div>'
+      + '<input type="file" accept="image/*" multiple style="display:none" data-photo-input="'+i+'">'
+      + '<button type="button" class="btn sec" data-add-photo="'+i+'">+ Add Photos</button>'
+      + '</div></div>';
+    return '<div class="species-row'+(r.uncertain?' uncertain':'')+'">'+head+notesRow+'</div>';
+  }
   function render(){
     const tb = $("tbody");
+    // The most-recently-added species (rows[0], per sortRows) always shows
+    // as a full editable card — that's the one you're most likely mid-way
+    // through recording. Every other, previously-listed species collapses to
+    // a brief name/name line (alphabetical) unless it's been tapped open.
     tb.innerHTML = rows.map((r,i)=>{
-      const uncField = r.free
-        ? '<label class="unc-field"><input type="checkbox" data-unc="'+i+'" title="Flag this identification as uncertain — highlighted in red on export"'+(r.uncertain?" checked":"")+'> Uncertain</label>'
-        : '';
-      const sigField = '<label class="unc-field"><input type="checkbox" data-sig="'+i+'" title="Flag as a significant species — captures its GPS location for the exported GeoPackage"'+(r.significant?" checked":"")+'> Significant</label>';
-      const hasNotes = !!(r.fieldNotes && r.fieldNotes.trim());
-      const photoCount = (r.photos||[]).length;
-      const isOpen = openNotes.has(r);
-      const notesBtn = '<button type="button" class="notes-btn'+(hasNotes?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+i+'" title="Field notes for this species">Field Notes'+(hasNotes?' ●':'')+'</button>';
-      const photosBtn = '<button type="button" class="notes-btn'+(photoCount?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+i+'" title="Photos for this species">Photos'+(photoCount?' ('+photoCount+')':'')+'</button>';
-      // Location is only captured/shown for species flagged "Significant" —
-      // most species get no geo-line at all, and no location prompt.
-      let geoLine = "";
-      if(r.significant){
-        if(r.gpsStatus === "ok" && typeof r.lat === "number"){
-          const acc = (typeof r.gpsAccuracy === "number") ? " (±"+Math.round(r.gpsAccuracy)+"m)" : "";
-          geoLine = '<div class="geo-line ok"><span class="geo-text">📍 '+r.lat.toFixed(5)+', '+r.lon.toFixed(5)+acc+'</span>'
-            + '<button type="button" data-geo-retry="'+i+'" title="Re-capture this species’ location">Update</button></div>';
-        } else if(r.gpsStatus === "locating"){
-          geoLine = '<div class="geo-line"><span class="geo-text">📍 Locating…</span></div>';
-        } else if(r.gpsStatus === "error" || r.gpsStatus === "unsupported"){
-          geoLine = '<div class="geo-line error"><span class="geo-text">📍 '+FHKit.esc(r.gpsMessage||"No location")+'</span>'
-            + '<button type="button" data-geo-retry="'+i+'">Retry</button></div>';
-        } else {
-          geoLine = '<div class="geo-line"><span class="geo-text">📍 No location captured</span>'
-            + '<button type="button" data-geo-retry="'+i+'">Get location</button></div>';
-        }
-      }
-      const head = '<div class="sp-name-row"><div>'+FHKit.esc(r.common||r.sci)+(FHKit.consBadge(r.ffg,r.epbc)?' '+FHKit.consBadge(r.ffg,r.epbc):'')+(r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')+(r.significant?' <span class="badge ind" title="Significant species">SIGNIFICANT</span>':'')+'</div><div class="row-actions">'+notesBtn+photosBtn+'</div></div>'
-        + '<div class="sci"><span>'+FHKit.esc(r.sci)+'</span><span class="rec-id" title="Unique identifier for this species record">'+FHKit.esc(r.id||"")+'</span>'
-        + (r.addedBy ? '<span class="added-by" title="Recorded by">— '+FHKit.esc(r.addedBy)+'</span>' : '') + '</div>'
-        + geoLine
-        + '<div class="species-controls">'
-        + '<label class="origin-field"><span>Origin</span><select data-origin="'+i+'"><option value="indigenous"'+(r.type!=="invasive"?" selected":"")+'>Indigenous</option><option value="invasive"'+(r.type==="invasive"?" selected":"")+'>Invasive</option></select></label>'
-        + sigField
-        + uncField
-        + '<button class="x" data-del="'+i+'" title="Remove" style="margin-left:auto">&times;</button>'
-        + '</div>';
-      const photoThumbs = (r.photos||[]).map(p=>
-        '<div class="photo-thumb"><img src="'+p.dataUrl+'" alt="Species photo"><button type="button" class="x" data-del-photo="'+i+'|'+p.id+'" title="Remove photo">&times;</button></div>'
-      ).join("");
-      const notesRow = '<div class="notes-row'+(isOpen?' open':'')+'">'
-        + '<label class="detail-label">Field notes</label>'
-        + '<textarea class="field-notes-input" data-fn="'+i+'" placeholder="Field notes for '+FHKit.esc(r.common||r.sci)+'…">'+FHKit.esc(r.fieldNotes||"")+'</textarea>'
-        + '<div class="row-photos">'
-        + '<label class="detail-label">Photos <span class="muted" style="text-transform:none;font-weight:600">— stamped with '+FHKit.esc(r.id||"")+'</span></label>'
-        + '<div class="photo-grid">'+photoThumbs+'</div>'
-        + '<input type="file" accept="image/*" multiple style="display:none" data-photo-input="'+i+'">'
-        + '<button type="button" class="btn sec" data-add-photo="'+i+'">+ Add Photos</button>'
-        + '</div></div>';
-      return '<div class="species-row'+(r.uncertain?' uncertain':'')+'">'+head+notesRow+'</div>';
+      if(i>0 && !expandedRows.has(r.id)) return briefRowHtml(r, i);
+      return fullRowHtml(r, i, i>0);
     }).join("");
     $("empty").style.display = rows.length ? "none" : "block";
     $("count").textContent = rows.length ? "("+rows.length+")" : "";
@@ -1901,6 +1939,12 @@ window.FHKit = (function(){
     if(fn!=null && fn!==""){ const r=rows[+fn]; r.fieldNotes = e.target.value; autosave(); liveSyncFieldDebounced(r, {fieldNotes:r.fieldNotes}); }
   });
   $("tbody").addEventListener("click", e=>{
+    const ex = e.target.closest("[data-expand]");
+    if(ex){
+      const r = rows[+ex.dataset.expand];
+      if(r){ if(expandedRows.has(r.id)) expandedRows.delete(r.id); else expandedRows.add(r.id); render(); }
+      return;
+    }
     const d=e.target.dataset.del;
     if(d!=null){ const r = rows[+d]; openNotes.delete(r); rows.splice(+d,1); render(); autosave(); liveDeleteSpecies(r); return; }
     const addP = e.target.closest("[data-add-photo]");
@@ -1916,6 +1960,11 @@ window.FHKit = (function(){
     if(nt){ const r = rows[+nt.dataset.notesToggle]; if(openNotes.has(r)) openNotes.delete(r); else openNotes.add(r); render(); }
     const geo = e.target.closest("[data-geo-retry]");
     if(geo){ captureLocation(+geo.dataset.geoRetry); return; }
+  });
+  $("tbody").addEventListener("keydown", e=>{
+    if(e.key!=="Enter" && e.key!==" ") return;
+    const ex = e.target.closest("[data-expand]");
+    if(ex){ e.preventDefault(); ex.click(); }
   });
   ["site","date"].forEach(id=> $(id).addEventListener("input", ()=>autosave()));
 
