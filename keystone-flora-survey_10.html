@@ -290,6 +290,9 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
     Keystone Conservation &middot; Ecological Consultancy and Management
   </div>
   <div style="text-align:center;margin-top:4px;color:var(--muted);font-size:10.5px;opacity:.7" id="appVersionFooter"></div>
+  <div style="text-align:center;margin-top:6px">
+    <button type="button" id="checkUpdateBtn" style="background:none;border:none;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:4px">Check for updates</button>
+  </div>
 </div>
 
 <script>
@@ -1212,20 +1215,30 @@ window.FHKit = (function(){
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-15.5";
+  const BUILD_VERSION = "2026-09-15.6";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
-  async function checkForUpdate(){
+  // force=true skips the 20-min throttle and reports back what it found —
+  // used by the manual "Check for updates" tap below, for when the passive
+  // background check hasn't run recently enough to trust (iOS home-screen
+  // shortcuts in particular can sit suspended/resumed from memory for a long
+  // stretch without the page ever truly reloading, so the automatic check
+  // — which only runs at page load and on visibilitychange — can go a long
+  // time without actually firing). Returns "updated"|"current"|"error".
+  async function checkForUpdate(force){
     try{
-      const last = Number(localStorage.getItem(UPDATE_CHECK_KEY)||0);
-      if(Date.now() - last < 20*60*1000) return; // at most once per 20 min
+      if(!force){
+        const last = Number(localStorage.getItem(UPDATE_CHECK_KEY)||0);
+        if(Date.now() - last < 20*60*1000) return "skipped"; // at most once per 20 min
+      }
       localStorage.setItem(UPDATE_CHECK_KEY, String(Date.now()));
       const url = location.href.split("#")[0].split("?")[0] + "?_=" + Date.now();
       const res = await fetch(url, { cache: "no-store" });
-      if(!res.ok) return;
+      if(!res.ok) return "error";
       const text = await res.text();
       const m = text.match(/const BUILD_VERSION = "([^"]+)"/);
-      if(m && m[1] && m[1] !== BUILD_VERSION) showUpdateBanner();
-    }catch(e){ /* offline, or this page isn't reachable right now — not worth surfacing */ }
+      if(m && m[1] && m[1] !== BUILD_VERSION){ showUpdateBanner(); return "updated"; }
+      return "current";
+    }catch(e){ return "error"; /* offline, or this page isn't reachable right now */ }
   }
   function showUpdateBanner(){
     if(document.getElementById("updateBanner")) return;
@@ -2374,6 +2387,21 @@ window.FHKit = (function(){
   // and has a signal to check with; this works even for a much older copy
   // that predates the checker entirely, and works fully offline.
   const vf = $("appVersionFooter"); if(vf) vf.textContent = "Version "+BUILD_VERSION;
+  // A manual, always-available way to check right now — the passive check
+  // below only runs at page load and when the tab regains visibility, which
+  // an iOS home-screen shortcut can go a long stretch without genuinely
+  // doing if it's just being resumed from a suspended state rather than
+  // truly reloaded. This bypasses that entirely: tap it, get a definite
+  // answer either way, no waiting on background timing to catch up.
+  const checkBtn = $("checkUpdateBtn");
+  if(checkBtn) checkBtn.addEventListener("click", async ()=>{
+    checkBtn.disabled = true; const original = checkBtn.textContent; checkBtn.textContent = "Checking…";
+    const result = await checkForUpdate(true);
+    checkBtn.disabled = false; checkBtn.textContent = original;
+    if(result === "current") FHKit.toast("You're on the latest version");
+    else if(result === "error") FHKit.toast("Couldn't check right now — no connection?");
+    // "updated" needs no toast — showUpdateBanner() already put up its own banner.
+  });
   tryAutoRejoinLive();   // silently reconnects to a live survey this device was already in
   checkForUpdate();      // silently checks for a newer version — see showUpdateBanner()
 })();
