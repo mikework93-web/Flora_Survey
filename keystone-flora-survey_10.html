@@ -1006,11 +1006,19 @@ window.FHKit = (function(){
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
   }
-  // items: [{blob, filename, mime}, ...]. Tries the OS share sheet (Mail, etc.)
-  // with every file attached at once. Returns true if the share sheet handled
-  // it (including the user cancelling it) or false if this browser can't share
-  // files at all (e.g. desktop Firefox) — false means the caller should fall
-  // back to a plain download.
+  // items: [{blob, filename, mime}, ...]. Tries the OS share sheet (Mail,
+  // Gmail, etc.) with every file attached at once — the best case, which
+  // works on iOS Safari and most modern Android Chrome. Some Android Chrome
+  // builds/versions don't support attaching these particular file types via
+  // share (a real, known gap — canShare({files}) just comes back false for
+  // them), which used to silently fall through to a plain download with no
+  // share sheet at all. Now that gap gets a second tier instead: download
+  // the files so they're ready to attach by hand, then still open the share
+  // sheet WITHOUT files — that reliably shows the normal "choose an app"
+  // screen (Gmail, Outlook, WhatsApp, …) rather than nothing happening.
+  // Returns true if either tier put a share/email path in front of the
+  // person; false only when this browser has no Web Share API at all (e.g.
+  // desktop Firefox), which is when the caller falls back to a plain mailto.
   async function shareFiles(items, title, text){
     try{
       const files = items.map(it=> new File([it.blob], it.filename, { type: it.mime }));
@@ -1019,6 +1027,14 @@ window.FHKit = (function(){
         toast("Shared"); return true;
       }
     }catch(e){ if(e && e.name==="AbortError") return true; /* user cancelled the share sheet — not an error */ }
+    if(navigator.share){
+      items.forEach((it,i)=> setTimeout(()=> triggerDownload(it.blob, it.filename), i*300));
+      try{
+        await navigator.share({ title, text });
+        toast("Files downloaded — choose an app to attach and send them");
+        return true;
+      }catch(e){ if(e && e.name==="AbortError") return true; /* files are already downloaded either way */ }
+    }
     return false;
   }
 
@@ -1272,7 +1288,13 @@ window.FHKit = (function(){
     const codeNote = live.lastErrorCode ? ' <span style="opacity:.75">('+FHKit.esc(String(live.lastErrorCode))+')</span>' : '';
     if(live.active && live.status==="error"){
       el.hidden = false;
-      el.innerHTML = "⚠️ Team Sync connection lost — retrying in the background. Your entries are still being saved on this device."+codeNote;
+      // RESOURCE_EXHAUSTED means the project's daily Firestore free-tier
+      // quota is used up (not a connectivity problem) — worth spelling out
+      // plainly since "connection lost" would be misleading and there's
+      // nothing to troubleshoot on-device for it.
+      el.innerHTML = (live.lastErrorCode === "RESOURCE_EXHAUSTED")
+        ? "⚠️ Team Sync has hit today's free sync limit — it'll keep retrying automatically. Your entries are still being saved on this device."+codeNote
+        : "⚠️ Team Sync connection lost — retrying in the background. Your entries are still being saved on this device."+codeNote;
     } else if(!live.active && live.lastDroppedCode){
       el.hidden = false;
       el.innerHTML = "⚠️ Team Sync disconnected — your data is safe on this device."+codeNote
@@ -1420,6 +1442,17 @@ window.FHKit = (function(){
     const unsynced = rows.filter(r=>!r._liveUpdatedAt);
     for(const r of unsynced){ try{ await liveCreateSpeciesForRow(r); }catch(e){} }
   }
+  // Polling cadence: every document a poll returns counts as one Firestore
+  // "read" against the project's daily quota (50k/day on the free Spark
+  // plan). 20 minutes is plenty for a field survey team checking in on each
+  // other's finds, and keeps a survey well clear of that quota even left
+  // running for a full day. See the visibilitychange listener below for the
+  // other lever: not polling at all while the tab is backgrounded.
+  const LIVE_POLL_MS = 20*60*1000;
+  // Give up (show the sticky "disconnected — tap Rejoin" banner) after
+  // roughly two missed scheduled syncs in a row, rather than a fixed wall-
+  // clock time — that scales sensibly whatever LIVE_POLL_MS is set to.
+  const LIVE_GIVE_UP_MS = LIVE_POLL_MS*2;
   function startPolling(){
     stopPolling();
     live.consecutiveFailures = 0;
@@ -1434,17 +1467,27 @@ window.FHKit = (function(){
       }catch(e){
         live.consecutiveFailures = (live.consecutiveFailures||0) + 1;
         live.lastErrorCode = errCode(e);
-        // A couple of failed polls in a row (~10s) — flip the status and the
-        // small pill, but keep quietly retrying; this alone used to be easy
-        // to miss, which is exactly what the sticky banner above is for once
-        // it's been down long enough to actually give up (below).
-        if(live.consecutiveFailures>=2 && live.status!=="error") setLiveStatus("error");
-        if((Date.now() - (live.lastSyncOk||Date.now())) > 120000){ handleLiveDropped(); return; }
+        // At this slow a cadence there's no rapid retry to quietly absorb a
+        // blip the way there was at a faster one — a single missed sync is
+        // already worth flagging, so don't wait for a second one before
+        // showing the (non-disruptive) "retrying in the background" state.
+        if(live.status!=="error") setLiveStatus("error");
+        if((Date.now() - (live.lastSyncOk||Date.now())) > LIVE_GIVE_UP_MS){ handleLiveDropped(); return; }
       }
       flushLiveQueue().catch(()=>{});
-    }, 5000);
+    }, LIVE_POLL_MS);
   }
   function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+  // Firestore reads are only free up to that daily quota, and a backgrounded
+  // tab (phone locked, app switched away from) still polls on a normal
+  // timer — that's pure waste since nobody's looking. Pausing while hidden
+  // and doing one immediate catch-up poll on return keeps a long field day
+  // from quietly eating the whole day's quota by itself.
+  document.addEventListener("visibilitychange", ()=>{
+    if(!live.active) return;
+    if(document.hidden){ stopPolling(); }
+    else { startPolling(); pullRemoteSpecies().catch(()=>{}); }
+  });
   // Retries anything that couldn't reach the server while this device was
   // offline. Stops at the first still-offline failure (keeping the rest
   // queued for next time) rather than hammering a dead connection.
