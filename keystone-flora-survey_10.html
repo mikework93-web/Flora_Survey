@@ -24,6 +24,12 @@
   --sans: system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
 }
 *{box-sizing:border-box}
+/* Belt-and-braces: an element's own `display` rule (e.g. .live-pill,
+   .live-banner) otherwise beats the browser's default `[hidden]` styling
+   because author CSS always outranks user-agent CSS regardless of
+   specificity — so without this, setting `.hidden = true` in JS would stop
+   being visually respected the moment a class also sets `display`. */
+[hidden]{display:none!important}
 html,body{margin:0;padding:0}
 body{background:var(--cream);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;
   padding-bottom:env(safe-area-inset-bottom)}
@@ -113,6 +119,7 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 .geo-line button{border:1px solid var(--border);background:#fff;color:var(--muted);font-size:10px;
   font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:3px 8px;border-radius:10px;
   cursor:pointer;white-space:nowrap;font-family:var(--sans);flex-shrink:0}
+.geo-points{margin-top:4px;display:flex;flex-direction:column;gap:3px}
 .notes-row{display:none}
 .notes-row.open{display:block;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
 .detail-label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);
@@ -127,7 +134,17 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 .brief-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 8px;min-width:0}
 .brief-line .cn{font-weight:600;overflow-wrap:anywhere}
 .brief-line .sci-inline{font-style:italic;color:var(--muted);font-size:11.5px;overflow-wrap:anywhere}
+.brief-line .brief-id{font-size:10px;color:var(--muted);opacity:.65}
 .brief-chev{color:var(--muted);flex-shrink:0;font-size:15px;line-height:1}
+
+/* Sticky, hard-to-miss notice when Team Sync's connection drops or actually
+   ends — a small pill alone is easy to miss mid-survey, so this is a full-width
+   fixed banner instead (see renderLiveBanner()). */
+.live-banner{position:fixed;top:0;left:0;right:0;z-index:400;background:var(--red);color:#fff;
+  padding:10px 16px;font-size:13px;font-weight:600;text-align:center;display:flex;align-items:center;
+  justify-content:center;gap:10px;flex-wrap:wrap;box-shadow:0 3px 10px rgba(0,0,0,.3)}
+.live-banner button{background:#fff;color:var(--red);border:none;border-radius:6px;padding:6px 12px;
+  font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans);flex-shrink:0}
 
 .added-by{font-style:normal;color:var(--muted);font-size:10.5px}
 .live-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -204,6 +221,7 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 <header>
   <img src="data:image/png;base64,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" alt="Keystone Conservation — Ecological Consultancy and Management">
 </header>
+<div id="liveBanner" class="live-banner" hidden></div>
 <div id="fh-bar"></div>
 
 <div class="wrap">
@@ -219,7 +237,7 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
     <h2>Team Sync <span class="live-pill" id="livePill" hidden></span></h2>
     <div id="liveSetup">
       <div class="field"><label for="userName">Your name</label><input id="userName" placeholder="e.g. Mike" autocomplete="name"></div>
-      <p class="muted" style="margin:8px 0 12px">Survey with your team live — everyone sees the same checklist as species are added, and nothing gets logged twice. Photos stay on each person's own phone and are combined when you export.</p>
+      <p class="muted" style="margin:8px 0 12px">Survey with your team live — everyone sees the same checklist as species are added. If two of you log the same (or a similar) species, both entries are kept — each with its own points, photos and notes. Photos always stay on each person's own phone and are combined when you export.</p>
       <div class="live-row">
         <button class="btn sec" type="button" id="liveStartBtn">Start a live survey</button>
         <span class="muted" style="font-size:12px">or</span>
@@ -1161,23 +1179,43 @@ window.FHKit = (function(){
 
   // ── Team Sync (live, multi-person) state — see the FHKit.live REST client
   // for the actual Firestore/Auth calls. Species are the only thing synced
-  // live; photos always stay local to whichever device took them. ──
-  let live = { active:false, status:"idle", code:null, idToken:null, refreshToken:null, tokenExpiresAt:0 };
+  // live; photos always stay local to whichever device took them.
+  //
+  // Each species RECORD (not each species name) gets its own shared document,
+  // keyed by that record's own unique id (assigned the moment it's added — see
+  // makeRecordId()). That's deliberate: two people logging "Themeda triandra"
+  // independently get two different record ids, so they create two different
+  // documents and both survive — duplicates are allowed on purpose, each with
+  // its own points/photos/notes. The only thing the atomic create still
+  // guards against is a device accidentally re-creating ITS OWN record twice
+  // (e.g. a retried request after a flaky connection). ──
+  function freshLiveState(){
+    return { active:false, status:"idle", code:null, idToken:null, refreshToken:null, tokenExpiresAt:0,
+      consecutiveFailures:0, lastSyncOk:0, lastDroppedCode:null };
+  }
+  let live = freshLiveState();
   let pollTimer = null;
-  const recentlyCreated = new Set();  // live slugs created by THIS device in the last ~15s — guards
+  const recentlyCreated = new Set();  // record ids created by THIS device in the last ~15s — guards
                                        // against a delete-reconciliation race right after creating one
   const noteSyncTimers = new Map();   // per-row debounce timers for syncing Field Notes while typing
   function userName(){ const el = $("userName"); return el ? (el.value||"").trim() : ""; }
   function saveUserName(n){ try{ localStorage.setItem(NAME_KEY, n); }catch(e){} }
-  function sciSlug(sci){
-    return String(sci||"").toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"") || ("sp"+Date.now());
+  function makePointId(){ return "P"+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+  // GPS points ride inside the doc as a single JSON-encoded string field — the
+  // Firestore REST client here only speaks flat scalars (see fsValueOf), so a
+  // per-species array of {id,lat,lon,accuracy} points is encoded/decoded as text
+  // rather than as nested Firestore array/map values.
+  function encodePointsField(points){ try{ return JSON.stringify(points||[]); }catch(e){ return "[]"; } }
+  function decodePointsField(json){
+    try{ const arr = JSON.parse(json||"[]"); return Array.isArray(arr) ? arr : []; }
+    catch(e){ return []; }
   }
   function makeLiveCode(){
     const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I — easy to read aloud/type
     let s = ""; for(let i=0;i<6;i++) s += ALPHABET[Math.floor(Math.random()*ALPHABET.length)];
     return s;
   }
-  function markRecentlyCreated(slug){ recentlyCreated.add(slug); setTimeout(()=>recentlyCreated.delete(slug), 15000); }
+  function markRecentlyCreated(id){ recentlyCreated.add(id); setTimeout(()=>recentlyCreated.delete(id), 15000); }
   function applyAuth(auth){ live.idToken=auth.idToken; live.refreshToken=auth.refreshToken; live.tokenExpiresAt=auth.expiresAt; }
   async function ensureAuth(){
     if(live.idToken && Date.now() < live.tokenExpiresAt - 60000) return;
@@ -1196,6 +1234,7 @@ window.FHKit = (function(){
   function setLiveStatus(s){ live.status = s; renderLiveUI(); }
   function renderLiveUI(){
     const pill = $("livePill"), setup = $("liveSetup"), active = $("liveActive");
+    renderLiveBanner();
     if(!pill) return;
     if(!LIVE_CONFIGURED){
       const u = $("liveUnconfigured"); if(u) u.style.display = "block";
@@ -1212,60 +1251,97 @@ window.FHKit = (function(){
       setup.hidden = false; active.hidden = true;
     }
   }
+  // A small pill in the Team Sync card is easy to miss once you've scrolled
+  // past it — this is the failsafe: a full-width, fixed banner that shows
+  // whenever the connection is struggling (still retrying) or has actually
+  // dropped (survey stays local until you tap Rejoin), so Team Sync can never
+  // silently stop working without you noticing.
+  function renderLiveBanner(){
+    const el = $("liveBanner");
+    if(!el) return;
+    if(live.active && live.status==="error"){
+      el.hidden = false;
+      el.innerHTML = "⚠️ Team Sync connection lost — retrying in the background. Your entries are still being saved on this device.";
+    } else if(!live.active && live.lastDroppedCode){
+      el.hidden = false;
+      el.innerHTML = "⚠️ Team Sync disconnected — your data is safe on this device."
+        + ' <button type="button" id="liveRejoinBtn">Rejoin '+FHKit.esc(live.lastDroppedCode)+'</button>';
+    } else {
+      el.hidden = true;
+    }
+  }
+  // Marks the live session as no longer active (without wiping any local
+  // data) and puts up the persistent banner above — used both when a mid-
+  // survey connection is given up on (handleLiveDropped) and when this device
+  // couldn't rejoin a previously-active session on load (tryAutoRejoinLive).
+  // Deliberately never silent: this is the one place Team Sync "ends".
+  function noticeLiveDropped(code){
+    live.active = false; live.status = "idle"; live.lastDroppedCode = code;
+    renderLiveUI();
+  }
+  function handleLiveDropped(){
+    if(!live.active) return;
+    const code = live.code;
+    stopPolling();
+    noticeLiveDropped(code);
+    FHKit.toast("Team Sync disconnected — your data is safe locally. Tap Rejoin to reconnect.");
+  }
   function liveSpeciesFields(row){
     return {
       sci:row.sci, common:row.common||row.sci, type:row.type||"indigenous", lf:row.lf||"", ffg:row.ffg||"", epbc:row.epbc||"",
       fieldNotes:row.fieldNotes||"", free:!!row.free, uncertain:!!row.uncertain, significant:!!row.significant,
-      lat: typeof row.lat==="number"?row.lat:null, lon: typeof row.lon==="number"?row.lon:null,
-      gpsAccuracy: typeof row.gpsAccuracy==="number"?row.gpsAccuracy:null, gpsStatus: row.gpsStatus||"idle", gpsMessage: row.gpsMessage||"",
+      pointsJson: encodePointsField(row.points), gpsStatus: row.gpsStatus||"idle", gpsMessage: row.gpsMessage||"",
       recordId: row.id, addedBy: row.addedBy||userName()||"", updatedBy: userName()||row.addedBy||"", updatedAt: new Date().toISOString()
     };
   }
-  // Turns a Firestore species doc into a local row object. Used both for
-  // species a teammate already has (so we never create a duplicate) and for
-  // species discovered on the periodic poll.
+  // Turns a Firestore species doc into a local row object — used for a
+  // species doc discovered on the periodic poll (or an initial join/rejoin)
+  // that this device doesn't have locally yet. Because each RECORD (not each
+  // species name) gets its own doc keyed by its own record id, this can never
+  // collide with a different local record for the same species — that's how
+  // duplicates (two people logging the same species) are allowed to coexist.
   function mergeRemoteSpeciesIntoRow(doc){
     return {
-      id: doc.recordId || makeRecordId(),
+      id: doc.recordId || doc._id || makeRecordId(),
       sci: doc.sci, common: doc.common||doc.sci, type: doc.type||"indigenous", lf: doc.lf||"", ffg: doc.ffg||"", epbc: doc.epbc||"",
       fieldNotes: doc.fieldNotes||"", free: !!doc.free, uncertain: !!doc.uncertain, significant: !!doc.significant,
-      lat: typeof doc.lat==="number"?doc.lat:undefined, lon: typeof doc.lon==="number"?doc.lon:undefined,
-      gpsAccuracy: typeof doc.gpsAccuracy==="number"?doc.gpsAccuracy:undefined, gpsStatus: doc.gpsStatus||"idle", gpsMessage: doc.gpsMessage||"",
+      points: decodePointsField(doc.pointsJson), gpsStatus: doc.gpsStatus||"idle", gpsMessage: doc.gpsMessage||"",
       photos: [], // photos are always device-local — never synced
       addedBy: doc.addedBy||"", updatedBy: doc.updatedBy||"",
-      _liveSlug: doc._id, _liveUpdatedAt: doc._updateTime||""
+      _liveUpdatedAt: doc._updateTime||""
     };
   }
-  // Creates this row's shared doc. Returns true on success, or the remote
-  // doc (an object, not `true`) if a teammate had already created it first —
-  // Firestore's per-document create is atomic, so that 409 IS the guarantee
-  // that a species can never end up duplicated in the shared list.
+  // Creates this row's shared doc, keyed by the row's OWN record id (assigned
+  // once, at add() time) rather than by species name — so a second surveyor
+  // logging the same species gets their own doc, never a collision. The only
+  // thing the atomic create still guards against is this exact record being
+  // created twice by the same device (e.g. a retried request) — that 409 just
+  // means "already synced", not "someone else already logged this species".
   async function liveCreateSpeciesForRow(row){
     await ensureAuth();
-    const slug = sciSlug(row.sci);
     try{
-      const doc = await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species", slug, liveSpeciesFields(row));
-      row._liveSlug = slug; row._liveUpdatedAt = doc._updateTime;
-      markRecentlyCreated(slug);
+      const doc = await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species", row.id, liveSpeciesFields(row));
+      row._liveUpdatedAt = doc._updateTime;
+      markRecentlyCreated(row.id);
       return true;
     }catch(e){
       if(e.status==="ALREADY_EXISTS"){
-        return await FHKit.live.fsGetDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+slug);
+        row._liveUpdatedAt = row._liveUpdatedAt || new Date().toISOString();
+        return true;
       }
       throw e;
     }
   }
   // Patches specific fields on a row's shared doc — used for every edit
-  // (origin, uncertain, significant, GPS, field notes). Best-effort: queued
-  // for the next poll tick if the device is offline right now.
+  // (origin, uncertain, significant, GPS points, field notes). Best-effort:
+  // queued for the next poll tick if the device is offline right now.
   function liveSyncField(row, partial){
     if(!live.active) return;
     row._liveUpdatedAt = new Date().toISOString(); // optimistic — the poll reconciles the real value
-    const slug = row._liveSlug || sciSlug(row.sci);
     const fields = Object.assign({}, partial, { updatedBy: userName()||row.addedBy||"", updatedAt: new Date().toISOString() });
     ensureAuth()
-      .then(()=> FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+slug, fields))
-      .catch(()=> queueLiveOp({ op:"patch", slug, fields }));
+      .then(()=> FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+row.id, fields))
+      .catch(()=> queueLiveOp({ op:"patch", id:row.id, fields }));
   }
   function liveSyncFieldDebounced(row, partial, delay){
     if(!live.active) return;
@@ -1274,27 +1350,27 @@ window.FHKit = (function(){
     noteSyncTimers.set(key, setTimeout(()=> liveSyncField(row, partial), delay||800));
   }
   function liveDeleteSpecies(row){
-    if(!live.active || !row._liveSlug) return;
-    const slug = row._liveSlug;
+    if(!live.active) return;
+    const id = row.id;
+    // Also drop any still-queued create/patch for this record so a deleted
+    // row can't get resurrected by a later queue flush.
+    saveLiveQueue(loadLiveQueue().filter(op=>op.id!==id));
     ensureAuth()
-      .then(()=> FHKit.live.fsDeleteDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+slug))
-      .catch(()=> queueLiveOp({ op:"delete", slug }));
+      .then(()=> FHKit.live.fsDeleteDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+id))
+      .catch(()=> queueLiveOp({ op:"delete", id }));
   }
   // Applies a freshly-fetched remote species doc onto an existing local row —
   // skips overwriting Field Notes while the user is actively typing in that
   // row's notes box, so a teammate's sync can't steal mid-sentence keystrokes.
   function applyRemoteToRow(local, doc, rowIndex){
     const remoteTime = doc._updateTime || "";
-    if(local._liveUpdatedAt && remoteTime && remoteTime <= local._liveUpdatedAt){ local._liveSlug = doc._id; return; }
+    if(local._liveUpdatedAt && remoteTime && remoteTime <= local._liveUpdatedAt) return;
     const active = document.activeElement;
     const notesFocused = !!(active && active.dataset && active.dataset.fn === String(rowIndex));
-    local._liveSlug = doc._id;
     local.common = doc.common || local.common;
     local.type = doc.type || local.type;
     local.free = !!doc.free; local.uncertain = !!doc.uncertain; local.significant = !!doc.significant;
-    if(typeof doc.lat === "number") local.lat = doc.lat;
-    if(typeof doc.lon === "number") local.lon = doc.lon;
-    if(typeof doc.gpsAccuracy === "number") local.gpsAccuracy = doc.gpsAccuracy;
+    if(typeof doc.pointsJson === "string") local.points = decodePointsField(doc.pointsJson);
     if(doc.gpsStatus) local.gpsStatus = doc.gpsStatus;
     local.gpsMessage = doc.gpsMessage||"";
     if(!notesFocused && typeof doc.fieldNotes === "string") local.fieldNotes = doc.fieldNotes;
@@ -1303,28 +1379,58 @@ window.FHKit = (function(){
     local._liveUpdatedAt = remoteTime;
   }
   // Pulls the full shared species list and reconciles it into `rows`: adds
-  // anything a teammate created that we don't have yet, updates anything
-  // that changed elsewhere, and drops anything a teammate deleted (unless
-  // WE just created it a moment ago — see `recentlyCreated`).
+  // any record a teammate created that we don't have yet, updates anything
+  // that changed elsewhere, and drops anything a teammate deleted. A local
+  // row that hasn't been confirmed synced yet (no _liveUpdatedAt — e.g. it
+  // was added while offline) is NEVER dropped here, even if it's not in the
+  // remote list yet — that's what lets a reconnect "combine" both sides
+  // instead of one replacing the other (see reconcileWithRemote()).
   async function pullRemoteSpecies(){
     const remoteDocs = await FHKit.live.fsListDocs(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species");
     let mostRecent = null;
     remoteDocs.forEach(doc=>{
-      let local = rows.find(r=>r._liveSlug===doc._id);
-      if(!local) local = rows.find(r=>!r._liveSlug && sciSlug(r.sci)===doc._id);
+      const local = rows.find(r=>r.id===doc._id);
       if(local){ applyRemoteToRow(local, doc, rows.indexOf(local)); }
       else { rows.push(mergeRemoteSpeciesIntoRow(doc)); }
       if(!mostRecent || (doc._updateTime||"") > (mostRecent._updateTime||"")) mostRecent = doc;
     });
-    const remoteSlugs = new Set(remoteDocs.map(d=>d._id));
-    rows = rows.filter(r=> !r._liveSlug || remoteSlugs.has(r._liveSlug) || recentlyCreated.has(r._liveSlug));
-    const pinned = mostRecent && rows.find(r=>r._liveSlug===mostRecent._id);
+    const remoteIds = new Set(remoteDocs.map(d=>d._id));
+    rows = rows.filter(r=> !r._liveUpdatedAt || remoteIds.has(r.id) || recentlyCreated.has(r.id));
+    const pinned = mostRecent && rows.find(r=>r.id===mostRecent._id);
     sortRows(pinned ? pinned.id : null);
     render(); autosave();
   }
+  // Pulls the shared list AND pushes up anything local that hasn't made it to
+  // the server yet (added while offline, or added just before joining/
+  // rejoining) — used on join, rejoin, and reconnect-after-drop, so both
+  // sides' entries end up combined rather than one clobbering the other.
+  async function reconcileWithRemote(){
+    await pullRemoteSpecies();
+    const unsynced = rows.filter(r=>!r._liveUpdatedAt);
+    for(const r of unsynced){ try{ await liveCreateSpeciesForRow(r); }catch(e){} }
+  }
   function startPolling(){
     stopPolling();
-    pollTimer = setInterval(()=>{ pullRemoteSpecies().catch(()=>{}); flushLiveQueue().catch(()=>{}); }, 5000);
+    live.consecutiveFailures = 0;
+    live.lastSyncOk = Date.now();
+    pollTimer = setInterval(async ()=>{
+      try{
+        await pullRemoteSpecies();
+        const wasDown = live.status !== "connected";
+        live.consecutiveFailures = 0;
+        live.lastSyncOk = Date.now();
+        if(wasDown){ setLiveStatus("connected"); FHKit.toast("Team Sync reconnected"); }
+      }catch(e){
+        live.consecutiveFailures = (live.consecutiveFailures||0) + 1;
+        // A couple of failed polls in a row (~10s) — flip the status and the
+        // small pill, but keep quietly retrying; this alone used to be easy
+        // to miss, which is exactly what the sticky banner above is for once
+        // it's been down long enough to actually give up (below).
+        if(live.consecutiveFailures>=2 && live.status!=="error") setLiveStatus("error");
+        if((Date.now() - (live.lastSyncOk||Date.now())) > 120000){ handleLiveDropped(); return; }
+      }
+      flushLiveQueue().catch(()=>{});
+    }, 5000);
   }
   function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
   // Retries anything that couldn't reach the server while this device was
@@ -1340,18 +1446,18 @@ window.FHKit = (function(){
       try{
         if(op.op==="create"){
           try{
-            const doc = await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species", op.slug, op.fields);
-            const local = rows.find(r=> sciSlug(r.sci)===op.slug);
-            if(local){ local._liveSlug = op.slug; local._liveUpdatedAt = doc._updateTime; }
-            markRecentlyCreated(op.slug);
+            const doc = await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species", op.id, op.fields);
+            const local = rows.find(r=> r.id===op.id);
+            if(local) local._liveUpdatedAt = doc._updateTime;
+            markRecentlyCreated(op.id);
           }catch(e){
-            if(e.status==="ALREADY_EXISTS"){ const local = rows.find(r=>sciSlug(r.sci)===op.slug); if(local) local._liveSlug = op.slug; }
+            if(e.status==="ALREADY_EXISTS"){ const local = rows.find(r=>r.id===op.id); if(local) local._liveUpdatedAt = local._liveUpdatedAt || new Date().toISOString(); }
             else if(e.network){ remaining.push(op); }
           }
         } else if(op.op==="patch"){
-          await FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+op.slug, op.fields);
+          await FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+op.id, op.fields);
         } else if(op.op==="delete"){
-          await FHKit.live.fsDeleteDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+op.slug);
+          await FHKit.live.fsDeleteDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+op.id);
         }
       }catch(e){ if(e && e.network) remaining.push(op); }
     }
@@ -1363,6 +1469,7 @@ window.FHKit = (function(){
     const name = userName();
     if(!name){ FHKit.toast("Enter your name first"); $("userName").focus(); return; }
     saveUserName(name);
+    live.lastDroppedCode = null;
     setLiveStatus("connecting");
     try{
       await ensureAuth();
@@ -1393,6 +1500,7 @@ window.FHKit = (function(){
     if(!name){ FHKit.toast("Enter your name first"); $("userName").focus(); return; }
     if(!code){ FHKit.toast("Enter the code your teammate shared"); return; }
     saveUserName(name);
+    live.lastDroppedCode = null;
     setLiveStatus("connecting");
     try{
       await ensureAuth();
@@ -1401,8 +1509,7 @@ window.FHKit = (function(){
       live.code = code; live.active = true;
       if(survey.site && !($("site").value||"").trim()) $("site").value = survey.site;
       if(survey.date && !($("date").value||"").trim()) $("date").value = survey.date;
-      await pullRemoteSpecies();
-      for(const r of rows.filter(r=>!r._liveSlug)){ try{ await liveCreateSpeciesForRow(r); }catch(e){} }
+      await reconcileWithRemote();   // combines whatever's already local with what's shared
       persistLiveSession();
       setLiveStatus("connected");
       startPolling();
@@ -1414,28 +1521,56 @@ window.FHKit = (function(){
   }
   function leaveLive(){
     stopPolling();
-    live = { active:false, status:"idle", code:null, idToken:null, refreshToken:null, tokenExpiresAt:0 };
+    live = freshLiveState();
     try{ localStorage.removeItem(LIVE_KEY); }catch(e){}
-    rows.forEach(r=>{ delete r._liveSlug; delete r._liveUpdatedAt; });
+    rows.forEach(r=>{ delete r._liveUpdatedAt; });
     renderLiveUI();
     FHKit.toast("Left live sync — this survey now stays local to this device");
+  }
+  // Reconnects to a live survey this device previously dropped out of (see
+  // handleLiveDropped/noticeLiveDropped) — pulls the shared list AND pushes
+  // up anything logged locally in the meantime, so nobody's entries get lost.
+  async function rejoinDroppedLive(){
+    const code = live.lastDroppedCode;
+    if(!code) return;
+    setLiveStatus("connecting");
+    try{
+      await ensureAuth();
+      const survey = await FHKit.live.fsGetDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+code);
+      if(!survey){ live.lastDroppedCode = null; setLiveStatus("idle"); FHKit.toast("That live survey no longer exists"); return; }
+      live.code = code; live.active = true; live.lastDroppedCode = null;
+      await reconcileWithRemote();
+      persistLiveSession();
+      setLiveStatus("connected");
+      startPolling();
+      FHKit.toast("Reconnected — your entries and your team's are now combined");
+    }catch(e){
+      setLiveStatus("idle");
+      FHKit.toast("Still couldn't reconnect — check your connection and try again");
+    }
   }
   async function tryAutoRejoinLive(){
     if(!LIVE_CONFIGURED) return;
     let saved = null;
     try{ saved = JSON.parse(localStorage.getItem(LIVE_KEY)); }catch(e){}
     if(!saved || !saved.code || !saved.refreshToken) return;
+    live.refreshToken = saved.refreshToken; // so a later manual Rejoin can still refresh from it
     try{
       const auth = await FHKit.live.authRefresh(FIREBASE_CONFIG.apiKey, saved.refreshToken);
       applyAuth(auth);
       const survey = await FHKit.live.fsGetDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+saved.code);
-      if(!survey) return; // that code no longer exists — quietly stay local
+      if(!survey){ noticeLiveDropped(saved.code); return; } // that code no longer exists
       live.code = saved.code; live.active = true;
-      await pullRemoteSpecies();
+      await reconcileWithRemote();
       persistLiveSession();
       setLiveStatus("connected");
       startPolling();
-    }catch(e){ /* offline or expired — stays local for now; retried next load */ }
+    }catch(e){
+      // Whatever the reason (offline right now, an expired session, …) —
+      // never fail this silently. Surface the same banner+Rejoin as a
+      // mid-survey drop, rather than quietly staying local with no notice.
+      noticeLiveDropped(saved.code);
+    }
   }
 
   function makeFolderKey(){ return "s_"+Date.now()+"_"+Math.random().toString(36).slice(2,8); }
@@ -1509,7 +1644,7 @@ window.FHKit = (function(){
   }
 
   function meta(){ return { site:$("site").value, date:$("date").value }; }
-  function snapshot(){ return { folderKey:folderKey, meta:meta(), species:rows.map(r=>{ const o = Object.assign({},r, {photos:(r.photos||[]).map(p=>Object.assign({},p))}); delete o._liveSlug; delete o._liveUpdatedAt; return o; }), siteNotes:siteNotes.map(n=>Object.assign({},n)), savedAt:new Date().toISOString() }; }
+  function snapshot(){ return { folderKey:folderKey, meta:meta(), species:rows.map(r=>{ const o = Object.assign({},r, {photos:(r.photos||[]).map(p=>Object.assign({},p)), points:(r.points||[]).map(p=>Object.assign({},p))}); delete o._liveUpdatedAt; return o; }), siteNotes:siteNotes.map(n=>Object.assign({},n)), savedAt:new Date().toISOString() }; }
   function restore(s){
     if(!s) return; const m = s.meta||{};
     folderKey = s.folderKey || s.id || makeFolderKey();
@@ -1518,9 +1653,15 @@ window.FHKit = (function(){
       const o = Object.assign({}, r);
       if(!o.id) o.id = makeRecordId();                          // migrate older records lacking one
       o.photos = Array.isArray(o.photos) ? o.photos.map(p=>Object.assign({},p)) : [];
+      // Migrate an older single-point record (r.lat/r.lon) into the new
+      // multi-point r.points array; leave anything already on the new shape alone.
+      if(Array.isArray(o.points)) o.points = o.points.map(p=>Object.assign({},p));
+      else if(typeof o.lat==="number" && typeof o.lon==="number") o.points = [{ id:makePointId(), lat:o.lat, lon:o.lon, accuracy:o.gpsAccuracy }];
+      else o.points = [];
+      delete o.lat; delete o.lon; delete o.gpsAccuracy;
       // Live-sync bookkeeping is per-session, not part of a saved survey —
       // drop it so a loaded survey doesn't carry stale links to an old code.
-      delete o._liveSlug; delete o._liveUpdatedAt;
+      delete o._liveUpdatedAt;
       return o;
     });
     openNotes = new Set();
@@ -1650,43 +1791,37 @@ window.FHKit = (function(){
     }
   }
   async function add(sp){
-    if(rows.some(r=>r.sci===sp.sci)){ FHKit.toast((sp.common||sp.sci)+" is already on the list"); return; }
+    // Species can be logged more than once on purpose — e.g. two surveyors
+    // independently spot the same species, or you want a second record for a
+    // different individual/location. Each add gets its own record id and its
+    // own points/photos/notes; nothing here collapses it into an existing row.
     // `free` marks a typed name that didn't match the reference list (set by
     // FHKit.buildPicker's "Add “…”" option) — only these can be flagged Uncertain,
     // and these rows are always highlighted red on export (see exportSurvey()).
     // GPS is NOT captured here — only species flagged "Significant" get a
     // location (see the data-sig change handler below), so most additions
     // don't trigger a location prompt at all.
-    const row = { id:makeRecordId(), sci:sp.sci, common:sp.common||sp.sci, type:sp.type||"indigenous", lf:sp.lf||"", ffg:sp.ffg||"", epbc:sp.epbc||"", fieldNotes:"", free:!!sp.free, uncertain:false, significant:false, photos:[], gpsStatus:"idle", addedBy:userName() };
+    const row = { id:makeRecordId(), sci:sp.sci, common:sp.common||sp.sci, type:sp.type||"indigenous", lf:sp.lf||"", ffg:sp.ffg||"", epbc:sp.epbc||"", fieldNotes:"", free:!!sp.free, uncertain:false, significant:false, photos:[], points:[], gpsStatus:"idle", addedBy:userName() };
     if(live.active){
-      // Try to create the shared doc FIRST. Firestore's atomic create means
-      // only one device can ever win the race for a given species — if we
-      // lose, a teammate already logged it, so we merge THEIRS in instead of
-      // adding a second copy (this is the whole "species aren't doubled up"
-      // guarantee, not just a client-side check-then-add).
+      // Create this record's own shared doc, keyed by its own record id — a
+      // second surveyor logging the same species gets a different id, so this
+      // can never collide with (or overwrite) their entry.
       try{
-        const result = await liveCreateSpeciesForRow(row);
-        if(result && result !== true){
-          if(rows.some(r=>r.sci===result.sci)) return; // very rare double-fire guard
-          const merged = mergeRemoteSpeciesIntoRow(result);
-          rows.push(merged);
-          sortRows(merged.id);
-          render(); autosave();
-          FHKit.toast((merged.common||merged.sci)+" was already added by "+(merged.addedBy||"a teammate"));
-          return;
-        }
+        await liveCreateSpeciesForRow(row);
       }catch(e){
         FHKit.toast(e && e.network ? "Offline — added locally, will sync once connected" : "Couldn't sync — added locally, will retry");
-        queueLiveOp({ op:"create", slug:sciSlug(row.sci), fields:liveSpeciesFields(row) });
+        queueLiveOp({ op:"create", id:row.id, fields:liveSpeciesFields(row) });
       }
     }
     rows.push(row);
     sortRows(row.id);   // newest species to the top, everything else alphabetical
     render(); autosave();
   }
-  // Captures a GPS fix for one species record (used to georeference it — and,
-  // via its shared record ID, its photos — in the exported GeoPackage). Only
-  // called for species flagged "Significant".
+  // Captures a GPS fix for one species record and ADDS it to that record's
+  // list of points (a species can have more than one location — e.g. several
+  // individuals/patches spotted in different spots) — used to georeference it
+  // (and, via its shared record ID, its photos) in the exported GeoPackage.
+  // Only called for species flagged "Significant".
   function captureLocation(idx){
     const r = rows[idx];
     if(!r) return;
@@ -1698,13 +1833,11 @@ window.FHKit = (function(){
     render();
     navigator.geolocation.getCurrentPosition(
       pos => {
-        r.lat = pos.coords.latitude;
-        r.lon = pos.coords.longitude;
-        r.gpsAccuracy = pos.coords.accuracy;
-        r.gpsStatus = "ok";
-        r.gpsMessage = "";
+        r.points = r.points || [];
+        r.points.push({ id:makePointId(), lat:pos.coords.latitude, lon:pos.coords.longitude, accuracy:pos.coords.accuracy });
+        r.gpsStatus = "idle"; r.gpsMessage = "";
         render(); autosave();
-        liveSyncField(r, { lat:r.lat, lon:r.lon, gpsAccuracy:r.gpsAccuracy, gpsStatus:r.gpsStatus, gpsMessage:r.gpsMessage });
+        liveSyncField(r, { pointsJson: encodePointsField(r.points), gpsStatus:r.gpsStatus, gpsMessage:r.gpsMessage });
       },
       err => {
         r.gpsStatus = "error";
@@ -1715,6 +1848,15 @@ window.FHKit = (function(){
       { enableHighAccuracy:true, timeout:12000, maximumAge:60000 }
     );
   }
+  // Removes one previously-captured point from a species record (the rest —
+  // and any already-attached photos/notes — are untouched).
+  function deletePoint(idx, pointId){
+    const r = rows[idx];
+    if(!r || !r.points) return;
+    r.points = r.points.filter(p=>p.id!==pointId);
+    render(); autosave();
+    liveSyncField(r, { pointsJson: encodePointsField(r.points) });
+  }
   // A compact, scannable line for a previously-listed species — just the
   // common + scientific name (already in alphabetical order, per sortRows)
   // plus small status badges, so a long checklist doesn't turn into a wall
@@ -1723,9 +1865,13 @@ window.FHKit = (function(){
     const badges = (r.type==="invasive"?' <span class="badge inv">INVASIVE</span>':'')
       + (r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')
       + (r.significant?' <span class="badge ind">SIGNIFICANT</span>':'');
+    // The record id is shown here too (not just on the full card) because
+    // duplicates are allowed on purpose — two rows can share the same name,
+    // so this is what tells them apart at a glance in the brief list.
     return '<div class="species-row brief" data-expand="'+i+'" role="button" tabindex="0" title="Tap to edit Origin, Uncertain, Significant…">'
       + '<div class="brief-line"><span class="cn">'+FHKit.esc(r.common||r.sci)+'</span>'
-      + '<span class="sci-inline">'+FHKit.esc(r.sci)+'</span>'+badges+'</div>'
+      + '<span class="sci-inline">'+FHKit.esc(r.sci)+'</span>'
+      + '<span class="brief-id" title="Record ID">'+FHKit.esc(r.id||"")+'</span>'+badges+'</div>'
       + '<span class="brief-chev">›</span></div>';
   }
   function fullRowHtml(r, i, collapsible){
@@ -1742,22 +1888,32 @@ window.FHKit = (function(){
     const notesBtn = '<button type="button" class="notes-btn'+(hasNotes?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+i+'" title="Field notes for this species">Field Notes'+(hasNotes?' ●':'')+'</button>';
     const photosBtn = '<button type="button" class="notes-btn'+(photoCount?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+i+'" title="Photos for this species">Photos'+(photoCount?' ('+photoCount+')':'')+'</button>';
     // Location is only captured/shown for species flagged "Significant" —
-    // most species get no geo-line at all, and no location prompt.
+    // most species get no geo-line at all, and no location prompt. A species
+    // can carry more than one point (e.g. several individuals/patches seen in
+    // different spots) — each captured point gets its own line with its own
+    // Remove button, and "+ Add point" captures another rather than
+    // overwriting the last one.
     let geoLine = "";
     if(r.significant){
-      if(r.gpsStatus === "ok" && typeof r.lat === "number"){
-        const acc = (typeof r.gpsAccuracy === "number") ? " (±"+Math.round(r.gpsAccuracy)+"m)" : "";
-        geoLine = '<div class="geo-line ok"><span class="geo-text">📍 '+r.lat.toFixed(5)+', '+r.lon.toFixed(5)+acc+'</span>'
-          + '<button type="button" data-geo-retry="'+i+'" title="Re-capture this species’ location">Update</button></div>';
-      } else if(r.gpsStatus === "locating"){
-        geoLine = '<div class="geo-line"><span class="geo-text">📍 Locating…</span></div>';
+      const pts = r.points || [];
+      const pointLines = pts.map(p=>{
+        const acc = (typeof p.accuracy === "number") ? " (±"+Math.round(p.accuracy)+"m)" : "";
+        return '<div class="geo-line ok"><span class="geo-text">📍 '+p.lat.toFixed(5)+', '+p.lon.toFixed(5)+acc+'</span>'
+          + '<button type="button" data-geo-del="'+i+'|'+p.id+'" title="Remove this point">Remove</button></div>';
+      }).join("");
+      let actionLine = "";
+      if(r.gpsStatus === "locating"){
+        actionLine = '<div class="geo-line"><span class="geo-text">📍 Locating…</span></div>';
       } else if(r.gpsStatus === "error" || r.gpsStatus === "unsupported"){
-        geoLine = '<div class="geo-line error"><span class="geo-text">📍 '+FHKit.esc(r.gpsMessage||"No location")+'</span>'
+        actionLine = '<div class="geo-line error"><span class="geo-text">📍 '+FHKit.esc(r.gpsMessage||"No location")+'</span>'
           + '<button type="button" data-geo-retry="'+i+'">Retry</button></div>';
-      } else {
-        geoLine = '<div class="geo-line"><span class="geo-text">📍 No location captured</span>'
+      } else if(!pts.length){
+        actionLine = '<div class="geo-line"><span class="geo-text">📍 No location captured</span>'
           + '<button type="button" data-geo-retry="'+i+'">Get location</button></div>';
+      } else {
+        actionLine = '<div class="geo-line"><button type="button" data-geo-retry="'+i+'">+ Add another point</button></div>';
       }
+      geoLine = (pts.length ? '<div class="geo-points">'+pointLines+'</div>' : '') + actionLine;
     }
     const head = '<div class="sp-name-row"><div>'+FHKit.esc(r.common||r.sci)+(FHKit.consBadge(r.ffg,r.epbc)?' '+FHKit.consBadge(r.ffg,r.epbc):'')+(r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')+(r.significant?' <span class="badge ind" title="Significant species">SIGNIFICANT</span>':'')+'</div><div class="row-actions">'+collapseBtn+notesBtn+photosBtn+'</div></div>'
       + '<div class="sci"><span>'+FHKit.esc(r.sci)+'</span><span class="rec-id" title="Unique identifier for this species record">'+FHKit.esc(r.id||"")+'</span>'
@@ -1843,14 +1999,15 @@ window.FHKit = (function(){
     const xlsxFilename = baseName+".xlsx";
 
     // A photo zip only makes sense if there's a photo OR a captured GPS point
-    // to include — the GeoPackage rides along in that same zip. One point per
-    // species flagged Significant that also has a captured location, keyed by
-    // that species' own record ID (the same ID already stamped onto its photos).
+    // to include — the GeoPackage rides along in that same zip. Every captured
+    // point for every species flagged Significant becomes its own feature
+    // (a species can have more than one), each keyed by that species' own
+    // record ID (the same ID already stamped onto its photos).
     const photoFiles = buildPhotoFiles();
     const hasPhotos = Object.keys(photoFiles).length > 0;
     const geoPoints = rows
-      .filter(r=> r.significant && typeof r.lat==="number" && typeof r.lon==="number")
-      .map(r=> ({ id:r.id, sci:r.sci, common:r.common||r.sci, lat:r.lat, lon:r.lon }));
+      .filter(r=> r.significant && Array.isArray(r.points))
+      .flatMap(r=> r.points.map(p=> ({ id:r.id, sci:r.sci, common:r.common||r.sci, lat:p.lat, lon:p.lon })));
     const hasPoints = geoPoints.length > 0;
     let zipBlob = null;
     if(hasPhotos || hasPoints){
@@ -1920,10 +2077,11 @@ window.FHKit = (function(){
       const idx = +sg, r = rows[idx];
       r.significant = e.target.checked;
       liveSyncField(r, {significant:r.significant});
-      // Capture a location the moment a species is flagged significant (unless
-      // we already have one, or a request is already in flight); unchecking
-      // just hides the geo-line again — any already-captured fix is kept.
-      if(r.significant && r.gpsStatus!=="ok" && r.gpsStatus!=="locating") captureLocation(idx);
+      // Capture a first location the moment a species is flagged significant
+      // (unless it already has one, or a request is already in flight);
+      // unchecking just hides the points/geo-line again — anything already
+      // captured is kept, and more points can still be added later.
+      if(r.significant && !(r.points && r.points.length) && r.gpsStatus!=="locating") captureLocation(idx);
       else { render(); autosave(); }
     }
     else if(pi!=null && pi!==""){
@@ -1960,6 +2118,12 @@ window.FHKit = (function(){
     if(nt){ const r = rows[+nt.dataset.notesToggle]; if(openNotes.has(r)) openNotes.delete(r); else openNotes.add(r); render(); }
     const geo = e.target.closest("[data-geo-retry]");
     if(geo){ captureLocation(+geo.dataset.geoRetry); return; }
+    const geoDel = e.target.closest("[data-geo-del]");
+    if(geoDel){
+      const [idx, pointId] = geoDel.dataset.geoDel.split("|");
+      deletePoint(+idx, pointId);
+      return;
+    }
   });
   $("tbody").addEventListener("keydown", e=>{
     if(e.key!=="Enter" && e.key!==" ") return;
@@ -1974,6 +2138,7 @@ window.FHKit = (function(){
   $("liveStartBtn").addEventListener("click", startLive);
   $("liveJoinBtn").addEventListener("click", joinLive);
   $("liveLeaveBtn").addEventListener("click", leaveLive);
+  $("liveBanner").addEventListener("click", e=>{ if(e.target && e.target.id==="liveRejoinBtn") rejoinDroppedLive(); });
   renderLiveUI();
 
   $("addFieldNoteBtn").addEventListener("click", addSiteNote);
