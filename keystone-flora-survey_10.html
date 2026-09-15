@@ -360,8 +360,16 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
     } catch (e) { /* ignore */ }
   }
 
+  // On poor reception a plain fetch() can sit unresolved far longer than
+  // it's worth waiting before giving up on VicFlora and using the bundled
+  // local list instead — a slow mobile connection can easily take 30s+ to
+  // fail on its own, if it ever does. Time it out explicitly so a bad
+  // signal fails FAST rather than leaving the picker stuck on "Searching…"
+  var GQL_TIMEOUT_MS = 5000;
   function gql(method, q) {
     var url, opts;
+    var controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var timeoutId = controller && setTimeout(function () { controller.abort(); }, GQL_TIMEOUT_MS);
     if (method === "GET") {
       url = ENDPOINT + "?query=" + encodeURIComponent(QUERY) +
             "&variables=" + encodeURIComponent(JSON.stringify({ q: q }));
@@ -374,13 +382,14 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
         body: JSON.stringify({ query: QUERY, variables: { q: q } })
       };
     }
+    if (controller) opts.signal = controller.signal;
     return fetch(url, opts).then(function (res) {
       if (!res.ok) throw new Error("VicFlora HTTP " + res.status);
       return res.json();
     }).then(function (json) {
       if (json && json.errors && json.errors.length) throw new Error("VicFlora GraphQL error");
       return normalise(json);
-    });
+    }).finally(function () { if (timeoutId) clearTimeout(timeoutId); });
   }
 
   // Resolves to an array of {sci, common, lf, type, status, source}.
@@ -392,7 +401,14 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
     if (mem.has(key)) return Promise.resolve(mem.get(key));
     if (disk[key]) { mem.set(key, disk[key]); return Promise.resolve(disk[key]); }
     return gql("GET", q)
-      .catch(function () { return gql("POST", q); })
+      .catch(function (err) {
+        // A timeout means the connection itself is the problem — retrying
+        // the same request as POST would likely just time out again too,
+        // doubling the wait for no benefit. Only retry via POST for a
+        // different kind of failure (e.g. GET being rejected outright).
+        if (err && err.name === "AbortError") throw err;
+        return gql("POST", q);
+      })
       .then(function (out) { mem.set(key, out); persist(key, out); return out; });
   }
 
@@ -1174,7 +1190,7 @@ window.FHKit = (function(){
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-15.1";
+  const BUILD_VERSION = "2026-09-15.2";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   async function checkForUpdate(){
     try{
