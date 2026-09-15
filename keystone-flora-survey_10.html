@@ -1191,10 +1191,20 @@ window.FHKit = (function(){
   // (e.g. a retried request after a flaky connection). ──
   function freshLiveState(){
     return { active:false, status:"idle", code:null, idToken:null, refreshToken:null, tokenExpiresAt:0,
-      consecutiveFailures:0, lastSyncOk:0, lastDroppedCode:null };
+      consecutiveFailures:0, lastSyncOk:0, lastDroppedCode:null, lastErrorCode:null };
   }
   let live = freshLiveState();
   let pollTimer = null;
+  // A short, human-visible tag for what actually went wrong — "network" for a
+  // real connectivity failure, or Firestore/Auth's own status text (e.g.
+  // PERMISSION_DENIED, UNAUTHENTICATED) for a request that reached the server
+  // but was refused. Shown in toasts/the banner so a sync problem can be
+  // diagnosed from the phone in the field, without needing a browser console.
+  function errCode(e){
+    if(!e) return "unknown";
+    if(e.network) return "network";
+    return e.status || e.httpStatus || "unknown";
+  }
   const recentlyCreated = new Set();  // record ids created by THIS device in the last ~15s — guards
                                        // against a delete-reconciliation race right after creating one
   const noteSyncTimers = new Map();   // per-row debounce timers for syncing Field Notes while typing
@@ -1259,12 +1269,13 @@ window.FHKit = (function(){
   function renderLiveBanner(){
     const el = $("liveBanner");
     if(!el) return;
+    const codeNote = live.lastErrorCode ? ' <span style="opacity:.75">('+FHKit.esc(String(live.lastErrorCode))+')</span>' : '';
     if(live.active && live.status==="error"){
       el.hidden = false;
-      el.innerHTML = "⚠️ Team Sync connection lost — retrying in the background. Your entries are still being saved on this device.";
+      el.innerHTML = "⚠️ Team Sync connection lost — retrying in the background. Your entries are still being saved on this device."+codeNote;
     } else if(!live.active && live.lastDroppedCode){
       el.hidden = false;
-      el.innerHTML = "⚠️ Team Sync disconnected — your data is safe on this device."
+      el.innerHTML = "⚠️ Team Sync disconnected — your data is safe on this device."+codeNote
         + ' <button type="button" id="liveRejoinBtn">Rejoin '+FHKit.esc(live.lastDroppedCode)+'</button>';
     } else {
       el.hidden = true;
@@ -1422,6 +1433,7 @@ window.FHKit = (function(){
         if(wasDown){ setLiveStatus("connected"); FHKit.toast("Team Sync reconnected"); }
       }catch(e){
         live.consecutiveFailures = (live.consecutiveFailures||0) + 1;
+        live.lastErrorCode = errCode(e);
         // A couple of failed polls in a row (~10s) — flip the status and the
         // small pill, but keep quietly retrying; this alone used to be easy
         // to miss, which is exactly what the sticky banner above is for once
@@ -1490,7 +1502,7 @@ window.FHKit = (function(){
       FHKit.toast("Live survey started — code "+code);
     }catch(e){
       live.active = false; setLiveStatus("idle");
-      FHKit.toast("Couldn't start a live survey — check your connection");
+      FHKit.toast("Couldn't start a live survey ("+errCode(e)+") — check your connection");
     }
   }
   async function joinLive(){
@@ -1516,7 +1528,7 @@ window.FHKit = (function(){
       FHKit.toast("Joined live survey "+code);
     }catch(e){
       live.active = false; setLiveStatus("idle");
-      FHKit.toast("Couldn't join — check the code and your connection");
+      FHKit.toast("Couldn't join ("+errCode(e)+") — check the code and your connection");
     }
   }
   function leaveLive(){
@@ -1546,7 +1558,7 @@ window.FHKit = (function(){
       FHKit.toast("Reconnected — your entries and your team's are now combined");
     }catch(e){
       setLiveStatus("idle");
-      FHKit.toast("Still couldn't reconnect — check your connection and try again");
+      FHKit.toast("Still couldn't reconnect ("+errCode(e)+") — try again in a moment");
     }
   }
   async function tryAutoRejoinLive(){
@@ -1809,7 +1821,8 @@ window.FHKit = (function(){
       try{
         await liveCreateSpeciesForRow(row);
       }catch(e){
-        FHKit.toast(e && e.network ? "Offline — added locally, will sync once connected" : "Couldn't sync — added locally, will retry");
+        live.lastErrorCode = errCode(e);
+        FHKit.toast(e && e.network ? "Offline — added locally, will sync once connected" : "Couldn't sync ("+errCode(e)+") — added locally, will retry");
         queueLiveOp({ op:"create", id:row.id, fields:liveSpeciesFields(row) });
       }
     }
