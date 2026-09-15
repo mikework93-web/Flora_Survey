@@ -1167,6 +1167,49 @@ window.FHKit = (function(){
   let siteNotes = [];    // site-level field notes log: {id, text, ts} — not tied to a species
   let noteSeq = 0;
 
+  // ── Self-update check ────────────────────────────────────────────────
+  // A plain "Add to Home Screen" shortcut has no built-in way to notice
+  // there's a newer version — it just keeps showing whatever got cached,
+  // sometimes indefinitely. Bump this string every time this file is
+  // updated (any change is enough — it's just compared, never parsed) and
+  // the app will notice on its own and offer a one-tap update instead of
+  // needing manual cache-clearing steps.
+  const BUILD_VERSION = "2026-09-15.1";
+  const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
+  async function checkForUpdate(){
+    try{
+      const last = Number(localStorage.getItem(UPDATE_CHECK_KEY)||0);
+      if(Date.now() - last < 20*60*1000) return; // at most once per 20 min
+      localStorage.setItem(UPDATE_CHECK_KEY, String(Date.now()));
+      const url = location.href.split("#")[0].split("?")[0] + "?_=" + Date.now();
+      const res = await fetch(url, { cache: "no-store" });
+      if(!res.ok) return;
+      const text = await res.text();
+      const m = text.match(/const BUILD_VERSION = "([^"]+)"/);
+      if(m && m[1] && m[1] !== BUILD_VERSION) showUpdateBanner();
+    }catch(e){ /* offline, or this page isn't reachable right now — not worth surfacing */ }
+  }
+  function showUpdateBanner(){
+    if(document.getElementById("updateBanner")) return;
+    const el = document.createElement("div");
+    el.id = "updateBanner";
+    el.style.cssText = "background:#2f6fed;color:#fff;padding:10px 16px;font-size:13px;font-weight:600;"
+      +"text-align:center;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap";
+    el.innerHTML = "🔄 A newer version of this app is available."
+      + ' <button type="button" id="updateReloadBtn" style="background:#fff;color:#2f6fed;border:none;border-radius:6px;padding:4px 10px;font-weight:700;cursor:pointer">Update now</button>'
+      + ' <button type="button" id="updateDismissBtn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.6);border-radius:6px;padding:4px 10px;font-weight:600;cursor:pointer">Later</button>';
+    document.body.insertBefore(el, document.body.firstChild);
+    // Navigating to a cache-busted URL forces a genuinely fresh network
+    // fetch of the page (bypassing whatever had it stuck before) — the
+    // programmatic equivalent of the manual clear-cache steps this
+    // replaces. Autosave means nothing mid-survey is lost by doing this.
+    el.querySelector("#updateReloadBtn").onclick = ()=>{
+      location.href = location.href.split("#")[0].split("?")[0] + "?_=" + Date.now();
+    };
+    el.querySelector("#updateDismissBtn").onclick = ()=> el.remove();
+  }
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) checkForUpdate(); });
+
   // ── Team Sync (Firebase) config ───────────────────────────────────────
   // Fill these in with your own Firebase project's values (Firebase Console
   // → Project settings → General → Your apps → Web app → the
@@ -2231,6 +2274,7 @@ window.FHKit = (function(){
   render();
   renderSiteNotes();
   tryAutoRejoinLive();   // silently reconnects to a live survey this device was already in
+  checkForUpdate();      // silently checks for a newer version — see showUpdateBanner()
 })();
 </script>
 </body>
