@@ -249,6 +249,7 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
     <div id="liveActive" hidden>
       <p class="muted" style="margin:0 0 8px">Live survey code — share this with your team:</p>
       <div class="live-code" id="liveCodeDisplay"></div>
+      <p class="muted" id="liveSyncedCount" style="margin:10px 0 0;font-size:12px"></p>
       <button class="btn sec" type="button" id="liveLeaveBtn" style="margin-top:12px">Leave live sync</button>
     </div>
   </div>
@@ -1209,7 +1210,7 @@ window.FHKit = (function(){
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-15.3";
+  const BUILD_VERSION = "2026-09-15.4";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   async function checkForUpdate(){
     try{
@@ -1285,10 +1286,11 @@ window.FHKit = (function(){
   // (e.g. a retried request after a flaky connection). ──
   function freshLiveState(){
     return { active:false, status:"idle", code:null, idToken:null, refreshToken:null, tokenExpiresAt:0,
-      consecutiveFailures:0, lastSyncOk:0, lastDroppedCode:null, lastErrorCode:null };
+      consecutiveFailures:0, lastSyncOk:0, lastDroppedCode:null, lastErrorCode:null, remoteCount:null };
   }
   let live = freshLiveState();
   let pollTimer = null;
+  let dropRetryTimer = null;  // background auto-reconnect while dropped — see scheduleDropRetry()
   // A short, human-visible tag for what actually went wrong — "network" for a
   // real connectivity failure, or Firestore/Auth's own status text (e.g.
   // PERMISSION_DENIED, UNAUTHENTICATED) for a request that reached the server
@@ -1350,6 +1352,12 @@ window.FHKit = (function(){
       pill.textContent = live.status==="connected" ? "🟢 Live" : (live.status==="connecting" ? "🟡 Connecting…" : "🔴 Offline — retrying");
       setup.hidden = true; active.hidden = false;
       $("liveCodeDisplay").textContent = live.code||"";
+      const countEl = $("liveSyncedCount");
+      if(countEl){
+        countEl.textContent = (typeof live.remoteCount === "number")
+          ? "Server has "+live.remoteCount+" species logged for the whole team, as of the last successful sync. Compare this number across devices to catch one that's fallen behind."
+          : "";
+      }
     } else {
       pill.hidden = true;
       setup.hidden = false; active.hidden = true;
@@ -1389,6 +1397,7 @@ window.FHKit = (function(){
   function noticeLiveDropped(code){
     live.active = false; live.status = "idle"; live.lastDroppedCode = code;
     renderLiveUI();
+    scheduleDropRetry();   // keep trying in the background — don't rely on the person noticing the banner
   }
   function handleLiveDropped(){
     if(!live.active) return;
@@ -1509,6 +1518,13 @@ window.FHKit = (function(){
     rows = rows.filter(r=> !r._liveUpdatedAt || remoteIds.has(r.id) || recentlyCreated.has(r.id));
     const pinned = mostRecent && rows.find(r=>r.id===mostRecent._id);
     sortRows(pinned ? pinned.id : null);
+    // The whole team's shared count, shown on the Team Sync card — lets
+    // everyone eyeball whether their device roughly matches what the server
+    // has, catching a device that's silently fallen behind (or never fully
+    // reconnected after a drop) WHILE still in the field, instead of only
+    // discovering a mismatch after the fact at export time.
+    live.remoteCount = remoteDocs.length;
+    renderLiveUI();
     render(); autosave();
   }
   // Pulls the shared list AND pushes up anything local that hasn't made it to
@@ -1654,6 +1670,7 @@ window.FHKit = (function(){
   }
   function leaveLive(){
     stopPolling();
+    clearTimeout(dropRetryTimer);
     live = freshLiveState();
     try{ localStorage.removeItem(LIVE_KEY); }catch(e){}
     rows.forEach(r=>{ delete r._liveUpdatedAt; });
@@ -1663,24 +1680,48 @@ window.FHKit = (function(){
   // Reconnects to a live survey this device previously dropped out of (see
   // handleLiveDropped/noticeLiveDropped) — pulls the shared list AND pushes
   // up anything logged locally in the meantime, so nobody's entries get lost.
-  async function rejoinDroppedLive(){
+  // silent=true is a background retry (scheduleDropRetry below): no "still
+  // couldn't reconnect" toast on failure — a person who's put the phone away
+  // shouldn't get toasts every 20 minutes for a signal that hasn't come back
+  // yet — but a SUCCESSFUL silent reconnect still toasts, because that one's
+  // worth knowing about without having to notice and tap anything.
+  async function attemptReconnect(silent){
     const code = live.lastDroppedCode;
     if(!code) return;
-    setLiveStatus("connecting");
+    if(!silent) setLiveStatus("connecting");
     try{
       await ensureAuth();
       const survey = await FHKit.live.fsGetDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+code);
-      if(!survey){ live.lastDroppedCode = null; setLiveStatus("idle"); FHKit.toast("That live survey no longer exists"); return; }
+      if(!survey){
+        live.lastDroppedCode = null; clearTimeout(dropRetryTimer);
+        setLiveStatus("idle");
+        if(!silent) FHKit.toast("That live survey no longer exists");
+        return;
+      }
       live.code = code; live.active = true; live.lastDroppedCode = null;
+      clearTimeout(dropRetryTimer);
       await reconcileWithRemote();
       persistLiveSession();
       setLiveStatus("connected");
       startPolling();
       FHKit.toast("Reconnected — your entries and your team's are now combined");
     }catch(e){
+      live.lastErrorCode = errCode(e);
       setLiveStatus("idle");
-      FHKit.toast("Still couldn't reconnect ("+errCode(e)+") — try again in a moment");
+      if(!silent) FHKit.toast("Still couldn't reconnect ("+errCode(e)+") — try again in a moment");
+      scheduleDropRetry();   // still down — keep trying quietly in the background
     }
+  }
+  function rejoinDroppedLive(){ return attemptReconnect(false); }
+  // While dropped, retry silently on the same cadence as normal polling
+  // instead of leaving reconnection entirely up to someone noticing the
+  // banner and tapping Rejoin — a device left running through a dead patch
+  // of a survey should be able to catch itself back up on its own once
+  // signal returns, rather than sitting stuck (and quietly falling behind
+  // the rest of the team's species count) until someone happens to look.
+  function scheduleDropRetry(){
+    clearTimeout(dropRetryTimer);
+    dropRetryTimer = setTimeout(()=>{ attemptReconnect(true); }, LIVE_POLL_MS);
   }
   async function tryAutoRejoinLive(){
     if(!LIVE_CONFIGURED) return;
