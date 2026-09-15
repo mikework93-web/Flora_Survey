@@ -1035,24 +1035,43 @@ window.FHKit = (function(){
   // Returns true if either tier put a share/email path in front of the
   // person; false only when this browser has no Web Share API at all (e.g.
   // desktop Firefox), which is when the caller falls back to a plain mailto.
+  //
+  // lastShareDiagnostic records WHY the automatic tiers didn't apply/work —
+  // Android's actual behavior here varies a lot by browser/OS version in
+  // ways impossible to fully predict from a desk, so when the caller ends up
+  // on the plain mailto fallback it surfaces this in the toast (the same
+  // "show the real reason instead of a generic message" approach used for
+  // Team Sync's error codes) so a real-world report can be diagnosed.
+  let lastShareDiagnostic = null;
   async function shareFiles(items, title, text){
+    lastShareDiagnostic = null;
     try{
       const files = items.map(it=> new File([it.blob], it.filename, { type: it.mime }));
       if(navigator.canShare && navigator.canShare({ files })){
         await navigator.share({ files, title, text });
         toast("Shared"); return true;
       }
-    }catch(e){ if(e && e.name==="AbortError") return true; /* user cancelled the share sheet — not an error */ }
+      lastShareDiagnostic = navigator.canShare ? "files not shareable here" : "no file-share support";
+    }catch(e){
+      if(e && e.name==="AbortError") return true; /* user cancelled the share sheet — not an error */
+      lastShareDiagnostic = "share-with-files failed: "+(e&&e.name)+(e&&e.message?" ("+e.message+")":"");
+    }
     if(navigator.share){
       items.forEach((it,i)=> setTimeout(()=> triggerDownload(it.blob, it.filename), i*300));
       try{
         await navigator.share({ title, text });
         toast("Files downloaded — choose an app to attach and send them");
         return true;
-      }catch(e){ if(e && e.name==="AbortError") return true; /* files are already downloaded either way */ }
+      }catch(e){
+        if(e && e.name==="AbortError") return true; /* files are already downloaded either way */
+        lastShareDiagnostic = (lastShareDiagnostic?lastShareDiagnostic+"; ":"")+"text-only share failed: "+(e&&e.name)+(e&&e.message?" ("+e.message+")":"");
+      }
+    } else {
+      lastShareDiagnostic = (lastShareDiagnostic?lastShareDiagnostic+"; ":"")+"no navigator.share at all";
     }
     return false;
   }
+  function getLastShareDiagnostic(){ return lastShareDiagnostic; }
 
   /* ---- Team Sync: Firestore + Firebase Auth (Anonymous) REST client -------
      No SDK — plain fetch() against Google's public REST APIs, matching the
@@ -1169,7 +1188,7 @@ window.FHKit = (function(){
   }
   const live = { setLiveEndpoints, authAnon, authRefresh, fsCreateDoc, fsGetDoc, fsListDocs, fsPatchDoc, fsDeleteDoc };
 
-  return { esc, today, toast, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, buildGeoPackageBlob, buildGeoPackageBytes, triggerDownload, shareFiles, buildPicker, manager, consLabel, consBadge, live };
+  return { esc, today, toast, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, buildGeoPackageBlob, buildGeoPackageBytes, triggerDownload, shareFiles, getLastShareDiagnostic, buildPicker, manager, consLabel, consBadge, live };
 })();
 
 </script>
@@ -1190,7 +1209,7 @@ window.FHKit = (function(){
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-15.2";
+  const BUILD_VERSION = "2026-09-15.3";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   async function checkForUpdate(){
     try{
@@ -2174,10 +2193,12 @@ window.FHKit = (function(){
       close();
       if(shared) return;
       // This browser can't attach files to a share/email directly (e.g. desktop
-      // Firefox) — download them instead and open a blank email to attach them to.
+      // Firefox, or an Android browser whose share sheet didn't cooperate) —
+      // download them instead and open a blank email to attach them to.
       FHKit.triggerDownload(ctx.xlsxBlob, ctx.xlsxFilename);
       if(ctx.zipBlob) setTimeout(()=>FHKit.triggerDownload(ctx.zipBlob, ctx.zipFilename), 300);
-      FHKit.toast("Your browser can't attach files to email directly — downloaded instead; please attach manually");
+      const diag = FHKit.getLastShareDiagnostic();
+      FHKit.toast("Your browser can't attach files to email directly"+(diag?" ("+diag+")":"")+" — downloaded instead; please attach manually");
       window.location.href = "mailto:?subject="+encodeURIComponent(subject)
         +"&body="+encodeURIComponent("Please attach "+filesNote+" (just downloaded) to this email.");
     });
