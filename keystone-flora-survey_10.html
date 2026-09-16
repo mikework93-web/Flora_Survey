@@ -1215,7 +1215,7 @@ window.FHKit = (function(){
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-16.2";
+  const BUILD_VERSION = "2026-09-16.3";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -1675,6 +1675,32 @@ window.FHKit = (function(){
     if(document.hidden){ stopPolling(); }
     else { startPolling(); pullRemoteSpecies().catch(()=>{}); }
   });
+  // Catches any local species that was never even ATTEMPTED — e.g. logged
+  // before Team Sync was started/joined for this survey, added in the brief
+  // window of a reconnect where live.active was momentarily false, or
+  // restored from an autosaved draft that predates this device's live
+  // session. The explicit retry queue alone can't catch these: nothing ever
+  // tried to push them, so nothing ever failed into the queue — which means
+  // there's no error to show for it either. Left unguarded against, a
+  // device can end up silently carrying dozens of species that were simply
+  // never sent, for as long as it stays continuously connected (the only
+  // thing that DID catch this before — reconcileWithRemote(), on join/
+  // rejoin/reconnect — only ever runs once per connection, not on every
+  // poll). Running this at the start of every queue flush means nothing can
+  // fall through that gap for longer than one poll cycle.
+  function queueUnsyncedRows(){
+    const q = loadLiveQueue();
+    const queuedIds = new Set(q.map(op=>op.id));
+    let added = false;
+    rows.forEach(r=>{
+      if(!r._liveUpdatedAt && !queuedIds.has(r.id)){
+        q.push({ op:"create", id:r.id, fields:liveSpeciesFields(r) });
+        queuedIds.add(r.id);
+        added = true;
+      }
+    });
+    if(added) saveLiveQueue(q);
+  }
   // Retries anything that couldn't reach the server while this device was
   // offline. A queued op is only ever dropped when we have positive proof
   // it's unnecessary (the doc already exists / already reflects the patch /
@@ -1685,6 +1711,7 @@ window.FHKit = (function(){
   // network error.
   async function flushLiveQueue(){
     if(!live.active) return;
+    queueUnsyncedRows();
     let q = loadLiveQueue();
     if(!q.length) return;
     try{ await ensureAuth(); }catch(e){ return; }
