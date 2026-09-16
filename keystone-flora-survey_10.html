@@ -1216,7 +1216,7 @@ window.FHKit = (function(){
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-16.4";
+  const BUILD_VERSION = "2026-09-16.5";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -1494,8 +1494,26 @@ window.FHKit = (function(){
   // Patches specific fields on a row's shared doc — used for every edit
   // (origin, uncertain, significant, GPS points, field notes). Best-effort:
   // queued for the next poll tick if the device is offline right now.
+  //
+  // Bails out entirely if this row's own CREATE hasn't been confirmed yet
+  // (no _liveUpdatedAt). This matters more than it looks: a PATCH request
+  // (fsPatchDoc, using an updateMask) upserts in Firestore — sent against a
+  // row that was never actually created, it would silently create a
+  // document containing ONLY the patched fields (missing sci name, common
+  // name, type, everything else), while ALSO stamping _liveUpdatedAt on the
+  // local row as if it were now fully synced. That combination is exactly
+  // what let real species go permanently unsynced with no error ever
+  // showing: editing field notes, GPS, or a flag on a not-yet-created row
+  // (e.g. its create failed/was queued, or was added while briefly
+  // disconnected) marked it "synced" from that point on, which hid it from
+  // every later catch-up sweep (queueUnsyncedRows, reconcileWithRemote) —
+  // even though its full record had never actually reached the server.
+  // Skipping the patch here costs nothing: the edited field is already
+  // sitting in `row` itself, so it's included automatically the moment this
+  // row's real create finally goes through.
   function liveSyncField(row, partial){
     if(!live.active) return;
+    if(!row._liveUpdatedAt) return; // not yet confirmed created — let the create carry this edit instead
     row._liveUpdatedAt = new Date().toISOString(); // optimistic — the poll reconciles the real value
     const fields = Object.assign({}, partial, { updatedBy: userName()||row.addedBy||"", updatedAt: new Date().toISOString() });
     ensureAuth()
@@ -1689,14 +1707,27 @@ window.FHKit = (function(){
   // rejoin/reconnect — only ever runs once per connection, not on every
   // poll). Running this at the start of every queue flush means nothing can
   // fall through that gap for longer than one poll cycle.
+  //
+  // Also REFRESHES the fields on a create that's already queued, rather
+  // than leaving it untouched — a row can easily get edited (a flag, GPS,
+  // field notes) while its very first create attempt is still sitting in
+  // the retry queue (e.g. logged with poor reception, then flagged
+  // Significant moments later while still offline). Without this, the
+  // eventual create would send whatever the row looked like at the moment
+  // it FIRST failed, silently losing every edit made in between — the
+  // fields liveSyncField() intentionally leaves for the create to carry
+  // (see its own comment) would otherwise never actually get carried.
   function queueUnsyncedRows(){
     const q = loadLiveQueue();
-    const queuedIds = new Set(q.map(op=>op.id));
     let added = false;
     rows.forEach(r=>{
-      if(!r._liveUpdatedAt && !queuedIds.has(r.id)){
-        q.push({ op:"create", id:r.id, fields:liveSpeciesFields(r) });
-        queuedIds.add(r.id);
+      if(r._liveUpdatedAt) return; // already confirmed created
+      const fresh = liveSpeciesFields(r);
+      const existing = q.find(op=> op.id===r.id && op.op==="create");
+      if(existing){
+        if(JSON.stringify(existing.fields) !== JSON.stringify(fresh)){ existing.fields = fresh; added = true; }
+      } else {
+        q.push({ op:"create", id:r.id, fields:fresh });
         added = true;
       }
     });
