@@ -238,6 +238,7 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
     <div id="liveSetup">
       <div class="field"><label for="userName">Your name</label><input id="userName" placeholder="e.g. Mike" autocomplete="name"></div>
       <p class="muted" style="margin:8px 0 12px">Survey with your team live — everyone sees the same checklist as species are added. If two of you log the same (or a similar) species, both entries are kept — each with its own points, photos and notes. Photos always stay on each person's own phone and are combined when you export.</p>
+      <p class="muted" id="liveRecoverableNote" style="margin:0 0 10px;display:none">You have a live survey waiting to reconnect (see the banner above) — use <b>Rejoin</b> there first. Starting or joining a different one now would leave it, and anything not yet combined, behind. <button type="button" id="liveDiscardRecoverableBtn" style="background:none;border:none;color:var(--muted);font-size:12px;text-decoration:underline;cursor:pointer;padding:0">Discard it and start fresh instead</button></p>
       <div class="live-row">
         <button class="btn sec" type="button" id="liveStartBtn">Start a live survey</button>
         <span class="muted" style="font-size:12px">or</span>
@@ -1216,7 +1217,7 @@ window.FHKit = (function(){
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-16.5";
+  const BUILD_VERSION = "2026-09-16.6";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -1398,6 +1399,20 @@ window.FHKit = (function(){
     } else {
       pill.hidden = true;
       setup.hidden = false; active.hidden = true;
+      // Guards against the single biggest cause of survey data ending up
+      // scattered across many disconnected live sessions: this device
+      // already has one waiting to reconnect (the banner's Rejoin button),
+      // but "Start a live survey" / "Join" are RIGHT THERE too, and tapping
+      // either of those instead — easy to do in a hurry, or if the banner
+      // isn't noticed — silently abandons the recoverable one and starts a
+      // brand new, disconnected collection from scratch. Disabling them
+      // while there's something to rejoin forces that choice to be
+      // deliberate (via "Discard it and start fresh instead") rather than
+      // an accident.
+      const hasRecoverable = !!live.lastDroppedCode;
+      if(LIVE_CONFIGURED){ $("liveStartBtn").disabled = hasRecoverable; $("liveJoinBtn").disabled = hasRecoverable; }
+      const note = $("liveRecoverableNote");
+      if(note) note.style.display = hasRecoverable ? "block" : "none";
     }
   }
   // A small pill in the Team Sync card is easy to miss once you've scrolled
@@ -1442,6 +1457,20 @@ window.FHKit = (function(){
     stopPolling();
     noticeLiveDropped(code);
     FHKit.toast("Team Sync disconnected — your data is safe locally. Tap Rejoin to reconnect.");
+  }
+  // The deliberate escape hatch for the "Start/Join disabled while there's
+  // something to rejoin" guard above — lets someone who genuinely means to
+  // abandon a dropped session (not just reconnect to it) do so on purpose,
+  // instead of that guard leaving them stuck. Confirms first, since this
+  // is exactly the action that fragments a survey's data across separate
+  // sessions if done by accident — it should never happen silently.
+  function discardRecoverableLive(){
+    if(!live.lastDroppedCode) return;
+    if(!confirm("Give up on reconnecting to survey "+live.lastDroppedCode+"?\n\nYour species list stays exactly as it is on this device — but Start/Join will no longer try to combine with that survey, even if you rejoin its code later by hand.")) return;
+    clearTimeout(dropRetryTimer);
+    live.lastDroppedCode = null;
+    try{ localStorage.removeItem(LIVE_KEY); }catch(e){}
+    renderLiveUI();
   }
   function liveSpeciesFields(row){
     return {
@@ -1806,10 +1835,30 @@ window.FHKit = (function(){
       FHKit.toast("Couldn't sync right now ("+errCode(e)+") — check your connection, will keep retrying automatically");
     }
   }
+  // Reads the code of whatever live session is saved for next-load
+  // reconnect, independent of `live`'s own in-memory state — a normal page
+  // load re-attempts that reconnect asynchronously (tryAutoRejoinLive), and
+  // for a brief moment before it resolves, `live.lastDroppedCode` isn't set
+  // yet even though a session IS waiting to be picked back up. Checking
+  // storage directly closes that window too, not just the already-dropped
+  // case the UI disables Start/Join for.
+  function savedLiveCode(){
+    try{ const s = JSON.parse(localStorage.getItem(LIVE_KEY)); return (s && s.code) || null; }catch(e){ return null; }
+  }
   async function startLive(){
     if(!LIVE_CONFIGURED){ FHKit.toast("Team Sync isn't set up yet"); return; }
     const name = userName();
     if(!name){ FHKit.toast("Enter your name first"); $("userName").focus(); return; }
+    // See the big comment on the "Start/Join disabled while there's
+    // something to rejoin" guard in renderLiveUI() — this catches the same
+    // problem from the other direction (a saved session the UI hasn't
+    // flagged as dropped yet), so a fresh unique survey code can't get
+    // created out from under an existing one no matter how this gets
+    // reached. Whoever built up the species list on THIS device already
+    // knows what's on it — the risk is only ever a silent split, never
+    // losing that list itself.
+    const existingCode = savedLiveCode();
+    if(existingCode && !confirm("This device already has a live survey ("+existingCode+") saved. Starting a NEW one will leave it behind — anything on it won't combine with this new survey.\n\nCancel to go back and Rejoin "+existingCode+" instead, or OK to start a separate new survey anyway.")) return;
     saveUserName(name);
     live.lastDroppedCode = null;
     setLiveStatus("connecting");
@@ -1846,6 +1895,12 @@ window.FHKit = (function(){
     const code = (($("liveJoinCode").value)||"").trim().toUpperCase();
     if(!name){ FHKit.toast("Enter your name first"); $("userName").focus(); return; }
     if(!code){ FHKit.toast("Enter the code your teammate shared"); return; }
+    // Same guard as startLive() — joining a DIFFERENT code than one already
+    // saved on this device would silently strand it, exactly like starting
+    // fresh would. Joining the SAME code back (e.g. typing in the code you
+    // were already on) needs no warning — nothing would be left behind.
+    const existingCode = savedLiveCode();
+    if(existingCode && existingCode !== code && !confirm("This device already has a live survey ("+existingCode+") saved. Joining a different one ("+code+") will leave it behind — anything on it won't combine with this survey.\n\nCancel to go back and Rejoin "+existingCode+" instead, or OK to join "+code+" anyway.")) return;
     saveUserName(name);
     live.lastDroppedCode = null;
     setLiveStatus("connecting");
@@ -2513,6 +2568,7 @@ window.FHKit = (function(){
   $("liveStartBtn").addEventListener("click", startLive);
   $("liveJoinBtn").addEventListener("click", joinLive);
   $("liveLeaveBtn").addEventListener("click", leaveLive);
+  $("liveDiscardRecoverableBtn").addEventListener("click", discardRecoverableLive);
   $("liveSyncNowBtn").addEventListener("click", async ()=>{
     const btn = $("liveSyncNowBtn");
     btn.disabled = true; const original = btn.textContent; btn.textContent = "Syncing…";
