@@ -1215,7 +1215,7 @@ window.FHKit = (function(){
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-16.1";
+  const BUILD_VERSION = "2026-09-16.2";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -1285,6 +1285,7 @@ window.FHKit = (function(){
   const NAME_KEY  = "fh_"+FH_KEY+"_username";    // remembered "Your name" for this device
   const LIVE_KEY  = "fh_"+FH_KEY+"_live";        // { code, refreshToken } — so a reload can silently rejoin
   const LIVE_QUEUE_KEY = "fh_"+FH_KEY+"_livequeue"; // ops that couldn't reach the server yet (offline)
+  const DEVICE_ID_KEY = "fh_"+FH_KEY+"_deviceid";   // this device's own persistent id — see deviceId()
   let folderKey = makeFolderKey();
 
   // ── Team Sync (live, multi-person) state — see the FHKit.live REST client
@@ -1355,6 +1356,17 @@ window.FHKit = (function(){
   function loadLiveQueue(){ try{ return JSON.parse(localStorage.getItem(LIVE_QUEUE_KEY))||[]; }catch(e){ return []; } }
   function saveLiveQueue(q){ try{ localStorage.setItem(LIVE_QUEUE_KEY, JSON.stringify(q)); }catch(e){} }
   function queueLiveOp(op){ const q = loadLiveQueue(); q.push(op); saveLiveQueue(q); }
+  // A random id generated once per device/browser and kept in localStorage —
+  // used only to tell this device's own presence heartbeat apart from a
+  // teammate's (see syncTeamPresence()). Not tied to identity in any way;
+  // it's fine if it changes after clearing site data.
+  function deviceId(){
+    try{
+      let id = localStorage.getItem(DEVICE_ID_KEY);
+      if(!id){ id = "dv"+Date.now().toString(36)+Math.random().toString(36).slice(2,8); localStorage.setItem(DEVICE_ID_KEY, id); }
+      return id;
+    }catch(e){ return "dv"+Date.now().toString(36); }
+  }
 
   function setLiveStatus(s){ live.status = s; renderLiveUI(); }
   function renderLiveUI(){
@@ -1436,7 +1448,8 @@ window.FHKit = (function(){
       fieldNotes:row.fieldNotes||"", free:!!row.free, uncertain:!!row.uncertain, significant:!!row.significant,
       pointsJson: encodePointsField(row.points), gpsStatus: row.gpsStatus||"idle", gpsMessage: row.gpsMessage||"",
       recordId: row.id, addedBy: row.addedBy||userName()||"", updatedBy: userName()||row.addedBy||"", updatedAt: new Date().toISOString(),
-      appVersion: BUILD_VERSION  // lets a poll notice a teammate is on a different build — see pullRemoteSpecies()
+      appVersion: BUILD_VERSION  // historical metadata only (what wrote this record) — the "different app
+                                  // version" warning itself is driven by device presence, see syncTeamPresence()
     };
   }
   // Turns a Firestore species doc into a local row object — used for a
@@ -1565,16 +1578,38 @@ window.FHKit = (function(){
     // reconnected after a drop) WHILE still in the field, instead of only
     // discovering a mismatch after the fact at export time.
     live.remoteCount = remoteDocs.length;
-    // A teammate on an older (or just different) copy of this file is a real,
-    // recurring cause of "our counts don't match" that's easy to miss in the
-    // field — every synced record carries the app version that wrote it, so
-    // flag it the moment a teammate's differs from this device's own.
-    const otherVersion = remoteDocs
-      .map(d=>d.appVersion)
-      .find(v=> v && v !== BUILD_VERSION);
-    live.versionMismatch = otherVersion || null;
+    await syncTeamPresence();
     renderLiveUI();
     render(); autosave();
+  }
+  // Team Sync's "a teammate is on a different app version" warning is
+  // sourced from a small per-device presence doc (surveys/{code}/devices/
+  // {deviceId}), overwritten by that device on every poll — NOT from the
+  // appVersion stamped on synced species records. Species docs are
+  // permanent history: one written before a teammate updated would
+  // otherwise keep tripping this warning forever, for everyone, even long
+  // after every device in the field is current — which is exactly what
+  // happened (a warning citing an old build kept appearing even after the
+  // device it named had already updated). A presence doc always reflects
+  // what its device is running RIGHT NOW, and is ignored once it's old
+  // enough that the device has likely gone offline or left the survey —
+  // see PRESENCE_STALE_MS, defined below alongside the polling cadence it's
+  // derived from.
+  async function syncTeamPresence(){
+    try{
+      await FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/devices/"+deviceId(),
+        { name:userName()||"", appVersion:BUILD_VERSION, updatedAt:new Date().toISOString() });
+    }catch(e){ /* best-effort heartbeat — a missed one just leaves this device looking briefly stale to teammates, corrected on the next successful poll */ }
+    try{
+      const devices = await FHKit.live.fsListDocs(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/devices");
+      const now = Date.now();
+      const otherVersion = devices
+        .filter(d=> d._id !== deviceId())
+        .filter(d=>{ const t = d.updatedAt ? new Date(d.updatedAt).getTime() : 0; return t && (now-t) < PRESENCE_STALE_MS; })
+        .map(d=> d.appVersion)
+        .find(v=> v && v !== BUILD_VERSION);
+      live.versionMismatch = otherVersion || null;
+    }catch(e){ /* leave whatever was last known showing rather than guess */ }
   }
   // Pulls the shared list AND pushes up anything local that hasn't made it to
   // the server yet (added while offline, or added just before joining/
@@ -1599,6 +1634,12 @@ window.FHKit = (function(){
   // roughly two missed scheduled syncs in a row, rather than a fixed wall-
   // clock time — that scales sensibly whatever LIVE_POLL_MS is set to.
   const LIVE_GIVE_UP_MS = LIVE_POLL_MS*2;
+  // How long a device's presence heartbeat (syncTeamPresence()) is trusted
+  // before it's ignored as stale — long enough to easily survive one missed
+  // poll, short enough that a teammate who's genuinely gone (closed the app,
+  // walked out of range for good) stops being able to flag a version
+  // mismatch that's no longer real.
+  const PRESENCE_STALE_MS = LIVE_POLL_MS*3;
   function startPolling(){
     stopPolling();
     live.consecutiveFailures = 0;
@@ -1697,6 +1738,8 @@ window.FHKit = (function(){
       }
       if(!code) throw new Error("Could not generate a unique code");
       live.code = code; live.active = true;
+      await syncTeamPresence();   // publish this device's version right away — the very first poll is up to
+                                   // LIVE_POLL_MS away, and a teammate joining moments later should already see it
       for(const r of rows){
         try{ await liveCreateSpeciesForRow(r); }
         catch(e){ queueLiveOp({ op:"create", id:r.id, fields:liveSpeciesFields(r) }); }
