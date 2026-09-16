@@ -251,6 +251,7 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
       <div class="live-code" id="liveCodeDisplay"></div>
       <p class="muted" id="liveSyncedCount" style="margin:10px 0 0;font-size:12px"></p>
       <p id="liveVersionWarning" hidden style="margin:8px 0 0;font-size:12px;color:var(--red);font-weight:600"></p>
+      <button class="btn sec" type="button" id="liveSyncNowBtn" style="margin-top:12px">Sync now</button>
       <button class="btn sec" type="button" id="liveLeaveBtn" style="margin-top:12px">Leave live sync</button>
     </div>
   </div>
@@ -1215,7 +1216,7 @@ window.FHKit = (function(){
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-16.3";
+  const BUILD_VERSION = "2026-09-16.4";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -1726,25 +1727,53 @@ window.FHKit = (function(){
             markRecentlyCreated(op.id);
           }catch(e){
             if(e.status==="ALREADY_EXISTS"){ const local = rows.find(r=>r.id===op.id); if(local) local._liveUpdatedAt = local._liveUpdatedAt || new Date().toISOString(); }
-            else { remaining.push(op); }
+            else { remaining.push(op); live.lastErrorCode = errCode(e); }
           }
         } else if(op.op==="patch"){
           try{
             await FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+op.id, op.fields);
           }catch(e){
-            if(e.status!=="NOT_FOUND") remaining.push(op);
+            if(e.status!=="NOT_FOUND"){ remaining.push(op); live.lastErrorCode = errCode(e); }
           }
         } else if(op.op==="delete"){
           try{
             await FHKit.live.fsDeleteDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+op.id);
           }catch(e){
-            if(e.status!=="NOT_FOUND") remaining.push(op);
+            if(e.status!=="NOT_FOUND"){ remaining.push(op); live.lastErrorCode = errCode(e); }
           }
         }
-      }catch(e){ remaining.push(op); }
+      }catch(e){ remaining.push(op); live.lastErrorCode = errCode(e); }
     }
     saveLiveQueue(remaining);
     if(remaining.length !== q.length) render();
+  }
+  // A manual, always-available, IMMEDIATE full sync cycle — pull, catch up
+  // anything never-attempted, flush the retry queue, then pull again so the
+  // result is visible right away. Everything this does already happens
+  // automatically every poll (LIVE_POLL_MS, 20 min) — this exists purely so
+  // a person can force it to happen NOW and get a definite, specific answer
+  // in a toast, instead of making changes, waiting up to 20 minutes, and
+  // wondering whether anything actually happened. Also the fastest way to
+  // tell a genuine ongoing problem (a specific error, every time) apart from
+  // "just hasn't had a poll cycle yet".
+  async function syncNow(){
+    if(!live.active){ FHKit.toast("Not connected to a live survey"); return; }
+    try{
+      await ensureAuth();
+      await pullRemoteSpecies();
+      queueUnsyncedRows();
+      await flushLiveQueue();
+      await pullRemoteSpecies();   // pull once more so the toast reflects what just got pushed
+      const q = loadLiveQueue();
+      if(q.length){
+        FHKit.toast("Synced — "+q.length+" species still couldn't reach the server ("+ (live.lastErrorCode||"unknown") +") and will keep retrying");
+      } else {
+        FHKit.toast("Synced — you have "+rows.length+" species, server has "+live.remoteCount+" for the whole team");
+      }
+    }catch(e){
+      live.lastErrorCode = errCode(e);
+      FHKit.toast("Couldn't sync right now ("+errCode(e)+") — check your connection, will keep retrying automatically");
+    }
   }
   async function startLive(){
     if(!LIVE_CONFIGURED){ FHKit.toast("Team Sync isn't set up yet"); return; }
@@ -2453,6 +2482,12 @@ window.FHKit = (function(){
   $("liveStartBtn").addEventListener("click", startLive);
   $("liveJoinBtn").addEventListener("click", joinLive);
   $("liveLeaveBtn").addEventListener("click", leaveLive);
+  $("liveSyncNowBtn").addEventListener("click", async ()=>{
+    const btn = $("liveSyncNowBtn");
+    btn.disabled = true; const original = btn.textContent; btn.textContent = "Syncing…";
+    await syncNow();
+    btn.disabled = false; btn.textContent = original;
+  });
   $("liveBanner").addEventListener("click", e=>{ if(e.target && e.target.id==="liveRejoinBtn") rejoinDroppedLive(); });
   renderLiveUI();
 
