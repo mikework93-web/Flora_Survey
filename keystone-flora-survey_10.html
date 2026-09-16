@@ -1215,7 +1215,7 @@ window.FHKit = (function(){
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-15.6";
+  const BUILD_VERSION = "2026-09-16.1";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -1318,6 +1318,10 @@ window.FHKit = (function(){
   }
   const recentlyCreated = new Set();  // record ids created by THIS device in the last ~15s — guards
                                        // against a delete-reconciliation race right after creating one
+  const pendingRemoval = new Set();   // record ids missing from the last remote listing — a row is only
+                                       // ever removed locally after TWO consecutive polls agree it's gone,
+                                       // so one flaky/incomplete fsListDocs() response can never delete a
+                                       // still-server-side record; see pullRemoteSpecies()
   const noteSyncTimers = new Map();   // per-row debounce timers for syncing Field Notes while typing
   function userName(){ const el = $("userName"); return el ? (el.value||"").trim() : ""; }
   function saveUserName(n){ try{ localStorage.setItem(NAME_KEY, n); }catch(e){} }
@@ -1536,7 +1540,23 @@ window.FHKit = (function(){
       if(!mostRecent || (doc._updateTime||"") > (mostRecent._updateTime||"")) mostRecent = doc;
     });
     const remoteIds = new Set(remoteDocs.map(d=>d._id));
-    rows = rows.filter(r=> !r._liveUpdatedAt || remoteIds.has(r.id) || recentlyCreated.has(r.id));
+    // A previously-synced row missing from THIS listing isn't removed
+    // immediately — a single incomplete/flaky fsListDocs() response would
+    // otherwise be enough to wipe out a record a teammate can still see.
+    // It's only dropped once a SECOND consecutive poll also fails to find
+    // it; any poll where it reappears clears the mark. That trades a one-
+    // poll (≈20 min, or immediate on manual rejoin) delay in reflecting a
+    // genuine teammate deletion for a hard guarantee against ever losing a
+    // record to a momentary server hiccup.
+    const stillMissing = new Set();
+    rows = rows.filter(r=>{
+      if(!r._liveUpdatedAt || remoteIds.has(r.id) || recentlyCreated.has(r.id)){ return true; }
+      if(pendingRemoval.has(r.id)){ return false; } // missed twice in a row — actually gone
+      stillMissing.add(r.id);
+      return true;
+    });
+    pendingRemoval.clear();
+    stillMissing.forEach(id=> pendingRemoval.add(id));
     const pinned = mostRecent && rows.find(r=>r.id===mostRecent._id);
     sortRows(pinned ? pinned.id : null);
     // The whole team's shared count, shown on the Team Sync card — lets
@@ -1563,7 +1583,10 @@ window.FHKit = (function(){
   async function reconcileWithRemote(){
     await pullRemoteSpecies();
     const unsynced = rows.filter(r=>!r._liveUpdatedAt);
-    for(const r of unsynced){ try{ await liveCreateSpeciesForRow(r); }catch(e){} }
+    for(const r of unsynced){
+      try{ await liveCreateSpeciesForRow(r); }
+      catch(e){ queueLiveOp({ op:"create", id:r.id, fields:liveSpeciesFields(r) }); }
+    }
   }
   // Polling cadence: every document a poll returns counts as one Firestore
   // "read" against the project's daily quota (50k/day on the free Spark
@@ -1612,8 +1635,13 @@ window.FHKit = (function(){
     else { startPolling(); pullRemoteSpecies().catch(()=>{}); }
   });
   // Retries anything that couldn't reach the server while this device was
-  // offline. Stops at the first still-offline failure (keeping the rest
-  // queued for next time) rather than hammering a dead connection.
+  // offline. A queued op is only ever dropped when we have positive proof
+  // it's unnecessary (the doc already exists / already reflects the patch /
+  // is already gone) — ANY other failure (quota errors, transient 5xx, auth
+  // hiccups, timeouts, whatever) keeps the op queued for the next flush
+  // rather than discarding it, so a species record can never be silently
+  // lost just because one sync attempt hit something other than a bare
+  // network error.
   async function flushLiveQueue(){
     if(!live.active) return;
     let q = loadLiveQueue();
@@ -1630,14 +1658,22 @@ window.FHKit = (function(){
             markRecentlyCreated(op.id);
           }catch(e){
             if(e.status==="ALREADY_EXISTS"){ const local = rows.find(r=>r.id===op.id); if(local) local._liveUpdatedAt = local._liveUpdatedAt || new Date().toISOString(); }
-            else if(e.network){ remaining.push(op); }
+            else { remaining.push(op); }
           }
         } else if(op.op==="patch"){
-          await FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+op.id, op.fields);
+          try{
+            await FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+op.id, op.fields);
+          }catch(e){
+            if(e.status!=="NOT_FOUND") remaining.push(op);
+          }
         } else if(op.op==="delete"){
-          await FHKit.live.fsDeleteDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+op.id);
+          try{
+            await FHKit.live.fsDeleteDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+op.id);
+          }catch(e){
+            if(e.status!=="NOT_FOUND") remaining.push(op);
+          }
         }
-      }catch(e){ if(e && e.network) remaining.push(op); }
+      }catch(e){ remaining.push(op); }
     }
     saveLiveQueue(remaining);
     if(remaining.length !== q.length) render();
@@ -1661,7 +1697,10 @@ window.FHKit = (function(){
       }
       if(!code) throw new Error("Could not generate a unique code");
       live.code = code; live.active = true;
-      for(const r of rows){ try{ await liveCreateSpeciesForRow(r); }catch(e){} }
+      for(const r of rows){
+        try{ await liveCreateSpeciesForRow(r); }
+        catch(e){ queueLiveOp({ op:"create", id:r.id, fields:liveSpeciesFields(r) }); }
+      }
       persistLiveSession();
       setLiveStatus("connected");
       startPolling();
