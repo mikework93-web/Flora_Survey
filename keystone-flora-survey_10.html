@@ -1217,7 +1217,7 @@ window.FHKit = (function(){
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-16.6";
+  const BUILD_VERSION = "2026-09-16.7";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -1326,6 +1326,19 @@ window.FHKit = (function(){
                                        // so one flaky/incomplete fsListDocs() response can never delete a
                                        // still-server-side record; see pullRemoteSpecies()
   const noteSyncTimers = new Map();   // per-row debounce timers for syncing Field Notes while typing
+  // A row can carry _liveUpdatedAt from a PREVIOUS live session — sessions
+  // get left, dropped, or (rarely, now that starting/joining a new one
+  // while one is still active requires an explicit confirm) intentionally
+  // started fresh — without ever touching the species already logged on
+  // this device. "Synced" only means something relative to a specific
+  // session's shared collection, so a row is only skipped as already-done
+  // when it was confirmed synced to the CURRENT one (_liveCode===live.code)
+  // — never merely "synced to something, at some point". This is what lets
+  // rejoining/switching sessions naturally re-offer every row that isn't
+  // already in the CURRENT shared collection, duplicates and all — the same
+  // "just combine everything, sort out true duplicates later" approach
+  // already used for two people logging the same species.
+  function isSyncedToCurrentSession(r){ return !!r._liveUpdatedAt && r._liveCode === live.code; }
   function userName(){ const el = $("userName"); return el ? (el.value||"").trim() : ""; }
   function saveUserName(n){ try{ localStorage.setItem(NAME_KEY, n); }catch(e){} }
   function makePointId(){ return "P"+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
@@ -1496,7 +1509,7 @@ window.FHKit = (function(){
       points: decodePointsField(doc.pointsJson), gpsStatus: doc.gpsStatus||"idle", gpsMessage: doc.gpsMessage||"",
       photos: [], // photos are always device-local — never synced
       addedBy: doc.addedBy||"", updatedBy: doc.updatedBy||"",
-      _liveUpdatedAt: doc._updateTime||""
+      _liveUpdatedAt: doc._updateTime||"", _liveCode: live.code
     };
   }
   // Creates this row's shared doc, keyed by the row's OWN record id (assigned
@@ -1509,12 +1522,12 @@ window.FHKit = (function(){
     await ensureAuth();
     try{
       const doc = await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species", row.id, liveSpeciesFields(row));
-      row._liveUpdatedAt = doc._updateTime;
+      row._liveUpdatedAt = doc._updateTime; row._liveCode = live.code;
       markRecentlyCreated(row.id);
       return true;
     }catch(e){
       if(e.status==="ALREADY_EXISTS"){
-        row._liveUpdatedAt = row._liveUpdatedAt || new Date().toISOString();
+        row._liveUpdatedAt = row._liveUpdatedAt || new Date().toISOString(); row._liveCode = live.code;
         return true;
       }
       throw e;
@@ -1582,14 +1595,16 @@ window.FHKit = (function(){
     if(!notesFocused && typeof doc.fieldNotes === "string") local.fieldNotes = doc.fieldNotes;
     local.addedBy = doc.addedBy || local.addedBy;
     local.updatedBy = doc.updatedBy || local.updatedBy;
-    local._liveUpdatedAt = remoteTime;
+    local._liveUpdatedAt = remoteTime; local._liveCode = live.code;
   }
   // Pulls the full shared species list and reconciles it into `rows`: adds
   // any record a teammate created that we don't have yet, updates anything
   // that changed elsewhere, and drops anything a teammate deleted. A local
-  // row that hasn't been confirmed synced yet (no _liveUpdatedAt — e.g. it
-  // was added while offline) is NEVER dropped here, even if it's not in the
-  // remote list yet — that's what lets a reconnect "combine" both sides
+  // row that hasn't been confirmed synced TO THIS SESSION yet (see
+  // isSyncedToCurrentSession — e.g. added while offline, or carried over
+  // from a different session this device was on before) is NEVER dropped
+  // here, even if it's not in the remote list yet — that's what lets a
+  // reconnect (or a switch to a different session) "combine" both sides
   // instead of one replacing the other (see reconcileWithRemote()).
   async function pullRemoteSpecies(){
     const remoteDocs = await FHKit.live.fsListDocs(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species");
@@ -1611,7 +1626,7 @@ window.FHKit = (function(){
     // record to a momentary server hiccup.
     const stillMissing = new Set();
     rows = rows.filter(r=>{
-      if(!r._liveUpdatedAt || remoteIds.has(r.id) || recentlyCreated.has(r.id)){ return true; }
+      if(!isSyncedToCurrentSession(r) || remoteIds.has(r.id) || recentlyCreated.has(r.id)){ return true; }
       if(pendingRemoval.has(r.id)){ return false; } // missed twice in a row — actually gone
       stillMissing.add(r.id);
       return true;
@@ -1660,12 +1675,16 @@ window.FHKit = (function(){
     }catch(e){ /* leave whatever was last known showing rather than guess */ }
   }
   // Pulls the shared list AND pushes up anything local that hasn't made it to
-  // the server yet (added while offline, or added just before joining/
-  // rejoining) — used on join, rejoin, and reconnect-after-drop, so both
-  // sides' entries end up combined rather than one clobbering the other.
+  // the server yet (added while offline, added just before joining/
+  // rejoining, or carried over from a different session this device was on
+  // before — see isSyncedToCurrentSession) — used on join, rejoin, and
+  // reconnect-after-drop, so both sides' entries end up combined rather
+  // than one clobbering the other. This is also what makes switching a
+  // device onto a different/new session safe rather than orphaning: every
+  // row not yet confirmed synced to THAT session gets offered up again.
   async function reconcileWithRemote(){
     await pullRemoteSpecies();
-    const unsynced = rows.filter(r=>!r._liveUpdatedAt);
+    const unsynced = rows.filter(r=>!isSyncedToCurrentSession(r));
     for(const r of unsynced){
       try{ await liveCreateSpeciesForRow(r); }
       catch(e){ queueLiveOp({ op:"create", id:r.id, fields:liveSpeciesFields(r) }); }
@@ -1750,7 +1769,7 @@ window.FHKit = (function(){
     const q = loadLiveQueue();
     let added = false;
     rows.forEach(r=>{
-      if(r._liveUpdatedAt) return; // already confirmed created
+      if(isSyncedToCurrentSession(r)) return; // already confirmed created in THIS session
       const fresh = liveSpeciesFields(r);
       const existing = q.find(op=> op.id===r.id && op.op==="create");
       if(existing){
@@ -1783,10 +1802,10 @@ window.FHKit = (function(){
           try{
             const doc = await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species", op.id, op.fields);
             const local = rows.find(r=> r.id===op.id);
-            if(local) local._liveUpdatedAt = doc._updateTime;
+            if(local){ local._liveUpdatedAt = doc._updateTime; local._liveCode = live.code; }
             markRecentlyCreated(op.id);
           }catch(e){
-            if(e.status==="ALREADY_EXISTS"){ const local = rows.find(r=>r.id===op.id); if(local) local._liveUpdatedAt = local._liveUpdatedAt || new Date().toISOString(); }
+            if(e.status==="ALREADY_EXISTS"){ const local = rows.find(r=>r.id===op.id); if(local){ local._liveUpdatedAt = local._liveUpdatedAt || new Date().toISOString(); local._liveCode = live.code; } }
             else { remaining.push(op); live.lastErrorCode = errCode(e); }
           }
         } else if(op.op==="patch"){
@@ -1926,7 +1945,7 @@ window.FHKit = (function(){
     clearTimeout(dropRetryTimer);
     live = freshLiveState();
     try{ localStorage.removeItem(LIVE_KEY); }catch(e){}
-    rows.forEach(r=>{ delete r._liveUpdatedAt; });
+    rows.forEach(r=>{ delete r._liveUpdatedAt; delete r._liveCode; });
     renderLiveUI();
     FHKit.toast("Left live sync — this survey now stays local to this device");
   }
@@ -2071,7 +2090,7 @@ window.FHKit = (function(){
   }
 
   function meta(){ return { site:$("site").value, date:$("date").value }; }
-  function snapshot(){ return { folderKey:folderKey, meta:meta(), species:rows.map(r=>{ const o = Object.assign({},r, {photos:(r.photos||[]).map(p=>Object.assign({},p)), points:(r.points||[]).map(p=>Object.assign({},p))}); delete o._liveUpdatedAt; return o; }), siteNotes:siteNotes.map(n=>Object.assign({},n)), savedAt:new Date().toISOString() }; }
+  function snapshot(){ return { folderKey:folderKey, meta:meta(), species:rows.map(r=>{ const o = Object.assign({},r, {photos:(r.photos||[]).map(p=>Object.assign({},p)), points:(r.points||[]).map(p=>Object.assign({},p))}); delete o._liveUpdatedAt; delete o._liveCode; return o; }), siteNotes:siteNotes.map(n=>Object.assign({},n)), savedAt:new Date().toISOString() }; }
   function restore(s){
     if(!s) return; const m = s.meta||{};
     folderKey = s.folderKey || s.id || makeFolderKey();
@@ -2089,6 +2108,7 @@ window.FHKit = (function(){
       // Live-sync bookkeeping is per-session, not part of a saved survey —
       // drop it so a loaded survey doesn't carry stale links to an old code.
       delete o._liveUpdatedAt;
+      delete o._liveCode;
       return o;
     });
     openNotes = new Set();
