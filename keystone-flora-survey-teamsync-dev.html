@@ -1162,7 +1162,7 @@ window.FHKit = (function(){
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-17.1";
+  const BUILD_VERSION = "2026-09-23.1";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -1911,7 +1911,7 @@ window.FHKit = (function(){
       const snap = snapshot();
       snap.meta = Object.assign({}, snap.meta, { site: current });
       const o = getFolder(); o[folderKey] = snap; putFolder(o); clearStorageWarning("localStorage");
-    }catch(e){ showStorageWarning("localStorage"); }
+    }catch(e){ showStorageWarning("localStorage", e); }
     // Any live session active here belonged to the OUTGOING reserve — this
     // device just steps off it (the session itself stays open on the server
     // for any teammate still on it); it does NOT get left "recoverable",
@@ -2170,15 +2170,42 @@ window.FHKit = (function(){
   // raised specifically because a photo couldn't be saved, masking a still-
   // real problem. The banner stays up until every failing reason clears.
   const storageFailureReasons = new Set();
-  function showStorageWarning(reason){
-    storageFailureReasons.add(reason||"general");
+  // The catch block around every localStorage/IndexedDB write treats ANY
+  // failure as "storage is full" — but that's only one possible cause.
+  // JSON.stringify() throwing on an unexpected value in a row, a browser
+  // quirk, Private Browsing's storage stub, or something else entirely would
+  // all land in the same catch and get the same "storage is full" message,
+  // which is actively misleading when the real cause is something else — and
+  // there was previously no way for anyone (in the field, with no devtools)
+  // to tell the difference. Recording the actual error per reason lets the
+  // banner show the real technical detail on screen, and only claims "full"
+  // specifically when the browser's own error says so (QuotaExceededError) —
+  // otherwise it stays honest that something failed without guessing why.
+  const storageFailureDetails = new Map(); // reason -> last error's name+message
+  function showStorageWarning(reason, err){
+    reason = reason || "general";
+    storageFailureReasons.add(reason);
+    if(err){
+      const detail = (err.name||"Error") + (err.message ? ": "+err.message : "");
+      storageFailureDetails.set(reason, detail);
+      try{ console.error("[FloraSurvey] save failed ("+reason+"):", err); }catch(e){}
+    }
     const el = $("storageWarningBanner");
     if(!el) return;
     el.hidden = false;
-    el.textContent = "⚠️ This survey stopped saving on this device (storage is full) — everything already saved is safe, but anything added from now on could be lost if you close or reload this page. Export a copy now, then free up space on your device.";
+    const details = [...storageFailureDetails.values()].filter(Boolean);
+    const isQuota = details.some(d=> /quota/i.test(d));
+    el.textContent = (isQuota
+        ? "⚠️ This survey stopped saving on this device (storage is full)"
+        : "⚠️ This survey stopped saving on this device")
+      + " — everything already saved is safe, but anything added from now on could be lost if you close or reload this page. Export a copy now"
+      + (isQuota ? ", then free up space on your device." : ".")
+      + (details.length ? " [Technical detail: "+details.join("; ")+" — please share this with support]" : "");
   }
   function clearStorageWarning(reason){
-    storageFailureReasons.delete(reason||"general");
+    reason = reason || "general";
+    storageFailureReasons.delete(reason);
+    storageFailureDetails.delete(reason);
     if(storageFailureReasons.size) return;   // still failing for another reason
     const el = $("storageWarningBanner");
     if(el && !el.hidden) el.hidden = true;
@@ -2197,7 +2224,7 @@ window.FHKit = (function(){
           const o = getFolder(); o[folderKey] = snap; putFolder(o);
         }
         clearStorageWarning("localStorage");
-      }catch(e){ showStorageWarning("localStorage"); }
+      }catch(e){ showStorageWarning("localStorage", e); }
     }, 400);
   }
   function saveToFolder(){
@@ -2208,8 +2235,8 @@ window.FHKit = (function(){
       clearStorageWarning("localStorage");
       FHKit.toast("Saved to survey folder");
     }catch(e){
-      showStorageWarning("localStorage");
-      FHKit.toast("Couldn't save — storage is full. Export a copy now to avoid losing anything.");
+      showStorageWarning("localStorage", e);
+      FHKit.toast("Couldn't save — see the warning banner for details. Export a copy now to avoid losing anything.");
     }
     autosave();
   }
@@ -2247,7 +2274,7 @@ window.FHKit = (function(){
       if(ln){ restore(o[ln]); autosave(); FHKit.toast("Loaded survey"); ov.remove(); }
       if(dn && confirm("Delete this saved survey?")){
         delete o[dn];
-        try{ putFolder(o); clearStorageWarning("localStorage"); }catch(e){ showStorageWarning("localStorage"); }
+        try{ putFolder(o); clearStorageWarning("localStorage"); }catch(e){ showStorageWarning("localStorage", e); }
         const row = e.target.closest(".fh-modal-row"); if(row) row.remove();
         if(!Object.keys(o).length) ov.remove();
       }
@@ -2441,7 +2468,7 @@ window.FHKit = (function(){
         // "localStorage") so an unrelated successful autosave — which no
         // longer touches photos at all — can't silently clear a warning
         // that's actually about the separate IndexedDB photo store.
-        showStorageWarning("photo");
+        showStorageWarning("photo", e);
         FHKit.toast("Couldn't save a photo — check your device's available storage");
       }
     }
