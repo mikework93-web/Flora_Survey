@@ -211,6 +211,42 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 .fh-modal-foot button.ghost{border:1px solid var(--border);background:#fff;border-radius:5px;padding:7px 14px;
   font-size:12.5px;cursor:pointer;font-family:var(--sans);color:var(--muted)}
 
+/* ---- Map modal: aerial imagery for placing/adjusting a point, and for
+   drawing a polygon (see MapModal below). Wider/taller than the plain list
+   modals above since a usable map needs real screen space. ---- */
+.map-modal-card{max-width:640px;max-height:92vh}
+.map-modal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:12px 16px;background:var(--charcoal);color:var(--gold-light)}
+.map-modal-head h3{margin:0;padding:0;font-size:14px;background:none;color:inherit}
+.map-modal-head button.ghost{border:1px solid rgba(255,255,255,.35);background:transparent;color:var(--gold-light);
+  border-radius:5px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:var(--sans)}
+#mapContainer{width:100%;height:min(52vh,420px);min-height:240px;background:#e8e4d8}
+.map-modal-status{padding:8px 16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.map-modal-status.error{color:var(--red)}
+.map-modal-body{padding:12px 16px;overflow-y:auto}
+.map-modal-body p{margin:0 0 10px;font-size:12.5px;color:var(--muted)}
+.map-species-pick{display:flex;flex-direction:column;gap:6px;max-height:32vh;overflow-y:auto;
+  border:1px solid var(--border);border-radius:6px;padding:8px}
+.map-species-pick label{display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 2px}
+.map-modal-foot{padding:10px 14px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;
+  gap:8px;flex-wrap:wrap}
+.map-hint{font-size:11px;color:var(--muted);padding:0 16px 10px}
+.map-center-pin{position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);
+  font-size:30px;line-height:1;pointer-events:none;z-index:500;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
+
+/* ---- Polygons list (mirrors .site-note's card styling) ---- */
+.poly-item{border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:10px;background:#fff}
+.poly-item-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.poly-item-species{font-size:13px;color:var(--ink)}
+.poly-item-species .none{color:var(--muted);font-style:italic}
+.poly-item-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.poly-item-actions button{border:1px solid var(--border);background:#fff;border-radius:5px;padding:5px 10px;
+  font-size:11.5px;cursor:pointer;font-family:var(--sans)}
+.poly-item textarea{width:100%;min-height:50px;border:1px solid var(--border);border-radius:5px;
+  padding:8px 10px;font-size:13px;font-family:var(--sans);resize:vertical;background:var(--cream);color:var(--ink);margin-top:6px}
+.poly-item textarea:focus{outline:none;border-color:var(--gold);background:#fff}
+
 @media (max-width:480px){
   header img{width:90%}
   .stat{min-width:80px}
@@ -223,6 +259,12 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
   .live-row span{text-align:center}
 }
 </style>
+<!-- Aerial imagery map (for precise point placement/adjustment and polygon
+     drawing — see MapModal). Loaded with no integrity/crossorigin hash: a
+     wrong hash pinned from memory would silently break the map, which is a
+     worse failure than skipping subresource integrity here. -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
 <header>
@@ -280,6 +322,13 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
     <h2>Checklist <span class="n" id="count"></span></h2>
     <div id="tbody" class="species-list"></div>
     <div class="empty" id="empty">No species recorded yet — add some above.</div>
+  </div>
+
+  <div class="card">
+    <h2>Polygons <span class="n" id="polyCount"></span></h2>
+    <p class="muted" style="margin:0 0 10px">Draw an area on an aerial map (a habitat patch, a stand, a survey plot) and list the species found within it — separate from the individually-located Significant species above. Polygons are shared with your team the same way species are.</p>
+    <div id="polyList"></div>
+    <button type="button" class="btn" id="addPolygonBtn" style="margin-top:4px">+ Add Polygon</button>
   </div>
 
   <div class="card">
@@ -967,6 +1016,149 @@ window.FHKit = (function(){
   const GPKG_MIME = "application/geopackage+sqlite3";
   function buildGeoPackageBlob(opts){ return new Blob([buildGeoPackageBytes(opts)], { type: GPKG_MIME }); }
 
+  // WKB Polygon (type 3), GeoPackage binary-geometry-wrapped, same header
+  // convention as gpkgEncodePoint above. `rings`: array of rings, each ring
+  // an array of [lat,lon] pairs describing one polygon's outer boundary (no
+  // holes) — closed automatically if the caller didn't repeat the first
+  // point as the last, since GeoPackage/WKB polygons require a closed ring.
+  function gpkgEncodePolygon(rings, srsId){
+    const flags = new Uint8Array([0x01]);
+    const srs = new Uint8Array(4); new DataView(srs.buffer).setInt32(0, srsId, true);
+    const wkbType = new Uint8Array(4); new DataView(wkbType.buffer).setUint32(0, 3, true); // 3 = Polygon
+    const numRings = new Uint8Array(4); new DataView(numRings.buffer).setUint32(0, rings.length, true);
+    const ringParts = rings.map(ring=>{
+      const closed = (ring.length && (ring[0][0]!==ring[ring.length-1][0] || ring[0][1]!==ring[ring.length-1][1]))
+        ? ring.concat([ring[0]]) : ring;
+      const numPoints = new Uint8Array(4); new DataView(numPoints.buffer).setUint32(0, closed.length, true);
+      const coordParts = closed.map(pt=>{
+        const x = new Uint8Array(8); new DataView(x.buffer).setFloat64(0, pt[1], true); // x = longitude
+        const y = new Uint8Array(8); new DataView(y.buffer).setFloat64(0, pt[0], true); // y = latitude
+        return u8concat([x,y]);
+      });
+      return u8concat([numPoints, ...coordParts]);
+    });
+    return u8concat([new Uint8Array([0x47,0x50,0]), flags, srs, new Uint8Array([1]), wkbType, numRings, ...ringParts]);
+  }
+  /* opts: { tableName, identifier, description, site, date,
+     polygons:[{id, vertices:[[lat,lon],...], species:[names], notes, createdBy}] }
+     Returns a Uint8Array — the complete .gpkg file. One polygon feature per
+     entry in `polygons` — mirrors buildGeoPackageBytes above but for a single-
+     ring POLYGON layer, with all of a polygon's tagged species combined into
+     one delimited text field (species_list) rather than one row per species,
+     plus a species_count field — the data model requested for this layer. */
+  function buildPolygonGeoPackageBytes(opts){
+    const tableName = (opts && opts.tableName) || "species_polygons";
+    const geomCol = "geom", srsId = 4326;
+    const polys = (opts && opts.polygons) || [];
+    const identifier = (opts && opts.identifier) || tableName;
+    const description = (opts && opts.description) || "";
+    const site = (opts && opts.site) || "";
+    const surveyDate = (opts && opts.date) || "";
+    const nowIso = new Date().toISOString();
+
+    let minX=null,minY=null,maxX=null,maxY=null;
+    polys.forEach(pg=>{
+      (pg.vertices||[]).forEach(pt=>{
+        const lon=pt[1], lat=pt[0];
+        if(minX===null||lon<minX) minX=lon; if(maxX===null||lon>maxX) maxX=lon;
+        if(minY===null||lat<minY) minY=lat; if(maxY===null||lat>maxY) maxY=lat;
+      });
+    });
+
+    const t=(s)=>({t:"text",v:s}), n=(v)=>({t:"int",v:v}), rl=(v)=>({t:"real",v:v}), rid=()=>({t:"rowid"}), nul=()=>({t:"null"});
+
+    const sqlSrs = "CREATE TABLE gpkg_spatial_ref_sys (srs_name TEXT NOT NULL,srs_id INTEGER PRIMARY KEY,"
+      +"organization TEXT NOT NULL,organization_coordsys_id INTEGER NOT NULL,definition TEXT NOT NULL,description TEXT)";
+    const sqlContents = "CREATE TABLE gpkg_contents (table_name TEXT NOT NULL,data_type TEXT NOT NULL,"
+      +"identifier TEXT,description TEXT,last_change TEXT NOT NULL,min_x DOUBLE,min_y DOUBLE,max_x DOUBLE,max_y DOUBLE,srs_id INTEGER)";
+    const sqlGeomCols = "CREATE TABLE gpkg_geometry_columns (table_name TEXT NOT NULL,column_name TEXT NOT NULL,"
+      +"geometry_type_name TEXT NOT NULL,srs_id INTEGER NOT NULL,z TINYINT NOT NULL,m TINYINT NOT NULL)";
+    const sqlFeature = "CREATE TABLE "+tableName+" (fid INTEGER PRIMARY KEY AUTOINCREMENT,"+geomCol+" POLYGON,"
+      +"polygon_id TEXT,site TEXT,survey_date TEXT,species_list TEXT,species_count INTEGER,notes TEXT,created_by TEXT)";
+
+    const srsRows = [
+      {rowid:-1, record: gpkgEncodeRecord([t("Undefined cartesian SRS"), rid(), t("NONE"), n(-1), t("undefined"), nul()])},
+      {rowid:0,  record: gpkgEncodeRecord([t("Undefined geographic SRS"), rid(), t("NONE"), n(0), t("undefined"), nul()])},
+      {rowid:4326, record: gpkgEncodeRecord([t("WGS 84"), rid(), t("EPSG"), n(4326),
+        t('GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]'),
+        t("longitude/latitude coordinates in decimal degrees on the WGS 84 spheroid")])}
+    ];
+    const contentsRows = [
+      {rowid:1, record: gpkgEncodeRecord([
+        t(tableName), t("features"), t(identifier), t(description), t(nowIso),
+        polys.length?rl(minX):nul(), polys.length?rl(minY):nul(), polys.length?rl(maxX):nul(), polys.length?rl(maxY):nul(),
+        n(srsId)
+      ])}
+    ];
+    const geomColsRows = [
+      {rowid:1, record: gpkgEncodeRecord([ t(tableName), t(geomCol), t("POLYGON"), n(srsId), n(0), n(0) ])}
+    ];
+    const featureRows = polys.map((pg,i)=>({
+      rowid: i+1,
+      record: gpkgEncodeRecord([
+        rid(),
+        { t:"blob", v: gpkgEncodePolygon([pg.vertices||[]], srsId) },
+        t(pg.id), t(site), t(surveyDate),
+        t((pg.species||[]).join("; ")),
+        n((pg.species||[]).length),
+        t(pg.notes||""),
+        t(pg.createdBy||"")
+      ])
+    }));
+
+    const tableDefs = [
+      { name:"gpkg_spatial_ref_sys", sql:sqlSrs, rows:srsRows },
+      { name:"gpkg_contents", sql:sqlContents, rows:contentsRows },
+      { name:"gpkg_geometry_columns", sql:sqlGeomCols, rows:geomColsRows },
+      { name:tableName, sql:sqlFeature, rows:featureRows }
+    ];
+    const masterRows = tableDefs.map((td,i)=>({
+      rowid: i+1,
+      record: gpkgEncodeRecord([ t("table"), t(td.name), t(td.name), n(i+2), t(td.sql) ])
+    }));
+
+    const PAGE_SIZES = [512,1024,2048,4096,8192,16384,32768,65536];
+    const needed = (rows, isPage1) => {
+      let sum = 0;
+      rows.forEach(r=>{ sum += gpkgVarint(r.record.length).length + gpkgVarint(r.rowid).length + r.record.length + 2; });
+      return (isPage1?100:0) + 8 + sum + 32;
+    };
+    const need = Math.max(needed(masterRows,true), ...tableDefs.map(td=>needed(td.rows,false)));
+    const pageSize = PAGE_SIZES.find(ps=>ps>=need);
+    if(!pageSize) throw new Error("This survey has too much polygon data to export as a GeoPackage.");
+
+    const totalPages = 1 + tableDefs.length;
+    const file = new Uint8Array(pageSize*totalPages);
+    file.set(gpkgBuildLeafPage(pageSize, masterRows, true), 0);
+
+    const header = new Uint8Array(100);
+    header.set(new TextEncoder().encode("SQLite format 3\0"), 0);
+    header.set(gpkgBEU16(pageSize % 65536), 16);
+    header[18]=1; header[19]=1; header[20]=0;
+    header[21]=64; header[22]=32; header[23]=32;
+    header.set(gpkgBEU32(1), 24);
+    header.set(gpkgBEU32(totalPages), 28);
+    header.set(gpkgBEU32(0), 32);
+    header.set(gpkgBEU32(0), 36);
+    header.set(gpkgBEU32(1), 40);
+    header.set(gpkgBEU32(4), 44);
+    header.set(gpkgBEU32(0), 48);
+    header.set(gpkgBEU32(0), 52);
+    header.set(gpkgBEU32(1), 56);
+    header.set(gpkgBEU32(10300), 60);
+    header.set(gpkgBEU32(0), 64);
+    header.set(new TextEncoder().encode("GPKG"), 68);
+    header.set(gpkgBEU32(1), 92);
+    header.set(gpkgBEU32(3045000), 96);
+    file.set(header, 0);
+
+    tableDefs.forEach((td,i)=>{
+      file.set(gpkgBuildLeafPage(pageSize, td.rows, false), pageSize*(i+1));
+    });
+    return file;
+  }
+  function buildPolygonGeoPackageBlob(opts){ return new Blob([buildPolygonGeoPackageBytes(opts)], { type: GPKG_MIME }); }
+
   // Plain "save to disk" download — no share-sheet attempt, for when the user
   // has explicitly chosen "Download to device" over "Email / Share".
   function triggerDownload(blob, filename){
@@ -1024,7 +1216,280 @@ window.FHKit = (function(){
     }
     return false;
   }
-  function getLastShareDiagnostic(){ return lastShareDiagnostic; }
+function getLastShareDiagnostic(){ return lastShareDiagnostic; }
+
+  /* ---- Minimal ZIP reader (central directory parsing) ----------------------
+     Reads back exactly what buildZipBlob/downloadZip above produce: "stored"
+     (uncompressed) entries only — no DEFLATE support, and not intended as a
+     general-purpose zip reader. Used by the Import feature to read a
+     previously-exported xlsx/GIS zip/photos zip back in. Returns a flat
+     { "name": Uint8Array, ... } map, same shape buildZipBlob takes as input. */
+  function readZip(bytes){
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let eocdOff = -1;
+    const maxBack = Math.min(bytes.length, 65557);
+    for(let i=bytes.length-22; i>=bytes.length-maxBack && i>=0; i--){
+      if(view.getUint32(i, true) === 0x06054b50){ eocdOff = i; break; }
+    }
+    if(eocdOff < 0) throw new Error("Not a valid zip file (no end-of-central-directory record found)");
+    const totalEntries = view.getUint16(eocdOff+10, true);
+    const centralDirOffset = view.getUint32(eocdOff+16, true);
+    const dec = new TextDecoder("utf-8");
+    const files = {};
+    let p = centralDirOffset;
+    for(let i=0;i<totalEntries;i++){
+      if(view.getUint32(p, true) !== 0x02014b50) throw new Error("Corrupt zip central directory");
+      const method = view.getUint16(p+10, true);
+      const compSize = view.getUint32(p+20, true);
+      const nameLen = view.getUint16(p+28, true);
+      const extraLen = view.getUint16(p+30, true);
+      const commentLen = view.getUint16(p+32, true);
+      const localOffset = view.getUint32(p+42, true);
+      const name = dec.decode(bytes.subarray(p+46, p+46+nameLen));
+      if(method !== 0) throw new Error('"'+name+'" uses zip compression this reader doesn\'t support (expected "stored" entries only)');
+      const lp = localOffset;
+      if(view.getUint32(lp, true) !== 0x04034b50) throw new Error('Corrupt zip local header for "'+name+'"');
+      const lNameLen = view.getUint16(lp+26, true);
+      const lExtraLen = view.getUint16(lp+28, true);
+      const dataStart = lp + 30 + lNameLen + lExtraLen;
+      files[name] = bytes.slice(dataStart, dataStart+compSize);
+      p += 46 + nameLen + extraLen + commentLen;
+    }
+    return files;
+  }
+
+  function xunesc(s){
+    return String(s==null?"":s)
+      .replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,"&");
+  }
+  /* ---- Minimal XLSX reader — tailored strictly to this app's own
+     exportSurveyInner/xlsxSheetXML layout above (fixed row order: title,
+     Site, Date, optional Site Field Notes block, a blank row, the species
+     table headed "Record ID", a blank row, summary lines, then an optional
+     Polygons table headed "Polygon ID"). Not a general spreadsheet reader —
+     it locates each block by scanning for that fixed marker text in column A
+     rather than assuming exact row numbers, so it stays correct regardless of
+     how many site notes/summary lines are present. Returns
+     { site, date, species:[...], siteNotes:[...], polygonsMeta:[...] } —
+     polygonsMeta carries everything the xlsx itself has for a polygon
+     (id/point count/species names/notes) but NOT its shape, which only the
+     GIS zip's GeoPackage carries; the Import feature merges the two. */
+  function readXLSXSurvey(bytes){
+    const zip = readZip(bytes);
+    const xmlBytes = zip["xl/worksheets/sheet1.xml"];
+    if(!xmlBytes) throw new Error("Not a Flora Survey export (missing worksheet data)");
+    const xmlText = new TextDecoder("utf-8").decode(xmlBytes);
+    const rowsByNum = new Map();
+    const rowRe = /<row r="(\d+)">([\s\S]*?)<\/row>/g;
+    let rm;
+    while((rm = rowRe.exec(xmlText))){
+      const rNum = parseInt(rm[1],10);
+      const cells = {};
+      const cellRe = /<c r="([A-Z]+)\d+"[^>]*>([\s\S]*?)<\/c>/g;
+      let cm;
+      while((cm = cellRe.exec(rm[2]))){
+        const col = cm[1], body = cm[2];
+        const isMatch = body.match(/<is><t[^>]*>([\s\S]*?)<\/t><\/is>/);
+        const vMatch = body.match(/<v>([\s\S]*?)<\/v>/);
+        if(isMatch) cells[col] = xunesc(isMatch[1]);
+        else if(vMatch) cells[col] = Number(vMatch[1]);
+      }
+      rowsByNum.set(rNum, cells);
+    }
+    const colIdx = (letter) => { let n=0; for(let i=0;i<letter.length;i++) n = n*26 + (letter.charCodeAt(i)-64); return n-1; };
+    const orderedRowNums = [...rowsByNum.keys()].sort((a,b)=>a-b);
+    const rowArr = (rNum) => {
+      const cells = rowsByNum.get(rNum) || {};
+      const arr = [];
+      Object.keys(cells).forEach(col=>{ arr[colIdx(col)] = cells[col]; });
+      return arr;
+    };
+    const cellA = (rNum) => rowArr(rNum)[0];
+
+    const siteRow = rowArr(2), dateRow = rowArr(3);
+    const site = siteRow[1]!=null ? String(siteRow[1]) : "";
+    const date = dateRow[1]!=null ? String(dateRow[1]) : "";
+
+    let notesHeaderRow=null, speciesHeaderRow=null, polyHeaderRow=null;
+    orderedRowNums.forEach(rn=>{
+      const a = cellA(rn);
+      if(a==="Site Field Notes") notesHeaderRow = rn;
+      else if(a==="Record ID") speciesHeaderRow = rn;
+      else if(a==="Polygon ID") polyHeaderRow = rn;
+    });
+    function blockAfter(headerRow){
+      if(headerRow==null) return [];
+      const out = [];
+      for(const rn of orderedRowNums){
+        if(rn<=headerRow) continue;
+        const arr = rowArr(rn);
+        if(!arr.length) break; // a blank row ends the block, same as the writer's own layout
+        out.push(arr);
+      }
+      return out;
+    }
+
+    const siteNotes = blockAfter(notesHeaderRow).map(arr=>({
+      id: "note_"+Date.now().toString(36)+Math.random().toString(36).slice(2,8),
+      text: arr[1]!=null ? String(arr[1]) : "",
+      ts: new Date().toISOString()
+    }));
+    const species = blockAfter(speciesHeaderRow).map(arr=>({
+      id: arr[0]!=null ? String(arr[0]) : "",
+      common: arr[1]!=null ? String(arr[1]) : "",
+      sci: arr[2]!=null ? String(arr[2]) : "",
+      type: arr[3]==="Invasive" ? "invasive" : "indigenous",
+      ffg: arr[4]!=null ? String(arr[4]) : "",
+      epbc: arr[5]!=null ? String(arr[5]) : "",
+      uncertain: arr[6]==="Yes",
+      significant: arr[7]==="X",
+      addedBy: arr[8]!=null ? String(arr[8]) : "",
+      fieldNotes: arr[9]!=null ? String(arr[9]) : "",
+      free: false, photos: [], points: []
+    })).filter(r=>r.sci);
+    const polygonsMeta = blockAfter(polyHeaderRow).map(arr=>({
+      id: arr[0]!=null ? String(arr[0]) : "",
+      pointCount: arr[1]!=null ? Number(arr[1]) : 0,
+      speciesNames: arr[2] ? String(arr[2]).split("; ").filter(Boolean) : [],
+      notes: arr[3]!=null ? String(arr[3]) : ""
+    }));
+    return { site, date, species, siteNotes, polygonsMeta };
+  }
+
+  /* ---- Minimal, dependency-free SQLite/GeoPackage reader --------------------
+     Tailored strictly to the exact single-leaf-page-per-table layout
+     buildGeoPackageBytes/buildPolygonGeoPackageBytes above produce (see the
+     big comment there) — not a general SQLite reader. Used by the Import
+     feature to read a previously-exported species_points.gpkg/
+     species_polygons.gpkg back in. */
+  function gpkgReadVarint(bytes, offset){
+    let result = 0n;
+    for(let i=0;i<8;i++){
+      const b = bytes[offset+i];
+      if(b === undefined) throw new Error("Truncated GeoPackage/SQLite file");
+      result = (result << 7n) | BigInt(b & 0x7F);
+      if(!(b & 0x80)) return { value: Number(result), length: i+1 };
+    }
+    const b8 = bytes[offset+8];
+    if(b8 === undefined) throw new Error("Truncated GeoPackage/SQLite file");
+    result = (result << 8n) | BigInt(b8);
+    return { value: Number(result), length: 9 };
+  }
+  function gpkgSerialTypeLength(st){
+    if(st===0||st===8||st===9||st===10||st===11) return 0;
+    if(st===1) return 1; if(st===2) return 2; if(st===3) return 3; if(st===4) return 4;
+    if(st===5) return 6; if(st===6||st===7) return 8;
+    if(st>=12) return Math.floor((st - (st%2===0?12:13))/2);
+    return 0;
+  }
+  function gpkgDecodeValue(bytes, offset, st){
+    if(st===0) return null;
+    if(st>=1 && st<=6){
+      const len = gpkgSerialTypeLength(st);
+      let v = 0n; const neg = (bytes[offset] & 0x80) !== 0;
+      for(let i=0;i<len;i++) v = (v<<8n) | BigInt(bytes[offset+i]);
+      if(neg) v = v - (1n<<BigInt(len*8));
+      return Number(v);
+    }
+    if(st===7){ const dv = new DataView(bytes.buffer, bytes.byteOffset+offset, 8); return dv.getFloat64(0, false); }
+    if(st===8) return 0;
+    if(st===9) return 1;
+    const len = gpkgSerialTypeLength(st);
+    const slice = bytes.subarray(offset, offset+len);
+    return (st%2===0) ? slice.slice() : new TextDecoder("utf-8").decode(slice);
+  }
+  function gpkgDecodeRecord(bytes, offset){
+    const hdr = gpkgReadVarint(bytes, offset);
+    const headerEnd = offset + hdr.value;
+    let p = offset + hdr.length;
+    const serialTypes = [];
+    while(p < headerEnd){ const st = gpkgReadVarint(bytes, p); serialTypes.push(st.value); p += st.length; }
+    let bodyOff = headerEnd;
+    return serialTypes.map(st=>{ const v = gpkgDecodeValue(bytes, bodyOff, st); bodyOff += gpkgSerialTypeLength(st); return v; });
+  }
+  function gpkgParseLeafPage(bytes, pageStart, pageSize, isPage1){
+    const headerOffset = isPage1 ? 100 : 0;
+    const base = pageStart + headerOffset;
+    if(bytes[base] !== 0x0D) throw new Error("Not a supported GeoPackage/SQLite file (expected a single leaf table b-tree page)");
+    const numCells = (bytes[base+3]<<8) | bytes[base+4];
+    const ptrArrayStart = base + 8;
+    const rows = [];
+    for(let i=0;i<numCells;i++){
+      const ptr = (bytes[ptrArrayStart+i*2]<<8) | bytes[ptrArrayStart+i*2+1];
+      const cellOffset = pageStart + ptr;
+      const lenV = gpkgReadVarint(bytes, cellOffset);
+      const rowidV = gpkgReadVarint(bytes, cellOffset + lenV.length);
+      const payloadOffset = cellOffset + lenV.length + rowidV.length;
+      rows.push({ rowid: rowidV.value, values: gpkgDecodeRecord(bytes, payloadOffset) });
+    }
+    return rows;
+  }
+  function gpkgReadFile(bytes){
+    if(bytes.length < 100 || new TextDecoder().decode(bytes.subarray(0,16)) !== "SQLite format 3\u0000"){
+      throw new Error("Not a valid GeoPackage/SQLite file");
+    }
+    let pageSize = (bytes[16]<<8) | bytes[17];
+    if(pageSize===0 || pageSize===1) pageSize = 65536;
+    const masterRows = gpkgParseLeafPage(bytes, 0, pageSize, true);
+    const tables = {};
+    masterRows.forEach(r=>{ tables[r.values[1]] = r.values[3]; });
+    function readTable(name){
+      const rootpage = tables[name];
+      if(rootpage == null) return null;
+      const pageIndex = rootpage - 1;
+      return gpkgParseLeafPage(bytes, pageIndex*pageSize, pageSize, pageIndex===0);
+    }
+    return { tables, readTable };
+  }
+  function gpkgDecodePointGeom(blob){
+    const dv = new DataView(blob.buffer, blob.byteOffset, blob.byteLength);
+    return { lon: dv.getFloat64(13, true), lat: dv.getFloat64(21, true) };
+  }
+  function gpkgDecodePolygonGeom(blob){
+    const dv = new DataView(blob.buffer, blob.byteOffset, blob.byteLength);
+    let p = 13; // magic(3)+flags(1)+srs(4)+wkb byte-order(1)+wkb type(4)
+    const numRings = dv.getUint32(p, true); p += 4;
+    const rings = [];
+    for(let r=0;r<numRings;r++){
+      const numPoints = dv.getUint32(p, true); p += 4;
+      const ring = [];
+      for(let i=0;i<numPoints;i++){
+        const lon = dv.getFloat64(p, true); p += 8;
+        const lat = dv.getFloat64(p, true); p += 8;
+        ring.push([lat, lon]);
+      }
+      rings.push(ring);
+    }
+    return rings;
+  }
+  /* bytes: a species_points.gpkg's raw bytes. Returns [{id,sci,common,lat,lon}]. */
+  function readPointsGeoPackage(bytes){
+    const gp = gpkgReadFile(bytes);
+    const featureTable = Object.keys(gp.tables).find(n=>!/^gpkg_/.test(n));
+    if(!featureTable) throw new Error("No feature table found in this GeoPackage");
+    return (gp.readTable(featureTable)||[]).map(r=>{
+      const [, geom, id, sci, common] = r.values;
+      const { lat, lon } = gpkgDecodePointGeom(geom);
+      return { id, sci, common, lat, lon };
+    });
+  }
+  /* bytes: a species_polygons.gpkg's raw bytes. Returns
+     [{id,site,surveyDate,vertices:[[lat,lon],...],species:[names],notes,createdBy}]. */
+  function readPolygonsGeoPackage(bytes){
+    const gp = gpkgReadFile(bytes);
+    const featureTable = Object.keys(gp.tables).find(n=>!/^gpkg_/.test(n));
+    if(!featureTable) throw new Error("No feature table found in this GeoPackage");
+    return (gp.readTable(featureTable)||[]).map(r=>{
+      const [, geom, id, site, surveyDate, speciesList, , notes, createdBy] = r.values;
+      const rings = gpkgDecodePolygonGeom(geom);
+      let vertices = (rings && rings[0]) || [];
+      if(vertices.length>1){
+        const first = vertices[0], last = vertices[vertices.length-1];
+        if(first[0]===last[0] && first[1]===last[1]) vertices = vertices.slice(0,-1);
+      }
+      return { id, site, surveyDate, vertices, species: speciesList ? String(speciesList).split("; ").filter(Boolean) : [], notes: notes||"", createdBy: createdBy||"" };
+    });
+  }
 
   /* ---- Team Sync: Firestore + Firebase Auth (Anonymous) REST client -------
      No SDK — plain fetch() against Google's public REST APIs, matching the
@@ -1141,7 +1606,7 @@ window.FHKit = (function(){
   }
   const live = { setLiveEndpoints, authAnon, authRefresh, fsCreateDoc, fsGetDoc, fsListDocs, fsPatchDoc, fsDeleteDoc };
 
-  return { esc, today, toast, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, buildGeoPackageBlob, buildGeoPackageBytes, triggerDownload, shareFiles, getLastShareDiagnostic, buildPicker, consLabel, consBadge, live };
+  return { esc, today, toast, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, buildGeoPackageBlob, buildGeoPackageBytes, buildPolygonGeoPackageBlob, buildPolygonGeoPackageBytes, triggerDownload, shareFiles, getLastShareDiagnostic, buildPicker, consLabel, consBadge, live, readZip, readXLSXSurvey, readPointsGeoPackage, readPolygonsGeoPackage };
 })();
 
 </script>
@@ -1154,6 +1619,9 @@ window.FHKit = (function(){
                                   // (the single most-recently-added species is always full — see render())
   let siteNotes = [];    // site-level field notes log: {id, text, ts} — not tied to a species
   let noteSeq = 0;
+  let polygons = [];     // {id, vertices:[[lat,lon],...], species:[names...], notes, createdBy} — habitat/plot
+                          // areas drawn on the aerial map, separate from individually-located Significant points.
+                          // Synced the same way species records are (each polygon its own shared doc).
 
   // ── Self-update check ────────────────────────────────────────────────
   // A plain "Add to Home Screen" shortcut has no built-in way to notice
@@ -1162,7 +1630,7 @@ window.FHKit = (function(){
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-23.1";
+  const BUILD_VERSION = "2026-09-24.1";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -1280,6 +1748,14 @@ window.FHKit = (function(){
                                        // so one flaky/incomplete fsListDocs() response can never delete a
                                        // still-server-side record; see pullRemoteSpecies()
   const noteSyncTimers = new Map();   // per-row debounce timers for syncing Field Notes while typing
+  // Polygons get the same recently-created/pending-removal/note-debounce
+  // treatment as species records (see the three Sets/Map just above) — kept
+  // as their own separate Set/Map rather than reused, since a species record
+  // id and a polygon id are never the same value but keeping the bookkeeping
+  // visibly separate avoids any chance of the two colliding in one shared set.
+  const recentlyCreatedPolygons = new Set();
+  const pendingRemovalPolygons = new Set();
+  const polySyncTimers = new Map();
   // A row can carry _liveUpdatedAt from a PREVIOUS live session — sessions
   // get left, dropped, or (rarely, now that starting/joining a new one
   // while one is still active requires an explicit confirm) intentionally
@@ -1443,7 +1919,7 @@ window.FHKit = (function(){
     return {
       sci:row.sci, common:row.common||row.sci, type:row.type||"indigenous", lf:row.lf||"", ffg:row.ffg||"", epbc:row.epbc||"",
       fieldNotes:row.fieldNotes||"", free:!!row.free, uncertain:!!row.uncertain, significant:!!row.significant,
-      pointsJson: encodePointsField(row.points), gpsStatus: row.gpsStatus||"idle", gpsMessage: row.gpsMessage||"",
+      pointsJson: encodePointsField(row.points),
       recordId: row.id, addedBy: row.addedBy||userName()||"", updatedBy: userName()||row.addedBy||"", updatedAt: new Date().toISOString(),
       appVersion: BUILD_VERSION  // historical metadata only (what wrote this record) — the "different app
                                   // version" warning itself is driven by device presence, see syncTeamPresence()
@@ -1460,7 +1936,7 @@ window.FHKit = (function(){
       id: doc.recordId || doc._id || makeRecordId(),
       sci: doc.sci, common: doc.common||doc.sci, type: doc.type||"indigenous", lf: doc.lf||"", ffg: doc.ffg||"", epbc: doc.epbc||"",
       fieldNotes: doc.fieldNotes||"", free: !!doc.free, uncertain: !!doc.uncertain, significant: !!doc.significant,
-      points: decodePointsField(doc.pointsJson), gpsStatus: doc.gpsStatus||"idle", gpsMessage: doc.gpsMessage||"",
+      points: decodePointsField(doc.pointsJson),
       photos: [], // photos are always device-local — never synced
       addedBy: doc.addedBy||"", updatedBy: doc.updatedBy||"",
       _liveUpdatedAt: doc._updateTime||"", _liveCode: live.code
@@ -1587,13 +2063,142 @@ window.FHKit = (function(){
     local.type = doc.type || local.type;
     local.free = !!doc.free; local.uncertain = !!doc.uncertain; local.significant = !!doc.significant;
     if(typeof doc.pointsJson === "string") local.points = decodePointsField(doc.pointsJson);
-    if(doc.gpsStatus) local.gpsStatus = doc.gpsStatus;
-    local.gpsMessage = doc.gpsMessage||"";
     if(!notesFocused && typeof doc.fieldNotes === "string") local.fieldNotes = doc.fieldNotes;
     local.addedBy = doc.addedBy || local.addedBy;
     local.updatedBy = doc.updatedBy || local.updatedBy;
     local._liveUpdatedAt = remoteTime; local._liveCode = live.code;
   }
+
+  // ── Polygon sync — mirrors the species sync engine above (same doc-per-
+  // record model, same offline-queue/grace-period patterns), kept as its own
+  // parallel set of functions against "surveys/{code}/polygons" rather than
+  // threading a "species vs polygons" branch through every one of the
+  // functions above. The two ARE tied together at a few integration points
+  // instead of being fully independent: queueLiveOp/flushLiveQueue accept a
+  // `collection` tag ("species" when omitted, for back-compat with anything
+  // already queued; "polygons" for these) so one offline retry queue and one
+  // flush loop serves both, and pullRemotePolygons() is called from the tail
+  // of pullRemoteSpecies() so every existing call site that already pulls
+  // species (the poll tick, visibilitychange resume, syncNow,
+  // reconcileWithRemote) automatically also pulls polygons, with nothing
+  // extra to remember at each call site.
+  function isSyncedPolygonToCurrentSession(p){ return !!p._liveUpdatedAt && p._liveCode === live.code; }
+  // Vertices and tagged species both ride as JSON-encoded text fields, same
+  // reasoning as species' own pointsJson (see encodePointsField above) — the
+  // Firestore REST client here only speaks flat scalars. encodePointsField/
+  // decodePointsField are generic JSON array codecs (despite the name), so
+  // they're reused as-is rather than duplicated under a new name.
+  function livePolygonFields(pg){
+    return {
+      verticesJson: encodePointsField(pg.vertices), speciesJson: encodePointsField(pg.species),
+      notes: pg.notes||"", recordId: pg.id,
+      createdBy: pg.createdBy||userName()||"", updatedBy: userName()||pg.createdBy||"", updatedAt: new Date().toISOString(),
+      appVersion: BUILD_VERSION
+    };
+  }
+  function mergeRemotePolygonIntoLocal(doc){
+    return {
+      id: doc.recordId || doc._id || makePolygonId(),
+      vertices: decodePointsField(doc.verticesJson), species: decodePointsField(doc.speciesJson),
+      notes: doc.notes||"", createdBy: doc.createdBy||"",
+      _liveUpdatedAt: doc._updateTime||"", _liveCode: live.code
+    };
+  }
+  // Same cross-device id-collision handling as resolveCreateCollision/
+  // liveCreateSpeciesForRow — compares this polygon's own vertices against
+  // whatever doc is already sitting under that id on the server, and mints a
+  // fresh id to retry under if it's genuinely someone else's polygon.
+  async function resolvePolygonCreateCollision(pg){
+    let existing = null;
+    try{ existing = await FHKit.live.fsGetDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/polygons/"+pg.id); }
+    catch(e){ return true; }
+    if(existing && existing.verticesJson === encodePointsField(pg.vertices)) return true;
+    pg.id = makePolygonId();
+    return false;
+  }
+  async function liveCreatePolygonForItem(pg, _retry){
+    _retry = _retry || 0;
+    await ensureAuth();
+    try{
+      const doc = await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/polygons", pg.id, livePolygonFields(pg));
+      pg._liveUpdatedAt = doc._updateTime; pg._liveCode = live.code;
+      recentlyCreatedPolygons.add(pg.id); setTimeout(()=>recentlyCreatedPolygons.delete(pg.id), 15000);
+      return true;
+    }catch(e){
+      if(e.status==="ALREADY_EXISTS"){
+        if(_retry >= 3){
+          pg._liveUpdatedAt = pg._liveUpdatedAt || new Date().toISOString(); pg._liveCode = live.code;
+          return true;
+        }
+        const isOwnDoc = await resolvePolygonCreateCollision(pg);
+        if(isOwnDoc){
+          pg._liveUpdatedAt = pg._liveUpdatedAt || new Date().toISOString(); pg._liveCode = live.code;
+          return true;
+        }
+        return liveCreatePolygonForItem(pg, _retry+1);
+      }
+      throw e;
+    }
+  }
+  // See liveSyncField's own comment for why this bails out on an
+  // unconfirmed create — identical reasoning applies here.
+  function liveSyncPolygonField(pg, partial){
+    if(!live.active) return;
+    if(!pg._liveUpdatedAt) return;
+    pg._liveUpdatedAt = new Date().toISOString();
+    const fields = Object.assign({}, partial, { updatedBy: userName()||pg.createdBy||"", updatedAt: new Date().toISOString() });
+    ensureAuth()
+      .then(()=> FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/polygons/"+pg.id, fields))
+      .catch(()=> queueLiveOp({ op:"patch", collection:"polygons", id:pg.id, fields }));
+  }
+  function liveSyncPolygonFieldDebounced(pg, partial, delay){
+    if(!live.active) return;
+    const key = pg.id;
+    clearTimeout(polySyncTimers.get(key));
+    polySyncTimers.set(key, setTimeout(()=> liveSyncPolygonField(pg, partial), delay||800));
+  }
+  function liveDeletePolygon(pg){
+    if(!live.active) return;
+    const id = pg.id;
+    saveLiveQueue(loadLiveQueue().filter(op=> !(op.id===id && (op.collection||"species")==="polygons")));
+    ensureAuth()
+      .then(()=> FHKit.live.fsDeleteDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/polygons/"+id))
+      .catch(()=> queueLiveOp({ op:"delete", collection:"polygons", id }));
+  }
+  // Same notes-focus guard as applyRemoteToRow, keyed on data-poly-notes.
+  function applyRemoteToPolygon(local, doc){
+    const remoteTime = doc._updateTime || "";
+    if(local._liveUpdatedAt && remoteTime && remoteTime <= local._liveUpdatedAt) return;
+    const active = document.activeElement;
+    const notesFocused = !!(active && active.dataset && active.dataset.polyNotes === local.id);
+    if(typeof doc.verticesJson === "string") local.vertices = decodePointsField(doc.verticesJson);
+    if(typeof doc.speciesJson === "string") local.species = decodePointsField(doc.speciesJson);
+    if(!notesFocused && typeof doc.notes === "string") local.notes = doc.notes;
+    local.createdBy = doc.createdBy || local.createdBy;
+    local._liveUpdatedAt = remoteTime; local._liveCode = live.code;
+  }
+  // Same "two consecutive polls must agree it's missing" grace period as
+  // pullRemoteSpecies() — see its own comment for the full reasoning.
+  async function pullRemotePolygons(){
+    const remoteDocs = await FHKit.live.fsListDocs(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/polygons");
+    remoteDocs.forEach(doc=>{
+      const local = polygons.find(p=>p.id===doc._id);
+      if(local){ applyRemoteToPolygon(local, doc); }
+      else { polygons.push(mergeRemotePolygonIntoLocal(doc)); }
+    });
+    const remoteIds = new Set(remoteDocs.map(d=>d._id));
+    const stillMissing = new Set();
+    polygons = polygons.filter(p=>{
+      if(!isSyncedPolygonToCurrentSession(p) || remoteIds.has(p.id) || recentlyCreatedPolygons.has(p.id)){ return true; }
+      if(pendingRemovalPolygons.has(p.id)){ return false; }
+      stillMissing.add(p.id);
+      return true;
+    });
+    pendingRemovalPolygons.clear();
+    stillMissing.forEach(id=> pendingRemovalPolygons.add(id));
+    renderPolygons();
+  }
+
   // Pulls the full shared species list and reconciles it into `rows`: adds
   // any record a teammate created that we don't have yet, updates anything
   // that changed elsewhere, and drops anything a teammate deleted. A local
@@ -1639,6 +2244,13 @@ window.FHKit = (function(){
     // discovering a mismatch after the fact at export time.
     live.remoteCount = remoteDocs.length;
     await syncTeamPresence();
+    // Polygons are pulled from here (the tail of the species pull) rather
+    // than from each of pullRemoteSpecies()'s own call sites individually —
+    // see the big comment on the polygon sync engine above. A failure here
+    // (e.g. a transient error listing the polygons collection) is swallowed
+    // rather than allowed to fail the species pull that already succeeded —
+    // the next poll tries again.
+    try{ await pullRemotePolygons(); }catch(e){}
     renderLiveUI();
     render(); autosave();
   }
@@ -1680,11 +2292,16 @@ window.FHKit = (function(){
   // device onto a different/new session safe rather than orphaning: every
   // row not yet confirmed synced to THAT session gets offered up again.
   async function reconcileWithRemote(){
-    await pullRemoteSpecies();
+    await pullRemoteSpecies();   // this also pulls polygons at its own tail — see pullRemotePolygons()
     const unsynced = rows.filter(r=>!isSyncedToCurrentSession(r));
     for(const r of unsynced){
       try{ await liveCreateSpeciesForRow(r); }
       catch(e){ queueLiveOp({ op:"create", id:r.id, fields:liveSpeciesFields(r) }); }
+    }
+    const unsyncedPolygons = polygons.filter(p=>!isSyncedPolygonToCurrentSession(p));
+    for(const p of unsyncedPolygons){
+      try{ await liveCreatePolygonForItem(p); }
+      catch(e){ queueLiveOp({ op:"create", collection:"polygons", id:p.id, fields:livePolygonFields(p) }); }
     }
   }
   // Polling cadence: every document a poll returns counts as one Firestore
@@ -1768,11 +2385,24 @@ window.FHKit = (function(){
     rows.forEach(r=>{
       if(isSyncedToCurrentSession(r)) return; // already confirmed created in THIS session
       const fresh = liveSpeciesFields(r);
-      const existing = q.find(op=> op.id===r.id && op.op==="create");
+      const existing = q.find(op=> op.id===r.id && op.op==="create" && (op.collection||"species")==="species");
       if(existing){
         if(JSON.stringify(existing.fields) !== JSON.stringify(fresh)){ existing.fields = fresh; added = true; }
       } else {
         q.push({ op:"create", id:r.id, fields:fresh });
+        added = true;
+      }
+    });
+    // Same never-attempted-at-all catch-up as above, for polygons — see the
+    // big comment just above this function for the full reasoning.
+    polygons.forEach(p=>{
+      if(isSyncedPolygonToCurrentSession(p)) return;
+      const fresh = livePolygonFields(p);
+      const existing = q.find(op=> op.id===p.id && op.op==="create" && op.collection==="polygons");
+      if(existing){
+        if(JSON.stringify(existing.fields) !== JSON.stringify(fresh)){ existing.fields = fresh; added = true; }
+      } else {
+        q.push({ op:"create", collection:"polygons", id:p.id, fields:fresh });
         added = true;
       }
     });
@@ -1794,7 +2424,9 @@ window.FHKit = (function(){
     try{ await ensureAuth(); }catch(e){ return; }
     const remaining = [];
     for(const op of q){
+      const coll = op.collection || "species"; // absent on anything queued before polygons existed — back-compat default
       try{
+        if(coll==="species"){
         if(op.op==="create"){
           try{
             const doc = await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species", op.id, op.fields);
@@ -1829,6 +2461,41 @@ window.FHKit = (function(){
           }catch(e){
             if(e.status!=="NOT_FOUND"){ remaining.push(op); live.lastErrorCode = errCode(e); }
           }
+        }
+        } else if(coll==="polygons"){
+        // Mirrors the species branch above exactly (create/patch/delete,
+        // same ALREADY_EXISTS collision handling, same NOT_FOUND tolerance
+        // on patch/delete) — see resolvePolygonCreateCollision.
+        if(op.op==="create"){
+          try{
+            const doc = await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/polygons", op.id, op.fields);
+            const local = polygons.find(p=> p.id===op.id);
+            if(local){ local._liveUpdatedAt = doc._updateTime; local._liveCode = live.code; }
+            recentlyCreatedPolygons.add(op.id); setTimeout(()=>recentlyCreatedPolygons.delete(op.id), 15000);
+          }catch(e){
+            if(e.status==="ALREADY_EXISTS"){
+              const local = polygons.find(p=>p.id===op.id);
+              if(local){
+                const isOwnDoc = await resolvePolygonCreateCollision(local);
+                if(isOwnDoc){ local._liveUpdatedAt = local._liveUpdatedAt || new Date().toISOString(); local._liveCode = live.code; }
+                else { remaining.push({ op:"create", collection:"polygons", id:local.id, fields:livePolygonFields(local) }); }
+              }
+            }
+            else { remaining.push(op); live.lastErrorCode = errCode(e); }
+          }
+        } else if(op.op==="patch"){
+          try{
+            await FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/polygons/"+op.id, op.fields);
+          }catch(e){
+            if(e.status!=="NOT_FOUND"){ remaining.push(op); live.lastErrorCode = errCode(e); }
+          }
+        } else if(op.op==="delete"){
+          try{
+            await FHKit.live.fsDeleteDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/polygons/"+op.id);
+          }catch(e){
+            if(e.status!=="NOT_FOUND"){ remaining.push(op); live.lastErrorCode = errCode(e); }
+          }
+        }
         }
       }catch(e){ remaining.push(op); live.lastErrorCode = errCode(e); }
     }
@@ -1894,7 +2561,7 @@ window.FHKit = (function(){
       currentSurveySite = target;                  // adopt/confirm the reserve name for whatever's open now
       return false;
     }
-    if(!rows.length && !siteNotes.length){
+    if(!rows.length && !siteNotes.length && !polygons.length){
       currentSurveySite = target;                  // nothing worth preserving yet — just relabel
       return false;
     }
@@ -1919,7 +2586,7 @@ window.FHKit = (function(){
     stopPolling(); clearTimeout(dropRetryTimer);
     live = freshLiveState();
     try{ localStorage.removeItem(LIVE_KEY); }catch(e){}
-    rows = []; siteNotes = []; openNotes = new Set(); expandedRows = new Set();
+    rows = []; siteNotes = []; polygons = []; openNotes = new Set(); expandedRows = new Set();
     folderKey = makeFolderKey();
     currentSurveySite = target;
     // Unconditionally set here (unlike joinLive's own site-autofill, which
@@ -1933,7 +2600,7 @@ window.FHKit = (function(){
     // even though the species list underneath had already been reset for B.
     $("site").value = target;
     FHKit.toast('Saved "'+(current||"(no site)")+'" to the survey folder — starting a new survey for "'+target+'"');
-    render(); renderSiteNotes(); autosave();
+    render(); renderSiteNotes(); renderPolygons(); autosave();
     return true;
   }
   async function startLive(){
@@ -1977,6 +2644,10 @@ window.FHKit = (function(){
       for(const r of rows){
         try{ await liveCreateSpeciesForRow(r); }
         catch(e){ queueLiveOp({ op:"create", id:r.id, fields:liveSpeciesFields(r) }); }
+      }
+      for(const p of polygons){
+        try{ await liveCreatePolygonForItem(p); }
+        catch(e){ queueLiveOp({ op:"create", collection:"polygons", id:p.id, fields:livePolygonFields(p) }); }
       }
       persistLiveSession();
       setLiveStatus("connected");
@@ -2038,6 +2709,7 @@ window.FHKit = (function(){
     live = freshLiveState();
     try{ localStorage.removeItem(LIVE_KEY); }catch(e){}
     rows.forEach(r=>{ delete r._liveUpdatedAt; delete r._liveCode; });
+    polygons.forEach(p=>{ delete p._liveUpdatedAt; delete p._liveCode; });
     renderLiveUI();
     FHKit.toast("Left live sync — this survey now stays local to this device");
   }
@@ -2141,6 +2813,21 @@ window.FHKit = (function(){
     do{
       const rand = Math.random().toString(36).slice(2,8).toUpperCase();
       id = "FS-"+ymd+"-"+rand;
+    }while(used.has(id));
+    return id;
+  }
+  // Same collision-avoidance approach as makeRecordId (species records) —
+  // polygons get their own ID namespace ("PG-" vs "FS-") so the two are never
+  // confused when read back from an export, and get the same widened 6-char
+  // suffix for the same cross-device-collision reasons.
+  function makePolygonId(){
+    const d = new Date();
+    const ymd = String(d.getFullYear()).slice(2) + String(d.getMonth()+1).padStart(2,"0") + String(d.getDate()).padStart(2,"0");
+    const used = new Set((polygons||[]).map(p=>p.id));
+    let id;
+    do{
+      const rand = Math.random().toString(36).slice(2,8).toUpperCase();
+      id = "PG-"+ymd+"-"+rand;
     }while(used.has(id));
     return id;
   }
@@ -2271,7 +2958,32 @@ window.FHKit = (function(){
     ov.addEventListener("click", e=>{
       if(e.target===ov || e.target.dataset.close){ ov.remove(); return; }
       const ln = e.target.dataset.load, dn = e.target.dataset.del;
-      if(ln){ restore(o[ln]); autosave(); FHKit.toast("Loaded survey"); ov.remove(); }
+      if(ln){
+        // Loading a DIFFERENT survey from the Saved Folder must never leave
+        // this device quietly syncing under whatever live code it happened
+        // to be on — restore() swaps out `rows`/`polygons` wholesale, but
+        // does nothing to `live` itself, so without this a still-active live
+        // session would carry straight on polling/pushing the newly-loaded
+        // survey's (unrelated) species into that old shared collection the
+        // moment the next poll or edit fires. Unlike switchReserveIfNeeded
+        // (which only fires on a same-vs-different RESERVE NAME comparison
+        // for Start/Join), Load can swap in a survey for the exact same
+        // reserve/date currently live — still not safe to assume it's the
+        // same shared collection, so any active live session is always left
+        // here, unconditionally, before the switch.
+        const wasLive = live.active;
+        if(wasLive){
+          stopPolling(); clearTimeout(dropRetryTimer);
+          live = freshLiveState();
+          try{ localStorage.removeItem(LIVE_KEY); }catch(e){}
+          renderLiveUI();
+        }
+        restore(o[ln]); autosave();
+        FHKit.toast(wasLive
+          ? "Loaded survey — left Team Sync first (a live code doesn't follow a Saved Folder switch). Start/Join again to sync this one."
+          : "Loaded survey");
+        ov.remove();
+      }
       if(dn && confirm("Delete this saved survey?")){
         delete o[dn];
         try{ putFolder(o); clearStorageWarning("localStorage"); }catch(e){ showStorageWarning("localStorage", e); }
@@ -2289,8 +3001,293 @@ window.FHKit = (function(){
     location.reload();
   }
 
+  // ── Import: reconstruct a survey from previously-exported files (an
+  // .xlsx, one or two .gpkg files or the GIS zip that holds them, and/or a
+  // photos zip/loose photo files) and add it as a brand-new entry in the
+  // Saved Folder — this NEVER touches the survey currently open on screen,
+  // by design (see the confirmation modal below). Tailored strictly to this
+  // app's own export format (FHKit.readXLSXSurvey/readZip/
+  // readPointsGeoPackage/readPolygonsGeoPackage) — not a general importer.
+  function bytesToDataUrl(bytes, mime){
+    let binary = "";
+    for(let i=0;i<bytes.length;i++) binary += String.fromCharCode(bytes[i]);
+    return "data:"+(mime||"image/jpeg")+";base64,"+btoa(binary);
+  }
+  // Sorts one file's bytes into the right bucket by name/extension — shared
+  // between a loose selected file and an entry pulled out of a zip.
+  function classifyImportEntry(name, bytes, out){
+    const lower = name.toLowerCase();
+    if(lower.endsWith(".gpkg")){
+      if(/polygon/.test(lower)) out.polygonGpkgs.push(bytes);
+      else out.pointGpkgs.push(bytes);
+    } else if(/\.(jpe?g|png|gif)$/.test(lower)){
+      // Photos are exported named "<record id>[-n].jpg" (see
+      // buildPhotoFiles) — strip any folder path and the "-n" suffix to
+      // recover the record id a photo belongs to.
+      const base = name.replace(/^.*[\\/]/, "").replace(/\.[^.]+$/, "");
+      const recordId = base.replace(/-\d+$/, "");
+      out.photos.push({ recordId, bytes, mime: lower.endsWith(".png") ? "image/png" : (lower.endsWith(".gif") ? "image/gif" : "image/jpeg") });
+    }
+    // .xlsx and anything unrecognised is handled by the caller instead.
+  }
+  async function reconstructSurveyFromFiles(fileList){
+    const files = Array.from(fileList||[]);
+    let site = null, date = null, species = null, siteNotes = [], polygonsMeta = [];
+    const gis = { pointGpkgs:[], polygonGpkgs:[], photos:[] };
+    const warnings = [];
+
+    for(const f of files){
+      const name = f.name||"";
+      const lower = name.toLowerCase();
+      let buf;
+      try{ buf = new Uint8Array(await f.arrayBuffer()); }
+      catch(e){ warnings.push('Couldn\'t read "'+name+'": '+(e&&e.message||e)); continue; }
+      try{
+        if(lower.endsWith(".xlsx")){
+          const x = FHKit.readXLSXSurvey(buf);
+          site = x.site; date = x.date; species = x.species; siteNotes = x.siteNotes; polygonsMeta = x.polygonsMeta;
+        } else if(lower.endsWith(".zip")){
+          const entries = FHKit.readZip(buf);
+          Object.keys(entries).forEach(entryName=> classifyImportEntry(entryName, entries[entryName], gis));
+        } else if(lower.endsWith(".gpkg") || /\.(jpe?g|png|gif)$/.test(lower)){
+          classifyImportEntry(name, buf, gis);
+        } else {
+          warnings.push('"'+name+'" isn\'t a file this can import (expected an .xlsx, .zip, .gpkg, or a photo) — it was skipped.');
+        }
+      }catch(e){
+        warnings.push('Couldn\'t read "'+name+'": '+(e&&e.message||e));
+      }
+    }
+
+    let points = [];
+    gis.pointGpkgs.forEach(bytes=>{
+      try{ points = points.concat(FHKit.readPointsGeoPackage(bytes)); }
+      catch(e){ warnings.push("Couldn't read a points GeoPackage: "+(e&&e.message||e)); }
+    });
+    let polys = [];
+    gis.polygonGpkgs.forEach(bytes=>{
+      try{ polys = polys.concat(FHKit.readPolygonsGeoPackage(bytes)); }
+      catch(e){ warnings.push("Couldn't read a polygons GeoPackage: "+(e&&e.message||e)); }
+    });
+
+    // Species: from the xlsx if one was selected; otherwise reconstructed as
+    // bare stubs from whatever the GeoPackage(s) alone can carry (id, sci
+    // name, common name — a GIS-only import still produces something).
+    if(!species){
+      const byId = new Map();
+      points.forEach(p=>{
+        if(!byId.has(p.id)) byId.set(p.id, { id:p.id, common:p.common||p.sci, sci:p.sci, type:"indigenous", ffg:"", epbc:"", uncertain:false, significant:true, addedBy:"", fieldNotes:"", free:false, photos:[], points:[] });
+      });
+      species = [...byId.values()];
+      if(!species.length && !polys.length) throw new Error("Nothing to import — select at least the Excel file or a GeoPackage from a previous export.");
+      if(species.length) warnings.push("No Excel file was selected — species names/notes/uncertain flags couldn't be recovered, only what the GeoPackage(s) carry (GPS points and, for Significant species, scientific name).");
+    }
+
+    // Merge captured points into their matching species record by record ID.
+    const speciesById = new Map(species.map(s=>[s.id, s]));
+    let unmatchedPoints = 0;
+    points.forEach(p=>{
+      const s = speciesById.get(p.id);
+      if(!s){ unmatchedPoints++; return; }
+      s.points = s.points || [];
+      s.points.push({ id: makePointId(), lat:p.lat, lon:p.lon });
+      s.significant = true; // a captured point only ever exists for a Significant species
+    });
+    if(unmatchedPoints) warnings.push(unmatchedPoints+" GPS point"+(unmatchedPoints===1?"":"s")+" in the GeoPackage didn't match any species record ID and "+(unmatchedPoints===1?"was":"were")+" left out.");
+
+    // Attach photos by matching record ID — stored as data URLs, the same
+    // already-supported "old, pre-IndexedDB shape" buildPhotoFiles reads
+    // directly, so these show up and re-export correctly without needing
+    // an async IndexedDB write during import.
+    let unmatchedPhotos = 0;
+    gis.photos.forEach(ph=>{
+      const s = speciesById.get(ph.recordId);
+      if(!s){ unmatchedPhotos++; return; }
+      s.photos = s.photos || [];
+      s.photos.push({ id:"p_"+Date.now().toString(36)+Math.random().toString(36).slice(2,8), dataUrl:bytesToDataUrl(ph.bytes, ph.mime), addedAt:new Date().toISOString() });
+    });
+    if(unmatchedPhotos) warnings.push(unmatchedPhotos+" photo"+(unmatchedPhotos===1?"":"s")+" didn't match any species record ID and "+(unmatchedPhotos===1?"was":"were")+" left out.");
+
+    // Polygons: only ones with an actual shape (from a GeoPackage) are
+    // usable — an xlsx-only polygon row (no GIS file selected) can't be
+    // reconstructed, so that's called out rather than silently dropped.
+    const polygonsOut = polys.map(pg=>({ id:pg.id, vertices:pg.vertices, species:pg.species, notes:pg.notes||"", createdBy:pg.createdBy||"" }));
+    if(polygonsMeta.length && !polygonsOut.length){
+      warnings.push(polygonsMeta.length+" polygon"+(polygonsMeta.length===1?"":"s")+" "+(polygonsMeta.length===1?"was":"were")+" listed in the Excel file but no GIS file was selected, so "+(polygonsMeta.length===1?"its shape couldn't":"their shapes couldn't")+" be recovered.");
+    }
+
+    const snapshot = {
+      folderKey: makeFolderKey(),
+      meta: { site: site || "Imported Survey", date: date || FHKit.today() },
+      species, siteNotes, polygons: polygonsOut,
+      savedAt: new Date().toISOString()
+    };
+    return { snapshot, warnings, counts: { species:species.length, points:points.length, polygons:polygonsOut.length, photos:gis.photos.length-unmatchedPhotos } };
+  }
+  function openImportFlow(){
+    const input = document.createElement("input");
+    input.type = "file"; input.multiple = true; input.accept = ".xlsx,.zip,.gpkg,image/*";
+    input.style.display = "none";
+    document.body.appendChild(input);
+    input.addEventListener("change", async ()=>{
+      const fileList = input.files;
+      input.remove();
+      if(!fileList || !fileList.length) return;
+      try{
+        const { snapshot, warnings, counts } = await reconstructSurveyFromFiles(fileList);
+        showImportSummary(snapshot, warnings, counts);
+      }catch(e){
+        FHKit.toast("Couldn't import — "+(e&&e.message||e));
+      }
+    });
+    input.click();
+  }
+  function showImportSummary(snapshot, warnings, counts){
+    const m = snapshot.meta;
+    const ov = document.createElement("div"); ov.className="fh-modal";
+    const warnHtml = warnings.length
+      ? '<p class="muted" style="margin:10px 0 0;color:var(--red)">'+warnings.map(w=>FHKit.esc(w)).join("<br>")+'</p>' : "";
+    ov.innerHTML = '<div class="fh-modal-card"><h3>Import Survey</h3>'
+      + '<div style="padding:16px 18px">'
+      + '<p style="margin:0 0 10px"><b>'+FHKit.esc(m.site)+'</b> / '+FHKit.esc(m.date)+'</p>'
+      + '<p class="muted" style="margin:0">'+counts.species+' species'
+      + (counts.points?(' &middot; '+counts.points+' GPS point'+(counts.points===1?'':'s')):'')
+      + (counts.polygons?(' &middot; '+counts.polygons+' polygon'+(counts.polygons===1?'':'s')):'')
+      + (counts.photos?(' &middot; '+counts.photos+' photo'+(counts.photos===1?'':'s')):'')
+      + '</p>'
+      + warnHtml
+      + '<p class="muted" style="margin:14px 0 0">This will be added as a <b>new entry</b> in your Saved Folder — it will not change the survey currently open.</p>'
+      + '</div>'
+      + '<div class="fh-modal-foot"><button class="ghost" data-close="1">Cancel</button><button class="btn" id="impConfirm">Add to Saved Folder</button></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener("click", e=>{
+      if(e.target===ov || e.target.dataset.close){ ov.remove(); return; }
+      if(e.target.id==="impConfirm"){
+        const o = getFolder();
+        o[snapshot.folderKey] = snapshot;
+        try{
+          putFolder(o);
+          clearStorageWarning("localStorage");
+          FHKit.toast("Imported as a new entry in your Saved Folder");
+        }catch(err){
+          showStorageWarning("localStorage", err);
+          FHKit.toast("Couldn't save the imported survey — see the warning banner for details.");
+        }
+        ov.remove();
+      }
+    });
+  }
+
+  // ── Merge Surveys: combine two or more Saved Folder entries into ONE new
+  // entry (the originals are left untouched — delete them yourself from the
+  // Saved Folder afterwards if you don't need them any more). Duplicate
+  // management follows one strict, deliberately narrow rule: a species
+  // record from one survey collapses into another's ONLY when they match on
+  // every one of scientific name, field notes, photos, location AND the
+  // unique record ID — i.e. it's genuinely the very same record appearing
+  // twice (e.g. via two overlapping saves/imports), never just two similar-
+  // looking independent sightings. Any single difference — including a
+  // different ID — keeps both rows.
+  function pointsEqual(a, b){
+    const pa=(a||[]).map(p=>p.lat+","+p.lon).sort();
+    const pb=(b||[]).map(p=>p.lat+","+p.lon).sort();
+    return pa.length===pb.length && pa.every((v,i)=>v===pb[i]);
+  }
+  function verticesEqual(a, b){
+    a = a||[]; b = b||[];
+    if(a.length !== b.length) return false;
+    for(let i=0;i<a.length;i++){ if(a[i][0]!==b[i][0] || a[i][1]!==b[i][1]) return false; }
+    return true;
+  }
+  function photosEqual(a, b){
+    const ka=(a||[]).map(p=>p.dataUrl||p.id).sort();
+    const kb=(b||[]).map(p=>p.dataUrl||p.id).sort();
+    return ka.length===kb.length && ka.every((v,i)=>v===kb[i]);
+  }
+  function speciesIsTrueDuplicate(a, b){
+    return a.id===b.id && a.sci===b.sci && (a.fieldNotes||"")===(b.fieldNotes||"")
+      && pointsEqual(a.points, b.points) && photosEqual(a.photos, b.photos);
+  }
+  function mergeSurveys(snapshots){
+    const sites = [...new Set(snapshots.map(s=>(s.meta&&s.meta.site)||"").filter(Boolean))];
+    const dates = [...new Set(snapshots.map(s=>(s.meta&&s.meta.date)||"").filter(Boolean))];
+    const species = [];
+    snapshots.forEach(s=>{
+      (s.species||[]).forEach(r=>{
+        if(!species.some(existing=>speciesIsTrueDuplicate(existing, r))){
+          species.push(Object.assign({}, r, { photos:(r.photos||[]).map(p=>Object.assign({},p)), points:(r.points||[]).map(p=>Object.assign({},p)) }));
+        }
+      });
+    });
+    const siteNotes = [];
+    snapshots.forEach(s=>{
+      (s.siteNotes||[]).forEach(n=>{
+        if(!siteNotes.some(existing=> existing.text===n.text && existing.ts===n.ts)) siteNotes.push(Object.assign({},n));
+      });
+    });
+    const polygons = [];
+    snapshots.forEach(s=>{
+      (s.polygons||[]).forEach(pg=>{
+        const isDup = polygons.some(existing=> existing.id===pg.id && (existing.notes||"")===(pg.notes||"")
+          && (existing.species||[]).join("|")===(pg.species||[]).join("|") && verticesEqual(existing.vertices, pg.vertices));
+        if(!isDup) polygons.push(Object.assign({}, pg, { vertices:(pg.vertices||[]).map(v=>v.slice()), species:(pg.species||[]).slice() }));
+      });
+    });
+    return {
+      folderKey: makeFolderKey(),
+      meta: { site: sites.join(" + ") || "(no site)", date: dates.length===1 ? dates[0] : dates.join(" + ") },
+      species, siteNotes, polygons,
+      savedAt: new Date().toISOString()
+    };
+  }
+  function openMergeSurveysFlow(){
+    const o = getFolder();
+    const keys = Object.keys(o).sort((a,b)=>{
+      const ma=o[a].meta||{}, mb=o[b].meta||{};
+      const sa=(ma.site||"").trim().toLowerCase(), sb=(mb.site||"").trim().toLowerCase();
+      if(sa!==sb) return sa<sb?-1:1;
+      return new Date(mb.date||0) - new Date(ma.date||0);
+    });
+    if(keys.length<2){ FHKit.toast("Save at least two surveys to the folder before merging"); return; }
+    const ov = document.createElement("div"); ov.className="fh-modal";
+    ov.innerHTML = '<div class="fh-modal-card"><h3>Merge Surveys</h3>'
+      + '<p class="muted" style="margin:0;padding:0 18px 12px">Select two or more surveys to combine into one new entry. True duplicate records (same record ID, scientific name, field notes, photos and location) are merged into one; anything with even one difference is kept as a separate row.</p>'
+      + '<div class="fh-modal-list">'
+      + keys.map(key=>{
+          const s = o[key]||{}; const m = s.meta||{};
+          const nSp = (s.species||[]).length;
+          const surveyName = (m.site||"(no site)")+' / '+(m.date||"(no date)");
+          return '<div class="fh-modal-row"><label style="display:flex;align-items:center;gap:10px;width:100%;cursor:pointer">'
+            + '<input type="checkbox" data-merge-key="'+FHKit.esc(key)+'">'
+            + '<span><b>'+FHKit.esc(surveyName)+'</b><br><small>'+nSp+' species</small></span>'
+            + '</label></div>';
+        }).join("")
+      + '</div><div class="fh-modal-foot"><button class="ghost" data-close="1">Cancel</button><button class="btn" id="mergeGo">Merge Selected</button></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener("click", e=>{
+      if(e.target===ov || e.target.dataset.close){ ov.remove(); return; }
+      if(e.target.id==="mergeGo"){
+        const selected = [...ov.querySelectorAll("[data-merge-key]")].filter(cb=>cb.checked).map(cb=>cb.dataset.mergeKey);
+        if(selected.length<2){ FHKit.toast("Select at least two surveys to merge"); return; }
+        const merged = mergeSurveys(selected.map(k=>o[k]));
+        const folder = getFolder();
+        folder[merged.folderKey] = merged;
+        try{
+          putFolder(folder);
+          clearStorageWarning("localStorage");
+          FHKit.toast("Merged "+selected.length+" surveys into a new entry in your Saved Folder");
+        }catch(err){
+          showStorageWarning("localStorage", err);
+          FHKit.toast("Couldn't save the merged survey — see the warning banner for details.");
+        }
+        ov.remove();
+      }
+    });
+  }
+
+
   function meta(){ return { site:$("site").value, date:$("date").value }; }
-  function snapshot(){ return { folderKey:folderKey, meta:meta(), species:rows.map(r=>{ const o = Object.assign({},r, {photos:(r.photos||[]).map(p=>Object.assign({},p)), points:(r.points||[]).map(p=>Object.assign({},p))}); delete o._liveUpdatedAt; delete o._liveCode; return o; }), siteNotes:siteNotes.map(n=>Object.assign({},n)), savedAt:new Date().toISOString() }; }
+  function snapshot(){ return { folderKey:folderKey, meta:meta(), species:rows.map(r=>{ const o = Object.assign({},r, {photos:(r.photos||[]).map(p=>Object.assign({},p)), points:(r.points||[]).map(p=>Object.assign({},p))}); delete o._liveUpdatedAt; delete o._liveCode; return o; }), siteNotes:siteNotes.map(n=>Object.assign({},n)), polygons:polygons.map(p=>{ const o = Object.assign({},p,{vertices:(p.vertices||[]).map(v=>v.slice()), species:(p.species||[]).slice()}); delete o._liveUpdatedAt; delete o._liveCode; return o; }), savedAt:new Date().toISOString() }; }
   function restore(s){
     if(!s) return; const m = s.meta||{};
     folderKey = s.folderKey || s.id || makeFolderKey();
@@ -2331,7 +3328,18 @@ window.FHKit = (function(){
     // Migrate an older single free-text "siteFieldNotes" sheet into the new list format.
     else if(m.siteFieldNotes && m.siteFieldNotes.trim()) siteNotes = [{ id:"legacy_"+Date.now(), text:m.siteFieldNotes, ts:s.savedAt||new Date().toISOString() }];
     else siteNotes = [];
-    render(); renderSiteNotes();
+    polygons = (Array.isArray(s.polygons) ? s.polygons : []).map(p=>{
+      const o = Object.assign({}, p);
+      o.vertices = Array.isArray(o.vertices) ? o.vertices.map(v=>v.slice()) : [];
+      o.species = Array.isArray(o.species) ? o.species.slice() : [];
+      if(!o.id) o.id = makePolygonId();
+      // Live-sync bookkeeping is per-session, not part of a saved survey —
+      // drop it so a loaded survey doesn't carry stale links to an old code.
+      delete o._liveUpdatedAt;
+      delete o._liveCode;
+      return o;
+    });
+    render(); renderSiteNotes(); renderPolygons();
   }
   function suggestName(){ const s=($("site").value||"Site").trim()||"Site"; return s+" — "+($("date").value||FHKit.today()); }
 
@@ -2553,6 +3561,275 @@ window.FHKit = (function(){
       rows.sort(bySci);
     }
   }
+  // ── Aerial map modal: QField-style "pan the map under a fixed crosshair"
+  // location picker, shared by single-point placement/adjustment and
+  // polygon drawing. Ported verbatim from the no-sync build — see its own
+  // comments there for the full rationale (offline-tolerant, always allows
+  // manual placement even if GPS is denied/unsupported/absent).
+  const MapModal = (function(){
+    let overlay=null, mapEl=null, map=null, polyLayer=null, vertexMarkers=[];
+    let state=null; // { mode:'point'|'polygon'|'overview', vertices:[[lat,lon],...], onSave, onCancel }
+
+    function computeOverviewCenterZoom(coords){
+      if(!coords.length) return null;
+      let minLat=90,maxLat=-90,minLon=180,maxLon=-180;
+      coords.forEach(([lat,lon])=>{
+        minLat=Math.min(minLat,lat); maxLat=Math.max(maxLat,lat);
+        minLon=Math.min(minLon,lon); maxLon=Math.max(maxLon,lon);
+      });
+      const center = [(minLat+maxLat)/2, (minLon+maxLon)/2];
+      const span = Math.max(maxLat-minLat, maxLon-minLon);
+      let zoom = span>0 ? Math.round(19 - Math.log2(span/0.001)) : 19;
+      zoom = Math.max(12, Math.min(19, zoom));
+      return { center, zoom };
+    }
+    function showCrosshair(show){
+      const pin = overlay.querySelector(".map-center-pin");
+      if(pin) pin.style.display = show ? "" : "none";
+    }
+
+    function build(){
+      overlay = document.createElement("div");
+      overlay.className = "fh-modal";
+      overlay.innerHTML =
+          '<div class="fh-modal-card map-modal-card">'
+        + '<div class="map-modal-head"><h3 id="mmTitle">Location</h3><button type="button" class="ghost" data-mm-close="1">Close</button></div>'
+        + '<div class="map-modal-status" id="mmStatus">Loading map…</div>'
+        + '<p class="map-hint" id="mmHint"></p>'
+        + '<div style="position:relative">'
+        +   '<div id="mapContainer"></div>'
+        +   '<div class="map-center-pin">📍</div>'
+        + '</div>'
+        + '<div class="map-modal-foot" id="mmFoot"></div>'
+        + '</div>';
+      document.body.appendChild(overlay);
+      overlay.addEventListener("click", e=>{ if(e.target===overlay || e.target.dataset.mmClose) cancel(); });
+      mapEl = overlay.querySelector("#mapContainer");
+    }
+    function setStatus(text, isError){
+      const el = overlay.querySelector("#mmStatus");
+      el.textContent = text;
+      el.classList.toggle("error", !!isError);
+    }
+    function ensureMap(lat, lon, zoom){
+      if(map){ map.remove(); map=null; }
+      // The mapping library loads from a CDN — in the field, with no signal,
+      // it may never have loaded at all. Fail with a clear on-screen message
+      // rather than a raw script error, since this app otherwise goes out of
+      // its way to never fail silently (see the storage-warning banner).
+      if(typeof window.L === "undefined" || !window.L.map){
+        setStatus("Couldn't load the map — this needs an internet connection the first time it's used on this device. Try again once you have signal, or Cancel.", true);
+        return;
+      }
+      map = L.map(mapEl, { attributionControl:false, zoomControl:true, center:[lat,lon], zoom: zoom||19 });
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapTile/{z}/{y}/{x}", {
+        maxZoom:20, maxNativeZoom:19
+      }).addTo(map);
+      setTimeout(()=>{ if(map) map.invalidateSize(); }, 0);
+      if(state.mode==="polygon") redrawPolygon();
+      else if(state.mode==="overview") renderOverviewLayers();
+    }
+    function centerLatLon(){ const c = map.getCenter(); return [c.lat, c.lng]; }
+    function redrawPolygon(){
+      if(polyLayer){ map.removeLayer(polyLayer); polyLayer=null; }
+      vertexMarkers.forEach(m=>map.removeLayer(m)); vertexMarkers=[];
+      if(state.vertices.length){
+        if(state.vertices.length>1) polyLayer = L.polygon(state.vertices, { color:"#c9a227", weight:3, fillOpacity:0.15 }).addTo(map);
+        state.vertices.forEach(v=>{
+          vertexMarkers.push(L.circleMarker(v, { radius:5, color:"#2f6fed", weight:2, fillColor:"#2f6fed", fillOpacity:1 }).addTo(map));
+        });
+      }
+    }
+    function tryGps(onDone){
+      if(!(window.navigator && navigator.geolocation && navigator.geolocation.getCurrentPosition)){
+        setStatus("Location not supported on this device — pan the map to position manually.", true);
+        if(onDone) onDone(null);
+        return;
+      }
+      setStatus("Finding current GPS location…");
+      navigator.geolocation.getCurrentPosition(
+        pos=>{
+          setStatus("GPS accuracy ±"+Math.round(pos.coords.accuracy)+"m — pan the map to fine-tune if needed, then save.");
+          if(onDone) onDone(pos.coords);
+        },
+        err=>{
+          setStatus(err && err.code===1 ? "Location permission denied — pan the map to position manually." : "Location unavailable — pan the map to position manually.", true);
+          if(onDone) onDone(null);
+        },
+        { enableHighAccuracy:true, timeout:12000, maximumAge:60000 }
+      );
+    }
+    function footForPoint(){
+      const foot = overlay.querySelector("#mmFoot");
+      foot.innerHTML = '<button type="button" class="btn light" id="mmGps">Use GPS</button>'
+        + '<button type="button" class="btn" id="mmSave">Save Point</button>';
+      foot.querySelector("#mmGps").addEventListener("click", ()=>{
+        tryGps(coords=>{ if(coords && map) map.setView([coords.latitude, coords.longitude], Math.max(map.getZoom(),19)); });
+      });
+      foot.querySelector("#mmSave").addEventListener("click", ()=>{
+        if(!map){ FHKit.toast("The map hasn't loaded yet — see the message above."); return; }
+        const [lat,lon] = centerLatLon();
+        const cb = state.onSave; close();
+        if(cb) cb(lat, lon);
+      });
+    }
+    function footForPolygon(){
+      const foot = overlay.querySelector("#mmFoot");
+      foot.innerHTML = '<button type="button" class="btn light" id="mmGps">Use GPS</button>'
+        + '<button type="button" class="btn light" id="mmUndo"'+(state.vertices.length?'':' disabled')+'>Undo Last Point</button>'
+        + '<button type="button" class="btn" id="mmAdd">+ Add Point</button>'
+        + '<button type="button" class="btn" id="mmFinish"'+(state.vertices.length<3?' disabled':'')+'>Finish Polygon</button>';
+      foot.querySelector("#mmGps").addEventListener("click", ()=>{
+        tryGps(coords=>{ if(coords && map) map.setView([coords.latitude, coords.longitude], Math.max(map.getZoom(),19)); });
+      });
+      foot.querySelector("#mmAdd").addEventListener("click", ()=>{
+        if(!map){ FHKit.toast("The map hasn't loaded yet — see the message above."); return; }
+        state.vertices.push(centerLatLon());
+        redrawPolygon();
+        footForPolygon();
+        setStatus(state.vertices.length+" point"+(state.vertices.length===1?"":"s")+" placed — pan and tap “+ Add Point” for each corner, then “Finish Polygon” once you have at least 3.");
+      });
+      foot.querySelector("#mmUndo").addEventListener("click", ()=>{
+        state.vertices.pop();
+        redrawPolygon();
+        footForPolygon();
+      });
+      foot.querySelector("#mmFinish").addEventListener("click", ()=>{
+        if(state.vertices.length<3){ FHKit.toast("A polygon needs at least 3 points"); return; }
+        const verts = state.vertices.slice();
+        const cb = state.onSave; close();
+        if(cb) cb(verts);
+      });
+    }
+    function footForOverview(){
+      const foot = overlay.querySelector("#mmFoot");
+      foot.innerHTML = '<button type="button" class="btn light" id="mmAddPoly">+ Add Polygon</button>'
+        + '<button type="button" class="ghost" id="mmOverviewClose">Close</button>';
+      foot.querySelector("#mmAddPoly").addEventListener("click", ()=>{
+        const cb = state.onRequestAddPolygon; close();
+        if(cb) cb();
+      });
+      foot.querySelector("#mmOverviewClose").addEventListener("click", cancel);
+    }
+    function footForMovePoint(){
+      const foot = overlay.querySelector("#mmFoot");
+      foot.innerHTML = '<button type="button" class="btn light" id="mmGps">Use GPS</button>'
+        + '<button type="button" class="btn" id="mmSave">Save Point</button>'
+        + '<button type="button" class="ghost" id="mmCancelMove">Cancel</button>';
+      foot.querySelector("#mmGps").addEventListener("click", ()=>{
+        tryGps(coords=>{ if(coords && map) map.setView([coords.latitude, coords.longitude], Math.max(map.getZoom(),19)); });
+      });
+      foot.querySelector("#mmSave").addEventListener("click", ()=>{
+        if(!map){ FHKit.toast("The map hasn't loaded yet — see the message above."); return; }
+        const [lat,lon] = centerLatLon();
+        const moving = state.movingPoint;
+        if(moving && state.onMovePoint) state.onMovePoint(moving.recordId, moving.pointId, lat, lon);
+        state.movingPoint = null;
+        showCrosshair(false);
+        footForOverview();
+        renderOverviewLayers();
+        setStatus("Point moved. Tap another point to reposition it, or Close when you're done.");
+      });
+      foot.querySelector("#mmCancelMove").addEventListener("click", ()=>{
+        state.movingPoint = null;
+        showCrosshair(false);
+        footForOverview();
+        setStatus("Tap a point to reposition it, or draw a new polygon.");
+      });
+    }
+    function renderOverviewLayers(){
+      (state.overviewMarkers||[]).forEach(m=>{ if(map) map.removeLayer(m); });
+      (state.overviewPolyLayers||[]).forEach(l=>{ if(map) map.removeLayer(l); });
+      state.overviewMarkers = []; state.overviewPolyLayers = [];
+      const data = state.getOverviewData ? state.getOverviewData() : { points:[], polygons:[] };
+      (data.polygons||[]).forEach(pg=>{
+        if((pg.vertices||[]).length>1){
+          state.overviewPolyLayers.push(L.polygon(pg.vertices, { color:"#c9a227", weight:2, fillOpacity:0.1 }).addTo(map));
+        }
+      });
+      (data.points||[]).forEach(pt=>{
+        const marker = L.circleMarker([pt.lat,pt.lon], { radius:7, color:"#2f6fed", weight:2, fillColor:"#2f6fed", fillOpacity:0.9 }).addTo(map);
+        if(typeof marker.on === "function") marker.on("click", ()=> startMovingPoint(pt));
+        state.overviewMarkers.push(marker);
+      });
+    }
+    function startMovingPoint(pt){
+      if(!map) return;
+      state.movingPoint = { recordId: pt.recordId, pointId: pt.pointId };
+      showCrosshair(true);
+      map.setView([pt.lat, pt.lon], Math.max(map.getZoom(), 19));
+      footForMovePoint();
+      setStatus("Pan the map to reposition "+(pt.label||"this point")+", or tap “Use GPS”.");
+    }
+    function close(){
+      if(map){ map.remove(); map=null; }
+      if(overlay){ overlay.remove(); overlay=null; }
+      state = null;
+    }
+    function cancel(){
+      const cb = state && state.onCancel;
+      close();
+      if(cb) cb();
+    }
+    // opts.mode "point": opts.existing {lat,lon}|null, onSave(lat,lon).
+    // opts.mode "polygon": opts.existing [[lat,lon],...]|null, onSave(vertices).
+    function open(opts){
+      build();
+      state = {
+        mode: opts.mode,
+        vertices: (opts.mode==="polygon" ? (opts.existing||[]).map(v=>v.slice()) : []),
+        onSave: opts.onSave, onCancel: opts.onCancel,
+        getOverviewData: opts.getOverviewData, onMovePoint: opts.onMovePoint, onRequestAddPolygon: opts.onRequestAddPolygon,
+        movingPoint: null, overviewMarkers: [], overviewPolyLayers: []
+      };
+      overlay.querySelector("#mmTitle").textContent = opts.title || (opts.mode==="polygon" ? "Draw polygon" : opts.mode==="overview" ? "Survey map" : "Set location");
+      overlay.querySelector("#mmHint").textContent = opts.mode==="polygon"
+        ? "Pan the map so the pin marks each corner, then tap “+ Add Point”. Repeat for every corner, then “Finish Polygon”."
+        : opts.mode==="overview" ? "Tap a point to reposition it, or draw a new polygon."
+        : "Pan the map so the pin marks the exact spot, then tap “Save Point”.";
+      if(opts.mode==="point") footForPoint();
+      else if(opts.mode==="polygon") footForPolygon();
+      else footForOverview();
+
+      let initial = null;
+      if(opts.mode==="point" && opts.existing) initial = [opts.existing.lat, opts.existing.lon];
+      else if(opts.mode==="polygon" && state.vertices.length){
+        const avgLat = state.vertices.reduce((s,v)=>s+v[0],0)/state.vertices.length;
+        const avgLon = state.vertices.reduce((s,v)=>s+v[1],0)/state.vertices.length;
+        initial = [avgLat, avgLon];
+      }
+      let overviewZoom = null;
+      if(opts.mode==="overview"){
+        const data = state.getOverviewData ? state.getOverviewData() : { points:[], polygons:[] };
+        const coords = (data.points||[]).map(p=>[p.lat,p.lon]).concat((data.polygons||[]).flatMap(pg=>pg.vertices||[]));
+        const cz = computeOverviewCenterZoom(coords);
+        if(cz){ initial = cz.center; overviewZoom = cz.zoom; }
+      }
+      setTimeout(()=>{
+        if(opts.mode==="overview"){
+          showCrosshair(false);
+          if(initial){
+            ensureMap(initial[0], initial[1], overviewZoom||19);
+            setStatus("Tap a point to reposition it, or draw a new polygon.");
+          } else {
+            ensureMap(-37.0, 144.0, 7);
+            setStatus("No points or polygons captured yet — draw a polygon to get started.");
+          }
+        } else if(initial){
+          ensureMap(initial[0], initial[1], 19);
+          setStatus(opts.mode==="polygon" ? (state.vertices.length+" point(s) so far.") : "Pan the map to fine-tune, or tap “Use GPS”.");
+        } else {
+          // No known starting point — show a wide regional view (not a
+          // precise pin) while GPS is attempted in the background.
+          ensureMap(-37.0, 144.0, 7);
+          setStatus("Looking for a starting location…");
+          tryGps(coords=>{ if(coords && map) ensureMap(coords.latitude, coords.longitude, 19); });
+        }
+      }, 0);
+    }
+    return { open, close };
+  })();
+
   async function add(sp){
     // Species can be logged more than once on purpose — e.g. two surveyors
     // independently spot the same species, or you want a second record for a
@@ -2567,7 +3844,7 @@ window.FHKit = (function(){
     // by hand, gets a first GPS point captured automatically. Anything else
     // stays as a plain checklist entry with no location prompt.
     const auto = !!FHKit.consLabel(sp.ffg, sp.epbc);
-    const row = { id:makeRecordId(), sci:sp.sci, common:sp.common||sp.sci, type:sp.type||"indigenous", lf:sp.lf||"", ffg:sp.ffg||"", epbc:sp.epbc||"", fieldNotes:"", free:!!sp.free, uncertain:false, significant:auto, photos:[], points:[], gpsStatus:"idle", addedBy:userName() };
+    const row = { id:makeRecordId(), sci:sp.sci, common:sp.common||sp.sci, type:sp.type||"indigenous", lf:sp.lf||"", ffg:sp.ffg||"", epbc:sp.epbc||"", fieldNotes:"", free:!!sp.free, uncertain:false, significant:auto, photos:[], points:[], addedBy:userName() };
     if(live.active){
       // Create this record's own shared doc, keyed by its own record id — a
       // second surveyor logging the same species gets a different id, so this
@@ -2585,46 +3862,60 @@ window.FHKit = (function(){
     render(); autosave();
     if(auto) captureLocation(rows.indexOf(row));
   }
-  // Captures a GPS fix for one species record and ADDS it to that record's
-  // list of points (a species can have more than one location — e.g. several
-  // individuals/patches spotted in different spots) — used to georeference it
-  // (and, via its shared record ID, its photos) in the exported GeoPackage.
-  // Only called for species flagged "Significant".
+  // Opens the aerial map to capture a NEW GPS point for one species record
+  // (a species can have more than one location — e.g. several individuals/
+  // patches spotted in different spots) — used to georeference it (and, via
+  // its shared record ID, its photos) in the exported GeoPackage. Only
+  // called for species flagged "Significant". The map always opens (even if
+  // GPS is denied/unsupported) so a location can still be placed by hand.
+  //
+  // The record is resolved fresh by id (rowIndexById) at SAVE time, not just
+  // at open time — the modal can sit open for a while (panning, waiting on a
+  // GPS fix), plenty of time for a background Team Sync poll to reorder
+  // `rows` or for the record to be deleted entirely. Saving against a stale
+  // index would misdirect the point onto a different species, or resurrect
+  // a deleted one with a stray patch.
   function captureLocation(idx){
     const r = rows[idx];
     if(!r) return;
-    if(!(window.navigator && navigator.geolocation && navigator.geolocation.getCurrentPosition)){
-      r.gpsStatus = "unsupported"; r.gpsMessage = "Location not supported on this device";
-      render(); autosave(); return;
-    }
-    r.gpsStatus = "locating";
-    render();
-    // A GPS fix can legitimately take up to the 12s timeout below — plenty
-    // of time for a background Team Sync poll to reorder `rows`, or for the
-    // person to delete this exact record while waiting. `r` is captured by
-    // OBJECT REFERENCE (not by index) so a reorder alone can't misdirect
-    // this result onto a different species; the rows.includes(r) check
-    // below catches the one remaining case — the record being deleted
-    // entirely during the wait — so a late GPS fix can never resurrect a
-    // deleted record on the server with a stray patch.
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        if(!rows.includes(r)) return;
-        r.points = r.points || [];
-        r.points.push({ id:makePointId(), lat:pos.coords.latitude, lon:pos.coords.longitude, accuracy:pos.coords.accuracy });
-        r.gpsStatus = "idle"; r.gpsMessage = "";
+    const id = r.id;
+    MapModal.open({
+      mode: "point",
+      title: "Set location — "+(r.common||r.sci),
+      onSave: (lat, lon) => {
+        const i = rowIndexById(id); if(i<0) return;
+        const cur = rows[i];
+        cur.points = cur.points || [];
+        cur.points.push({ id:makePointId(), lat, lon });
         render(); autosave();
-        liveSyncField(r, { pointsJson: encodePointsField(r.points), gpsStatus:r.gpsStatus, gpsMessage:r.gpsMessage });
-      },
-      err => {
-        if(!rows.includes(r)) return;
-        r.gpsStatus = "error";
-        r.gpsMessage = (err && err.code===1) ? "Location permission denied" : "Location unavailable";
+        liveSyncField(cur, { pointsJson: encodePointsField(cur.points) });
+      }
+    });
+  }
+  // Re-opens the aerial map centred on an already-captured point so it can be
+  // fine-tuned against real ground features — the "accuracy isn't great"
+  // fix: a raw GPS fix can be corrected by eye rather than left as-is.
+  function adjustPoint(idx, pointId){
+    const r = rows[idx];
+    if(!r || !r.points) return;
+    const p = r.points.find(pp=>pp.id===pointId);
+    if(!p) return;
+    const id = r.id;
+    MapModal.open({
+      mode: "point",
+      existing: { lat:p.lat, lon:p.lon },
+      title: "Adjust location — "+(r.common||r.sci),
+      onSave: (lat, lon) => {
+        const i = rowIndexById(id); if(i<0) return;
+        const cur = rows[i];
+        const pp = (cur.points||[]).find(x=>x.id===pointId);
+        if(!pp) return;
+        pp.lat = lat; pp.lon = lon;
+        delete pp.accuracy; // no longer a raw GPS fix — it's been manually placed
         render(); autosave();
-        liveSyncField(r, { gpsStatus:r.gpsStatus, gpsMessage:r.gpsMessage });
-      },
-      { enableHighAccuracy:true, timeout:12000, maximumAge:60000 }
-    );
+        liveSyncField(cur, { pointsJson: encodePointsField(cur.points) });
+      }
+    });
   }
   // Removes one previously-captured point from a species record (the rest —
   // and any already-attached photos/notes — are untouched).
@@ -2634,6 +3925,73 @@ window.FHKit = (function(){
     r.points = r.points.filter(p=>p.id!==pointId);
     render(); autosave();
     liveSyncField(r, { pointsJson: encodePointsField(r.points) });
+  }
+
+  // ── Polygons: draw an area on the aerial map and tag the species found
+  // within it. Per-polygon data model: one record per polygon, with all its
+  // species combined into a single delimited field (not one row per species) —
+  // simplest to read back, and matches how these are typically reviewed.
+  // Synced the same way species records are — see the polygon sync engine
+  // above (livePolygonFields, pullRemotePolygons, etc.).
+  function renderPolygons(){
+    const list = $("polyList");
+    list.innerHTML = polygons.map(pg=>{
+      const speciesHtml = (pg.species&&pg.species.length)
+        ? FHKit.esc(pg.species.join("; "))
+        : '<span class="none">No species tagged yet</span>';
+      return '<div class="poly-item">'
+        + '<div class="poly-item-head"><b>'+FHKit.esc(pg.id)+'</b><span class="muted">'+(pg.vertices||[]).length+' points</span>'
+        + '<button type="button" class="x" data-del-poly="'+FHKit.esc(pg.id)+'" title="Remove this polygon">&times;</button></div>'
+        + '<div class="poly-item-species">'+speciesHtml+'</div>'
+        + '<textarea data-poly-notes="'+FHKit.esc(pg.id)+'" placeholder="Notes for this polygon (habitat description, condition, etc.)…">'+FHKit.esc(pg.notes||"")+'</textarea>'
+        + '<div class="poly-item-actions">'
+        + '<button type="button" data-poly-species="'+FHKit.esc(pg.id)+'">Tag species</button>'
+        + '<button type="button" data-poly-adjust="'+FHKit.esc(pg.id)+'">Adjust shape on map</button>'
+        + '</div></div>';
+    }).join("") || '<p class="muted" style="margin:0 0 10px">No polygons drawn yet — tap “+ Add Polygon” to draw one on the map.</p>';
+    $("polyCount").textContent = polygons.length ? "("+polygons.length+")" : "";
+  }
+  // Lets species be tagged onto a polygon either by ticking them from the
+  // current checklist (so the name always matches exactly) or by typing
+  // extra names not yet in the checklist (e.g. something only noted here).
+  function showPolygonSpeciesModal(polygonId){
+    const pg = polygons.find(p=>p.id===polygonId);
+    if(!pg) return;
+    const seen = new Set(); const options = [];
+    rows.forEach(r=>{
+      const key = r.sci || r.common || "";
+      if(!key || seen.has(key)) return;
+      seen.add(key);
+      options.push({ key, label: (r.common && r.common!==r.sci) ? (r.common+" — "+r.sci) : r.sci });
+    });
+    options.sort((a,b)=>a.label.localeCompare(b.label, undefined, { sensitivity:"base", numeric:true }));
+    const checked = new Set(pg.species||[]);
+    const otherExisting = (pg.species||[]).filter(s=>!options.some(o=>o.key===s));
+    const ov = document.createElement("div"); ov.className="fh-modal";
+    ov.innerHTML = '<div class="fh-modal-card"><h3>Tag species in this polygon</h3>'
+      + '<div class="map-modal-body">'
+      + (options.length
+          ? '<div class="map-species-pick">'+options.map(o=>
+              '<label><input type="checkbox" value="'+FHKit.esc(o.key)+'"'+(checked.has(o.key)?" checked":"")+'> '+FHKit.esc(o.label)+'</label>'
+            ).join("")+'</div>'
+          : '<p>No species in the checklist yet — add some above, or list them below.</p>')
+      + '<label class="detail-label" style="display:block;margin-top:12px">Other species (one per line)</label>'
+      + '<textarea id="polyOtherSpecies" style="width:100%;min-height:60px;border:1px solid var(--border);border-radius:5px;padding:8px 10px;font-size:13px;font-family:var(--sans)">'
+      + FHKit.esc(otherExisting.join("\n"))
+      + '</textarea>'
+      + '</div>'
+      + '<div class="map-modal-foot"><button type="button" class="btn" id="polySpeciesSave">Save</button><button type="button" class="ghost" data-close="1">Cancel</button></div></div>';
+    document.body.appendChild(ov);
+    const close = ()=> ov.remove();
+    ov.addEventListener("click", e=>{ if(e.target===ov || e.target.dataset.close) close(); });
+    ov.querySelector("#polySpeciesSave").addEventListener("click", ()=>{
+      const chosen = [...ov.querySelectorAll('.map-species-pick input:checked')].map(el=>el.value);
+      const other = (ov.querySelector("#polyOtherSpecies").value||"").split("\n").map(s=>s.trim()).filter(Boolean);
+      pg.species = [...new Set([...chosen, ...other])];
+      renderPolygons(); autosave();
+      liveSyncPolygonField(pg, { speciesJson: encodePointsField(pg.species) });
+      close();
+    });
   }
   // A compact, scannable line for a previously-listed species — just the
   // common + scientific name (already in alphabetical order, per sortRows)
@@ -2686,23 +4044,19 @@ window.FHKit = (function(){
     let geoLine = "";
     if(r.significant){
       const pts = r.points || [];
+      // Every captured point can be fine-tuned against the aerial imagery —
+      // a raw GPS fix is often only accurate to several metres, so "Adjust on
+      // map" is how that gets corrected rather than left as-is.
       const pointLines = pts.map(p=>{
         const acc = (typeof p.accuracy === "number") ? " (±"+Math.round(p.accuracy)+"m)" : "";
         return '<div class="geo-line ok"><span class="geo-text">📍 '+p.lat.toFixed(5)+', '+p.lon.toFixed(5)+acc+'</span>'
+          + '<button type="button" data-geo-adjust="'+FHKit.esc(r.id)+'|'+p.id+'" title="Fine-tune this location on an aerial map">Adjust on map</button>'
           + '<button type="button" data-geo-del="'+FHKit.esc(r.id)+'|'+p.id+'" title="Remove this point">Remove</button></div>';
       }).join("");
-      let actionLine = "";
-      if(r.gpsStatus === "locating"){
-        actionLine = '<div class="geo-line"><span class="geo-text">📍 Locating…</span></div>';
-      } else if(r.gpsStatus === "error" || r.gpsStatus === "unsupported"){
-        actionLine = '<div class="geo-line error"><span class="geo-text">📍 '+FHKit.esc(r.gpsMessage||"No location")+'</span>'
-          + '<button type="button" data-geo-retry="'+FHKit.esc(r.id)+'">Retry</button></div>';
-      } else if(!pts.length){
-        actionLine = '<div class="geo-line"><span class="geo-text">📍 No location captured</span>'
-          + '<button type="button" data-geo-retry="'+FHKit.esc(r.id)+'">Get location</button></div>';
-      } else {
-        actionLine = '<div class="geo-line"><button type="button" data-geo-retry="'+FHKit.esc(r.id)+'">+ Add another point</button></div>';
-      }
+      // Clicking either "Set location" or "+ Add another point" opens the
+      // aerial map modal (captureLocation) — it always opens, even if GPS is
+      // denied or unsupported, so a location can still be placed by hand.
+      const actionLine = '<div class="geo-line"><button type="button" data-geo-retry="'+FHKit.esc(r.id)+'">'+(pts.length ? "+ Add another point" : "Set location")+'</button></div>';
       geoLine = (pts.length ? '<div class="geo-points">'+pointLines+'</div>' : '') + actionLine;
     }
     const head = '<div class="sp-name-row"><div>'+FHKit.esc(r.common||r.sci)+(FHKit.consBadge(r.ffg,r.epbc)?' '+FHKit.consBadge(r.ffg,r.epbc):'')+(r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')+(r.significant?' <span class="badge ind" title="Significant species">SIGNIFICANT</span>':'')+'</div><div class="row-actions">'+collapseBtn+notesBtn+photosBtn+'</div></div>'
@@ -2797,64 +4151,85 @@ window.FHKit = (function(){
     if(nUnc) push(["Uncertain ID (shown in red above)", nUnc]);
     const nSig = rows.filter(r=>r.significant).length;
     if(nSig) push(["Significant species", nSig]);
+    if(polygons.length){
+      push([]);
+      push(["Polygons"], "bold");
+      push(["Polygon ID","Points","Species","Notes"], "bold");
+      polygons.forEach(pg=> push([pg.id, (pg.vertices||[]).length, (pg.species||[]).join("; "), pg.notes||""], "wrap"));
+    }
 
     const xlsxBlob = FHKit.buildXLSXBlob("Flora Survey", sheet, styles, [14,26,30,12,8,8,12,10,14,34]);
     // Filenames follow "Site/Location - Date", e.g. "Reserve East Paddock - 2026-09-10.xlsx".
     const baseName = (fileSafe(m.site) || "Flora Survey")+" - "+(fileSafe(m.date) || FHKit.today());
     const xlsxFilename = baseName+".xlsx";
 
-    // A photo zip only makes sense if there's a photo OR a captured GPS point
-    // to include — the GeoPackage rides along in that same zip. Every captured
-    // point for every species flagged Significant becomes its own feature
-    // (a species can have more than one), each keyed by that species' own
-    // record ID (the same ID already stamped onto its photos).
+    // Photos and GIS data (the point + polygon GeoPackages) now go in two
+    // SEPARATE zip files rather than one combined zip — GIS software expects
+    // to be pointed at a folder of spatial data, not one full of photos too.
     const photoFiles = await buildPhotoFiles();
     const hasPhotos = Object.keys(photoFiles).length > 0;
     const geoPoints = rows
       .filter(r=> r.significant && Array.isArray(r.points))
       .flatMap(r=> r.points.map(p=> ({ id:r.id, sci:r.sci, common:r.common||r.sci, lat:p.lat, lon:p.lon })));
     const hasPoints = geoPoints.length > 0;
-    let zipBlob = null;
-    let pointsIncluded = hasPoints;
-    if(hasPhotos || hasPoints){
-      const zipFiles = Object.assign({}, photoFiles);
-      if(hasPoints){
-        try{
-          zipFiles["species_points.gpkg"] = FHKit.buildGeoPackageBytes({
-            tableName: "species_points",
-            identifier: "Flora Survey — "+(m.site||"Site")+" — "+(m.date||FHKit.today()),
-            description: "Species observation points for this Keystone Conservation flora survey.",
-            points: geoPoints
-          });
-        }catch(e){
-          // This survey has more captured GPS points than fit in one
-          // GeoPackage file (a real, if unusual, ceiling — see
-          // buildGeoPackageBytes). Don't let that take down the whole
-          // export: still deliver the Excel file and any photos, just
-          // without the GPS points this one time, and say so clearly
-          // rather than failing silently or losing the photos too.
-          pointsIncluded = false;
-          FHKit.toast("This survey has too many GPS points for one GeoPackage file — the Excel file"+(hasPhotos?" and photos":"")+" exported fine, but GPS points were left out this time.");
-        }
-      }
-      // Only actually produce a zip if it ends up with something in it — if
-      // the only reason we got here was a GeoPackage that then failed to
-      // build (caught above), and there were no photos either, an empty
-      // zip would otherwise get offered alongside the Excel file for no
-      // reason.
-      if(Object.keys(zipFiles).length) zipBlob = FHKit.buildZipBlob(zipFiles);
-    }
-    const zipFilename = baseName+" photos.zip";
+    const hasPolygons = polygons.length > 0;
 
-    showExportChooser({ xlsxBlob, xlsxFilename, zipBlob, zipFilename, site:m.site, date:m.date, hasPhotos, hasPoints:pointsIncluded });
+    let pointsIncluded = hasPoints, polygonsIncluded = hasPolygons;
+    const gisFiles = {};
+    if(hasPoints){
+      try{
+        gisFiles["species_points.gpkg"] = FHKit.buildGeoPackageBytes({
+          tableName: "species_points",
+          identifier: "Flora Survey — "+(m.site||"Site")+" — "+(m.date||FHKit.today()),
+          description: "Species observation points for this Keystone Conservation flora survey.",
+          points: geoPoints
+        });
+      }catch(e){
+        // This survey has more captured GPS points than fit in one
+        // GeoPackage file (a real, if unusual, ceiling — see
+        // buildGeoPackageBytes). Don't let that take down the whole
+        // export: still deliver everything else, just without the GPS
+        // points this one time, and say so clearly rather than failing
+        // silently or losing the rest of the export too.
+        pointsIncluded = false;
+        FHKit.toast("This survey has too many GPS points for one GeoPackage file — the rest of the export still went ahead, but GPS points were left out this time.");
+      }
+    }
+    if(hasPolygons){
+      try{
+        gisFiles["species_polygons.gpkg"] = FHKit.buildPolygonGeoPackageBytes({
+          tableName: "species_polygons",
+          identifier: "Flora Survey — "+(m.site||"Site")+" — "+(m.date||FHKit.today())+" — Polygons",
+          description: "Species polygons for this Keystone Conservation flora survey.",
+          site: m.site, date: m.date,
+          polygons: polygons
+        });
+      }catch(e){
+        polygonsIncluded = false;
+        FHKit.toast("This survey has too many polygons/too much text for one GeoPackage file — the rest of the export still went ahead, but polygons were left out this time.");
+      }
+    }
+    // Only actually produce a zip if it ends up with something in it.
+    const gisBlob = Object.keys(gisFiles).length ? FHKit.buildZipBlob(gisFiles) : null;
+    const gisFilename = baseName+" GIS.zip";
+    const photoZipBlob = hasPhotos ? FHKit.buildZipBlob(photoFiles) : null;
+    const photoZipFilename = baseName+" photos.zip";
+
+    showExportChooser({
+      xlsxBlob, xlsxFilename, gisBlob, gisFilename, photoZipBlob, photoZipFilename,
+      site:m.site, date:m.date, hasPhotos, hasPoints:pointsIncluded, hasPolygons:polygonsIncluded
+    });
   }
   // Lets the user pick "Email / Share" (OS share sheet — e.g. Mail, with the
   // file(s) already attached) or "Download to device" (plain file download).
   function showExportChooser(ctx){
-    const zipParts = [];
-    if(ctx.hasPhotos) zipParts.push("photos");
-    if(ctx.hasPoints) zipParts.push("GPS points (GeoPackage)");
-    const filesNote = ctx.zipBlob ? "Excel file + "+zipParts.join(" + ")+" zip" : "Excel file";
+    const gisParts = [];
+    if(ctx.hasPoints) gisParts.push("GPS points");
+    if(ctx.hasPolygons) gisParts.push("polygons");
+    const parts = ["Excel file"];
+    if(ctx.photoZipBlob) parts.push("photos zip");
+    if(ctx.gisBlob) parts.push(gisParts.join(" + ")+" (GeoPackage, in a separate GIS zip)");
+    const filesNote = parts.join(" + ");
     const ov = document.createElement("div"); ov.className="fh-modal";
     ov.innerHTML = '<div class="fh-modal-card"><h3>Export Survey</h3>'
       + '<div style="padding:16px 18px">'
@@ -2869,13 +4244,16 @@ window.FHKit = (function(){
 
     ov.querySelector("#expDownload").addEventListener("click", ()=>{
       FHKit.triggerDownload(ctx.xlsxBlob, ctx.xlsxFilename);
-      if(ctx.zipBlob) setTimeout(()=>FHKit.triggerDownload(ctx.zipBlob, ctx.zipFilename), 300);
-      FHKit.toast(ctx.zipBlob ? "Excel file + photos zip downloaded" : "Excel file downloaded");
+      let delay = 300;
+      if(ctx.photoZipBlob){ setTimeout(()=>FHKit.triggerDownload(ctx.photoZipBlob, ctx.photoZipFilename), delay); delay += 300; }
+      if(ctx.gisBlob){ setTimeout(()=>FHKit.triggerDownload(ctx.gisBlob, ctx.gisFilename), delay); delay += 300; }
+      FHKit.toast(filesNote+" downloaded");
       close();
     });
     ov.querySelector("#expEmail").addEventListener("click", async ()=>{
       const items = [{ blob:ctx.xlsxBlob, filename:ctx.xlsxFilename, mime:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }];
-      if(ctx.zipBlob) items.push({ blob:ctx.zipBlob, filename:ctx.zipFilename, mime:"application/zip" });
+      if(ctx.photoZipBlob) items.push({ blob:ctx.photoZipBlob, filename:ctx.photoZipFilename, mime:"application/zip" });
+      if(ctx.gisBlob) items.push({ blob:ctx.gisBlob, filename:ctx.gisFilename, mime:"application/zip" });
       const subject = "Flora Survey — "+(ctx.site||"Site")+" — "+(ctx.date||FHKit.today());
       const shared = await FHKit.shareFiles(items, subject, "Attached: "+filesNote+" from the Keystone Conservation Flora Survey tool.");
       close();
@@ -2890,8 +4268,13 @@ window.FHKit = (function(){
       // same time — a toast-only version of this previously led to a real
       // email going out in the field with nothing attached.
       FHKit.triggerDownload(ctx.xlsxBlob, ctx.xlsxFilename);
-      if(ctx.zipBlob) setTimeout(()=>FHKit.triggerDownload(ctx.zipBlob, ctx.zipFilename), 300);
-      showManualAttachReminder({ subject, filesNote, xlsxFilename: ctx.xlsxFilename, zipFilename: ctx.zipBlob ? ctx.zipFilename : null });
+      let delay = 300;
+      if(ctx.photoZipBlob){ setTimeout(()=>FHKit.triggerDownload(ctx.photoZipBlob, ctx.photoZipFilename), delay); delay += 300; }
+      if(ctx.gisBlob){ setTimeout(()=>FHKit.triggerDownload(ctx.gisBlob, ctx.gisFilename), delay); delay += 300; }
+      const files = [ctx.xlsxFilename];
+      if(ctx.photoZipBlob) files.push(ctx.photoZipFilename);
+      if(ctx.gisBlob) files.push(ctx.gisFilename);
+      showManualAttachReminder({ subject, filesNote, files });
     });
   }
   // A blocking reminder shown once this browser has proven it can't attach
@@ -2900,7 +4283,7 @@ window.FHKit = (function(){
   // an explicit tap before the email even opens, so attaching them isn't
   // something that's easy to skip past without noticing.
   function showManualAttachReminder(ctx){
-    const files = [ctx.xlsxFilename].concat(ctx.zipFilename ? [ctx.zipFilename] : []);
+    const files = ctx.files || [];
     const ov = document.createElement("div"); ov.className="fh-modal";
     ov.innerHTML = '<div class="fh-modal-card"><h3>Attach these before sending</h3>'
       + '<div style="padding:16px 18px">'
@@ -2935,13 +4318,13 @@ window.FHKit = (function(){
     else if(sg!=null && sg!==""){
       const idx = rowIndexById(sg); if(idx<0) return; const r = rows[idx];
       r.significant = e.target.checked;
+      render(); autosave();
       liveSyncField(r, {significant:r.significant});
-      // Capture a first location the moment a species is flagged significant
-      // (unless it already has one, or a request is already in flight);
-      // unchecking just hides the points/geo-line again — anything already
-      // captured is kept, and more points can still be added later.
-      if(r.significant && !(r.points && r.points.length) && r.gpsStatus!=="locating") captureLocation(idx);
-      else { render(); autosave(); }
+      // Open the map to capture a first location the moment a species is
+      // flagged significant, unless it already has one — unchecking just
+      // hides the points/geo-line again; anything already captured is kept,
+      // and more points can still be added later.
+      if(r.significant && !(r.points && r.points.length)) captureLocation(idx);
     }
     else if(pi!=null && pi!==""){
       const idx = rowIndexById(pi); if(idx<0) return;
@@ -2988,6 +4371,15 @@ window.FHKit = (function(){
     }
     const geo = e.target.closest("[data-geo-retry]");
     if(geo){ const idx = rowIndexById(geo.dataset.geoRetry); if(idx>=0) captureLocation(idx); return; }
+    const geoAdjust = e.target.closest("[data-geo-adjust]");
+    if(geoAdjust){
+      const raw = geoAdjust.dataset.geoAdjust;
+      const sep = raw.indexOf("|");
+      const id = raw.slice(0,sep), pointId = raw.slice(sep+1);
+      const idx = rowIndexById(id); if(idx<0) return;
+      adjustPoint(idx, pointId);
+      return;
+    }
     const geoDel = e.target.closest("[data-geo-del]");
     if(geoDel){
       const raw = geoDel.dataset.geoDel;
@@ -3016,7 +4408,7 @@ window.FHKit = (function(){
   // Start/Join as the harmless first-time case, even after real species had
   // already been logged under the name that was just typed over.
   $("site").addEventListener("input", ()=>{
-    if(!rows.length && !siteNotes.length) currentSurveySite = ($("site").value||"").trim();
+    if(!rows.length && !siteNotes.length && !polygons.length) currentSurveySite = ($("site").value||"").trim();
   });
 
   // ── Team Sync: name, start/join/leave ─────────────────────────────────
@@ -3045,17 +4437,108 @@ window.FHKit = (function(){
     if(id){ siteNotes = siteNotes.filter(n=>n.id!==id); renderSiteNotes(); autosave(); }
   });
 
+  function openAddPolygonFlow(){
+    MapModal.open({
+      mode: "polygon",
+      title: "Draw polygon",
+      onSave: async (vertices) => {
+        const pg = { id: makePolygonId(), vertices, species: [], notes: "", createdBy: userName() };
+        if(live.active){
+          try{ await liveCreatePolygonForItem(pg); }
+          catch(e){
+            live.lastErrorCode = errCode(e);
+            FHKit.toast(e && e.network ? "Offline — added locally, will sync once connected" : "Couldn't sync ("+errCode(e)+") — added locally, will retry");
+            queueLiveOp({ op:"create", collection:"polygons", id:pg.id, fields:livePolygonFields(pg) });
+          }
+        }
+        polygons.push(pg);
+        renderPolygons(); autosave();
+        showPolygonSpeciesModal(pg.id); // prompt straight away to tag species, per the request
+      }
+    });
+  }
+  $("addPolygonBtn").addEventListener("click", openAddPolygonFlow);
+
+  // Opens a survey-wide map view showing every captured point and polygon at
+  // once. Tapping a point marker reuses the same pan-under-crosshair flow as
+  // adjustPoint() to reposition it (resolved fresh by id at save time, same
+  // rowIndexById() reasoning as captureLocation/adjustPoint above); "+ Add
+  // Polygon" hands off to the normal standalone polygon-draw flow.
+  function openSurveyMapView(){
+    MapModal.open({
+      mode: "overview",
+      getOverviewData: () => ({
+        points: rows.filter(r=>r.significant).flatMap(r=>(r.points||[]).map(p=>(
+          { recordId:r.id, pointId:p.id, lat:p.lat, lon:p.lon, label:(r.common||r.sci) }
+        ))),
+        polygons: polygons.map(pg=>({ id:pg.id, vertices:pg.vertices||[] }))
+      }),
+      onMovePoint: (recordId, pointId, lat, lon) => {
+        const i = rowIndexById(recordId); if(i<0) return;
+        const cur = rows[i];
+        const pp = (cur.points||[]).find(x=>x.id===pointId);
+        if(!pp) return;
+        pp.lat = lat; pp.lon = lon;
+        delete pp.accuracy;
+        render(); autosave();
+        liveSyncField(cur, { pointsJson: encodePointsField(cur.points) });
+      },
+      onRequestAddPolygon: openAddPolygonFlow
+    });
+  }
+  $("polyList").addEventListener("input", e=>{
+    const id = e.target.dataset.polyNotes;
+    if(id){
+      const pg = polygons.find(p=>p.id===id);
+      if(pg){ pg.notes = e.target.value; autosave(); liveSyncPolygonFieldDebounced(pg, { notes:pg.notes }); }
+    }
+  });
+  $("polyList").addEventListener("click", e=>{
+    const del = e.target.dataset.delPoly;
+    if(del){
+      const pg = polygons.find(p=>p.id===del);
+      polygons = polygons.filter(p=>p.id!==del);
+      renderPolygons(); autosave();
+      if(pg) liveDeletePolygon(pg);
+      return;
+    }
+    const tag = e.target.closest("[data-poly-species]");
+    if(tag){ showPolygonSpeciesModal(tag.dataset.polySpecies); return; }
+    const adj = e.target.closest("[data-poly-adjust]");
+    if(adj){
+      const pg = polygons.find(p=>p.id===adj.dataset.polyAdjust);
+      if(pg){
+        MapModal.open({
+          mode: "polygon",
+          existing: pg.vertices,
+          title: "Adjust polygon shape",
+          onSave: (vertices) => {
+            pg.vertices = vertices; renderPolygons(); autosave();
+            liveSyncPolygonField(pg, { verticesJson: encodePointsField(pg.vertices) });
+          }
+        });
+      }
+      return;
+    }
+  });
+
   // ── Toolbar: New / Saved Folder / Export (xlsx + photos zip) / Save ──────
   const bar = $("fh-bar");
   bar.innerHTML = '<strong class="grow">Flora Survey</strong>'
     + '<span class="actions">'
     + '<button class="btn sec" id="fhNew">New</button>'
     + '<button class="btn sec" id="fhLoad" title="All surveys you\'ve saved">Saved Folder</button>'
+    + '<button class="btn sec" id="fhImport" title="Import a previously exported survey (Excel + GeoPackage + photos) as a new Saved Folder entry">Import</button>'
+    + '<button class="btn sec" id="fhMerge" title="Combine two or more saved surveys into one new entry">Merge</button>'
+    + '<button class="btn sec" id="fhMap" title="See every captured point and polygon on one map">Map</button>'
     + '<button class="btn sec" id="fhExport">Export</button>'
     + '<button class="btn" id="fhSave">Save</button>'
     + '</span>';
   bar.querySelector("#fhNew").onclick    = newSurvey;
   bar.querySelector("#fhLoad").onclick   = loadFromFolder;
+  bar.querySelector("#fhImport").onclick = openImportFlow;
+  bar.querySelector("#fhMerge").onclick  = openMergeSurveysFlow;
+  bar.querySelector("#fhMap").onclick    = openSurveyMapView;
   bar.querySelector("#fhSave").onclick   = saveToFolder;
   bar.querySelector("#fhExport").onclick = exportSurvey;
 
@@ -3068,6 +4551,7 @@ window.FHKit = (function(){
 
   render();
   renderSiteNotes();
+  renderPolygons();
   autosave();   // an immediate save attempt on load — surfaces the storage-full warning right away if it's
                 // already a problem, rather than waiting for the next edit to discover it
   // Ask the browser not to auto-evict this site's storage (localStorage +
