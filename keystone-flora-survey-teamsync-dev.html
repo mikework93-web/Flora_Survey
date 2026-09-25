@@ -255,6 +255,7 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 .poly-item textarea,.poly-item input[type="text"]{width:100%;border:1px solid var(--border);border-radius:5px;
   padding:8px 10px;font-size:13px;font-family:var(--sans);background:var(--cream);color:var(--ink);margin-top:6px}
 .poly-item textarea{min-height:50px;resize:vertical}
+.poly-item textarea.poly-species-input{min-height:72px}
 .poly-item textarea:focus,.poly-item input[type="text"]:focus{outline:none;border-color:var(--gold);background:#fff}
 
 @media (max-width:480px){
@@ -304,15 +305,17 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 .map-sheet-scrim.show{display:block}
 .map-sheet{position:absolute;left:0;right:0;bottom:0;z-index:650;background:#fff;
   border-radius:16px 16px 0 0;max-height:60%;display:flex;flex-direction:column;
-  transform:translateY(100%);transition:transform .22s ease;box-shadow:0 -10px 30px rgba(0,0,0,.3)}
-.map-sheet.show{transform:translateY(0)}
+  transform:translateY(100%);transition:transform .22s ease;box-shadow:0 -10px 30px rgba(0,0,0,.3);
+  pointer-events:none}
+.map-sheet.show{transform:translateY(0);pointer-events:auto}
 .map-sheet-grip{width:38px;height:4px;border-radius:99px;background:var(--border);margin:9px auto 2px}
 .map-sheet-head{padding:2px 18px 8px;font-size:13.5px;font-weight:700;color:var(--charcoal)}
 .map-sheet-sub{padding:0 18px 10px;font-size:11.5px;color:var(--muted)}
 .map-sheet-body{padding:0 18px 12px}
-.map-sheet-body input[type="text"]{width:100%;border:1px solid var(--border);border-radius:7px;
+.map-sheet-body input[type="text"],.map-sheet-body textarea{width:100%;border:1px solid var(--border);border-radius:7px;
   padding:9px 10px;font-size:13px;font-family:var(--sans);background:var(--cream);color:var(--ink)}
-.map-sheet-body input[type="text"]:focus{outline:none;border-color:var(--gold);background:#fff}
+.map-sheet-body input[type="text"]:focus,.map-sheet-body textarea:focus{outline:none;border-color:var(--gold);background:#fff}
+.map-sheet-body textarea{min-height:90px;max-height:38vh;resize:vertical;line-height:1.4}
 .map-sheet-foot{padding:8px 18px 16px;display:flex;justify-content:flex-end}
 .map-fab.recording{background:var(--red);color:#fff;border-color:var(--red);animation:mapFabPulse 1.2s ease-in-out infinite}
 @keyframes mapFabPulse{0%,100%{box-shadow:0 0 0 0 rgba(179,38,30,.55)}50%{box-shadow:0 0 0 8px rgba(179,38,30,0)}}
@@ -443,7 +446,8 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
     <h2>Polygons <span class="n" id="polyCount"></span></h2>
     <p class="muted" style="margin:0 0 10px">Draw an area on an aerial map (a habitat patch, a stand, a survey plot) and list the species found within it — separate from the individually-located Significant species above. Polygons are shared with your team the same way species are.</p>
     <div id="polyList"></div>
-    <button type="button" class="btn" id="addPolygonBtn" style="margin-top:4px">+ Add Polygon</button>
+    <button type="button" class="btn" id="addPolygonBtn" style="margin-top:4px" title="Tap to draw by hand — press and hold to walk the boundary with GPS">+ Add Polygon</button>
+    <p class="muted" style="margin:6px 0 0;font-size:11.5px">Tip: press and hold “+ Add Polygon” to walk the boundary — a corner is added automatically as you move.</p>
   </div>
 
   <div class="card">
@@ -1754,7 +1758,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-25.4";
+  const BUILD_VERSION = "2026-09-25.6";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -3784,6 +3788,14 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     // GPS update) whenever the map is rebuilt, e.g. after returning to the
     // overview once a polygon is finished.
     let myLocWatchId=null, myLocMarker=null, myLocCircle=null, lastMyLocCoords=null;
+    // "Walk a polygon" — hold the "+ Add Polygon" button (instead of tapping
+    // it) to draw a polygon by physically walking its boundary: a corner is
+    // appended automatically from a live GPS watch as the surveyor moves,
+    // instead of panning the map and tapping "+ Add Point" at each corner.
+    // Independent of the "My location" dot and the separate GPS Track
+    // feature above — this one writes straight into state.vertices.
+    let walkWatchId=null;
+    const WALK_MIN_METERS = 3;
     // Slide-up info sheet — shared by showSpeciesSheet (species-after-draw)
     // and the point/polygon "tap to view" sheets below. Only one dismiss
     // handler is active at a time; the scrim-tap listener (wired once in
@@ -3831,7 +3843,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       sheet.innerHTML = '<div class="map-sheet-grip"></div>'
         + '<div class="map-sheet-head">Species in this polygon</div>'
         + '<div class="map-sheet-sub">Optional — comma-separated. You can also add or edit this later in the Polygons list.</div>'
-        + '<div class="map-sheet-body"><input type="text" id="mmSheetSpecies" placeholder="e.g. Themeda triandra, Acacia dealbata"></div>'
+        + '<div class="map-sheet-body"><textarea id="mmSheetSpecies" rows="3" placeholder="e.g. Themeda triandra, Acacia dealbata"></textarea></div>'
         + '<div class="map-sheet-foot"><button type="button" class="btn" id="mmSheetDone">Done</button></div>';
       state.pendingVertices = vertices;
       scrim.classList.add("show");
@@ -3845,7 +3857,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       if(!state || !state.pendingVertices) return;
       const sheet = overlay.querySelector("#mmSheet");
       const input = sheet.querySelector("#mmSheetSpecies");
-      const species = input ? input.value.split(",").map(s=>s.trim()).filter(Boolean) : [];
+      const species = input ? input.value.split(/[,\n]+/).map(s=>s.trim()).filter(Boolean) : [];
       const verts = state.pendingVertices;
       const cb = state.onSave;
       const hadOverview = !!state.getOverviewData;
@@ -3900,7 +3912,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       sheet.innerHTML = '<div class="map-sheet-grip"></div>'
         + '<div class="map-sheet-head">Polygon &middot; '+(pg.vertices||[]).length+' points</div>'
         + '<div class="map-sheet-sub">Species (comma-separated)</div>'
-        + '<div class="map-sheet-body"><input type="text" id="mmSheetPolySpecies" placeholder="e.g. Themeda triandra, Acacia dealbata" value="'+FHKit.esc((pg.species||[]).join(", "))+'"></div>'
+        + '<div class="map-sheet-body"><textarea id="mmSheetPolySpecies" rows="3" placeholder="e.g. Themeda triandra, Acacia dealbata">'+FHKit.esc((pg.species||[]).join(", "))+'</textarea></div>'
         + '<div class="map-sheet-foot" style="justify-content:space-between">'
         +   '<button type="button" class="ghost" id="mmSheetDeletePoly" style="color:var(--red)">Delete</button>'
         +   '<span><button type="button" class="ghost" id="mmSheetAdjustPoly">Adjust Shape</button> '
@@ -3910,7 +3922,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       sheet.classList.add("show");
       function commitSpecies(){
         const input = sheet.querySelector("#mmSheetPolySpecies");
-        const species = input ? input.value.split(",").map(s=>s.trim()).filter(Boolean) : (pg.species||[]);
+        const species = input ? input.value.split(/[,\n]+/).map(s=>s.trim()).filter(Boolean) : (pg.species||[]);
         if(state.onEditPolygonSpecies) state.onEditPolygonSpecies(pg.id, species);
       }
       function done(){ commitSpecies(); closeInfoSheet(); renderOverviewLayers(); }
@@ -4183,6 +4195,63 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         { enableHighAccuracy:true, timeout:12000, maximumAge:60000 }
       );
     }
+    // Continuous GPS recording of polygon corners — started when a polygon
+    // draw is opened in "walk" mode (see the hold gesture on "+ Add
+    // Polygon"). Filters out GPS jitter the same way the GPS Track feature
+    // does: a new fix only becomes a corner once it's moved at least
+    // WALK_MIN_METERS from the last one recorded.
+    function startWalking(){
+      if(!state) return;
+      if(!(window.navigator && navigator.geolocation && navigator.geolocation.watchPosition)){
+        setStatus("Location tracking isn't supported on this device — pan the map and tap “+ Add Point” to place corners by hand instead.", true);
+        state.walking = false;
+        footForPolygon();
+        return;
+      }
+      state.walking = true;
+      showCrosshair(false);
+      footForPolygonWalk();
+      setStatus("Walking the boundary — 0 points recorded yet. Walk the edge of the area; corners are added automatically.");
+      walkWatchId = navigator.geolocation.watchPosition(
+        pos=>{
+          if(!state || !state.walking) return;
+          const pt = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+          const last = state.vertices[state.vertices.length-1];
+          if(last && trackMeters({ lat:last[0], lon:last[1] }, pt) < WALK_MIN_METERS) return;
+          state.vertices.push([pt.lat, pt.lon]);
+          if(map) redrawPolygon();
+          footForPolygonWalk();
+          const n = state.vertices.length;
+          setStatus("Walking the boundary — "+n+" point"+(n===1?"":"s")+" recorded"+(n<3?" (need at least 3)":"")+". Tap “Finish” once you're back near your starting point.");
+        },
+        ()=>{ /* a transient GPS error just means no new corner for now — walking stays "on" */ },
+        { enableHighAccuracy:true, maximumAge:3000, timeout:20000 }
+      );
+    }
+    function stopWalking(){
+      if(walkWatchId!=null && window.navigator && navigator.geolocation && navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(walkWatchId);
+      walkWatchId = null;
+      if(state) state.walking = false;
+    }
+    // Shared by the manual "Finish" button and the walked-polygon "Finish"
+    // button — same completion behaviour either way, once there are enough
+    // vertices to make a polygon.
+    function finishPolygonDraw(){
+      if(state.vertices.length<3){ FHKit.toast("A polygon needs at least 3 points"); return; }
+      stopWalking();
+      const verts = state.vertices.slice();
+      if(state.promptSpeciesOnFinish){ showSpeciesSheet(verts); return; }
+      const cb = state.onSave;
+      const hadOverview = !!state.getOverviewData;
+      // Same "stay in map mode" behaviour as finishSpeciesSheet() — used
+      // here by the no-species-prompt path (reshaping an existing
+      // polygon) — and the same Promise.resolve() wrapping, in case this
+      // onSave is ever async too.
+      Promise.resolve(cb ? cb(verts) : null).then(()=>{
+        if(!state) return;
+        if(hadOverview) returnToOverview(); else close();
+      });
+    }
     function footForPoint(){
       const foot = overlay.querySelector("#mmFoot");
       foot.innerHTML = '<button type="button" class="btn" id="mmSave"><span class="fi">✓</span>Save Point</button>';
@@ -4210,30 +4279,29 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         redrawPolygon();
         footForPolygon();
       });
-      foot.querySelector("#mmFinish").addEventListener("click", ()=>{
-        if(state.vertices.length<3){ FHKit.toast("A polygon needs at least 3 points"); return; }
-        const verts = state.vertices.slice();
-        if(state.promptSpeciesOnFinish){ showSpeciesSheet(verts); return; }
-        const cb = state.onSave;
-        const hadOverview = !!state.getOverviewData;
-        // Same "stay in map mode" behaviour as finishSpeciesSheet() — used
-        // here by the no-species-prompt path (reshaping an existing
-        // polygon) — and the same Promise.resolve() wrapping, in case this
-        // onSave is ever async too.
-        Promise.resolve(cb ? cb(verts) : null).then(()=>{
-          if(!state) return;
-          if(hadOverview) returnToOverview(); else close();
-        });
-      });
+      foot.querySelector("#mmFinish").addEventListener("click", finishPolygonDraw);
+    }
+    // The footer shown while "walk a polygon" (continuous GPS recording) is
+    // active — deliberately just Cancel/Finish, since corners are added
+    // automatically and there's no map-center crosshair to place by hand.
+    function footForPolygonWalk(){
+      const foot = overlay.querySelector("#mmFoot");
+      const n = state.vertices.length;
+      foot.innerHTML = '<button type="button" class="ghost" id="mmWalkCancel">Cancel</button>'
+        + '<button type="button" class="btn" id="mmWalkFinish"'+(n<3?' disabled':'')+'><span class="fi">✓</span>Finish</button>';
+      foot.querySelector("#mmWalkCancel").addEventListener("click", ()=>{ stopWalking(); cancel(); });
+      foot.querySelector("#mmWalkFinish").addEventListener("click", finishPolygonDraw);
     }
     function footForOverview(){
       const foot = overlay.querySelector("#mmFoot");
-      foot.innerHTML = '<button type="button" class="btn light" id="mmAddPoly"><span class="fi">▰</span>Add Polygon</button>'
+      foot.innerHTML = '<button type="button" class="btn light" id="mmAddPoly" title="Tap to draw by hand — press and hold to walk the boundary with GPS"><span class="fi">▰</span>Add Polygon</button>'
         + '<button type="button" class="ghost" id="mmOverviewClose">Close</button>';
-      foot.querySelector("#mmAddPoly").addEventListener("click", ()=>{
-        const cb = state.onRequestAddPolygon; close();
-        if(cb) cb();
-      });
+      // A tap draws by hand; holding the button instead starts "walk a
+      // polygon" (see wireHoldToWalk/openAddPolygonFlow in the outer app code).
+      wireHoldToWalk(foot.querySelector("#mmAddPoly"),
+        ()=>{ const cb = state.onRequestAddPolygon; close(); if(cb) cb(false); },
+        ()=>{ const cb = state.onRequestAddPolygon; close(); if(cb) cb(true); }
+      );
       foot.querySelector("#mmOverviewClose").addEventListener("click", cancel);
     }
     function footForMovePoint(){
@@ -4288,6 +4356,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       if(unsubTrack){ unsubTrack(); unsubTrack=null; }
       trackLayers = [];
       stopMyLocationWatch();
+      stopWalking();
       if(map){ map.remove(); map=null; }
       if(overlay){ overlay.remove(); overlay=null; }
       state = null;
@@ -4308,15 +4377,18 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         getOverviewData: opts.getOverviewData, onMovePoint: opts.onMovePoint, onRequestAddPolygon: opts.onRequestAddPolygon,
         onEditPolygonSpecies: opts.onEditPolygonSpecies, onDeletePolygon: opts.onDeletePolygon, onAdjustPolygon: opts.onAdjustPolygon,
         movingPoint: null, overviewMarkers: [], overviewPolyLayers: [],
-        promptSpeciesOnFinish: !!opts.promptSpeciesOnFinish, pendingVertices: null
+        promptSpeciesOnFinish: !!opts.promptSpeciesOnFinish, pendingVertices: null,
+        walking: false
       };
       overlay.querySelector("#mmTitle").textContent = opts.title || (opts.mode==="polygon" ? "Draw polygon" : opts.mode==="overview" ? "Survey map" : "Set location");
       overlay.querySelector("#mmHint").textContent = opts.mode==="polygon"
-        ? "Drag any corner to move it. Pan the map and tap “+ Add Point” for a new corner, “Undo” to remove the last, then “Finish Polygon”."
+        ? (opts.walkMode
+            ? "Walk the boundary of the area — a corner is added automatically as you move. Tap “Finish” once you're back near where you started."
+            : "Drag any corner to move it. Pan the map and tap “+ Add Point” for a new corner, “Undo” to remove the last, then “Finish Polygon”.")
         : opts.mode==="overview" ? "Tap a point or polygon to view it, or draw a new polygon."
         : "Pan the map so the pin marks the exact spot, then tap “Save Point”.";
       if(opts.mode==="point") footForPoint();
-      else if(opts.mode==="polygon") footForPolygon();
+      else if(opts.mode==="polygon"){ if(opts.walkMode) startWalking(); else footForPolygon(); }
       else footForOverview();
 
       let initial = null;
@@ -4345,7 +4417,21 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
           }
         } else if(initial){
           ensureMap(initial[0], initial[1], 19);
-          setStatus(opts.mode==="polygon" ? (state.vertices.length+" point(s) so far.") : "Pan the map to fine-tune, or tap “Use GPS”.");
+          if(!(opts.mode==="polygon" && opts.walkMode)) setStatus(opts.mode==="polygon" ? (state.vertices.length+" point(s) so far.") : "Pan the map to fine-tune, or tap “Use GPS”.");
+        } else if(opts.mode==="polygon" && opts.walkMode){
+          // Walking a polygon: show a wide regional view and quietly recentre
+          // once a GPS fix comes in, without touching the status line —
+          // startWalking() already owns it (and is actively updating it as
+          // corners come in), so this deliberately skips tryGps()'s own
+          // "Finding current GPS location…"/error status messages.
+          ensureMap(-37.0, 144.0, 7);
+          if(window.navigator && navigator.geolocation && navigator.geolocation.getCurrentPosition){
+            navigator.geolocation.getCurrentPosition(
+              pos=>{ if(map) ensureMap(pos.coords.latitude, pos.coords.longitude, 19); },
+              ()=>{ /* no fix yet — stays on the wide view; the live walk watch keeps working regardless */ },
+              { enableHighAccuracy:true, timeout:12000, maximumAge:60000 }
+            );
+          }
         } else {
           // No known starting point — show a wide regional view (not a
           // precise pin) while GPS is attempted in the background.
@@ -4468,7 +4554,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         + '<div class="poly-item-head"><b>'+FHKit.esc(pg.id)+'</b><span class="muted">'+(pg.vertices||[]).length+' points</span>'
         + '<button type="button" class="x" data-del-poly="'+FHKit.esc(pg.id)+'" title="Remove this polygon">&times;</button></div>'
         + '<label class="detail-label" style="display:block;margin:6px 0 0">Species (comma-separated)</label>'
-        + '<input type="text" class="poly-species-input" data-poly-species-text="'+FHKit.esc(pg.id)+'" placeholder="e.g. Themeda triandra, Acacia dealbata" value="'+FHKit.esc((pg.species||[]).join(", "))+'">'
+        + '<textarea class="poly-species-input" data-poly-species-text="'+FHKit.esc(pg.id)+'" rows="2" placeholder="e.g. Themeda triandra, Acacia dealbata">'+FHKit.esc((pg.species||[]).join(", "))+'</textarea>'
         + '<textarea data-poly-notes="'+FHKit.esc(pg.id)+'" placeholder="Notes for this polygon (habitat description, condition, etc.)…">'+FHKit.esc(pg.notes||"")+'</textarea>'
         + '<div class="poly-item-actions">'
         + '<button type="button" data-poly-adjust="'+FHKit.esc(pg.id)+'">Adjust shape on map</button>'
@@ -4959,10 +5045,13 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       onAdjustPolygon: (id) => adjustPolygonShape(id)
     };
   }
-  function openAddPolygonFlow(){
+  // walkMode=true skips straight to "walk a polygon" (continuous GPS
+  // recording of corners) instead of the manual tap-to-place flow.
+  function openAddPolygonFlow(walkMode){
     MapModal.open({
       mode: "polygon",
-      title: "Draw polygon",
+      title: walkMode ? "Walk polygon" : "Draw polygon",
+      walkMode: !!walkMode,
       promptSpeciesOnFinish: true,
       ...overviewCallbacks(),
       onSave: async (vertices, species) => {
@@ -4980,7 +5069,29 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       }
     });
   }
-  $("addPolygonBtn").addEventListener("click", openAddPolygonFlow);
+  // Press-and-hold gesture shared by both "+ Add Polygon" entry points (this
+  // button, and the map overview's own footer button): a quick tap opens the
+  // usual manual point-by-point draw, while holding the button down instead
+  // starts "walk a polygon" — see openAddPolygonFlow(walkMode). A plain
+  // synthesized click (as used by automated tests, and by a mouse click/tap
+  // that releases well under HOLD_MS) always takes the tap path.
+  const WALK_HOLD_MS = 550;
+  function wireHoldToWalk(btn, onTap, onHold){
+    if(!btn) return;
+    let timer = null, held = false;
+    function clearHold(){ if(timer){ clearTimeout(timer); timer=null; } }
+    btn.addEventListener("pointerdown", ()=>{
+      held = false;
+      clearHold();
+      timer = setTimeout(()=>{ timer=null; held=true; onHold(); }, WALK_HOLD_MS);
+    });
+    ["pointerup","pointercancel","pointerleave"].forEach(evt=> btn.addEventListener(evt, clearHold));
+    btn.addEventListener("click", e=>{
+      if(held){ held=false; e.preventDefault(); return; }
+      onTap();
+    });
+  }
+  wireHoldToWalk($("addPolygonBtn"), ()=>openAddPolygonFlow(false), ()=>openAddPolygonFlow(true));
   // Reshape an existing polygon's vertices on the map — used by both the
   // Polygons list's own "Adjust shape on map" button and the map's own
   // polygon "tap to view" sheet (see MapModal.showPolygonInfo).
@@ -5023,7 +5134,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     if(sid){
       const pg = polygons.find(p=>p.id===sid);
       if(pg){
-        pg.species = e.target.value.split(",").map(s=>s.trim()).filter(Boolean);
+        pg.species = e.target.value.split(/[,\n]+/).map(s=>s.trim()).filter(Boolean);
         autosave();
         liveSyncPolygonFieldDebounced(pg, { speciesJson: encodePointsField(pg.species) });
       }
