@@ -109,7 +109,7 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
   letter-spacing:.2px}
 .notes-btn{border:1px solid var(--border);background:#fff;color:var(--muted);font-size:10px;font-weight:700;
   letter-spacing:.3px;text-transform:uppercase;padding:4px 9px;border-radius:12px;cursor:pointer;
-  white-space:nowrap;font-family:var(--sans);flex-shrink:0}
+  white-space:nowrap;font-family:var(--sans);flex-shrink:0;text-decoration:none;display:inline-block}
 .notes-btn.has-notes{background:var(--gold);color:var(--charcoal-deep);border-color:var(--gold)}
 .notes-btn.open{outline:2px solid var(--gold-dark);outline-offset:1px}
 .species-controls{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-top:10px;
@@ -320,6 +320,12 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 .map-fab.recording{background:var(--red);color:#fff;border-color:var(--red);animation:mapFabPulse 1.2s ease-in-out infinite}
 @keyframes mapFabPulse{0%,100%{box-shadow:0 0 0 0 rgba(179,38,30,.55)}50%{box-shadow:0 0 0 8px rgba(179,38,30,0)}}
 .map-track-line{pointer-events:none}
+/* The point currently being repositioned (see renderOverviewLayers) is drawn
+   larger and in a different colour than the plain blue points — this pulse
+   is an extra bit of "look here" motion on top of that, so it's unambiguous
+   which point is about to move even when several sit close together. */
+.mm-point-selected{animation:mmPointSelectedPulse 1.1s ease-in-out infinite}
+@keyframes mmPointSelectedPulse{0%,100%{opacity:1}50%{opacity:.6}}
 /* The toolbar "…" menu used to be positioned relative to its own small
    button wrapper (right:0) — on a narrow phone that could land the dropdown
    partly off the edge of the screen (clipped/"cut off"). Anchoring it to the
@@ -1758,7 +1764,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-25.7";
+  const BUILD_VERSION = "2026-09-25.9";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -3818,6 +3824,36 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       try{ window.scrollTo(0, savedScrollY); }catch(e){}
       scrollLocked = false;
     }
+    // Pinch-zooming the underlying PAGE (not the map itself — Leaflet has its
+    // own independent pinch-zoom for the aerial imagery) while this
+    // full-screen fixed-position overlay is open is a well-known source of
+    // exactly the "screen cut off" / "button doesn't respond" reports: once
+    // the page itself is zoomed in, mobile browsers position a `position:
+    // fixed` element relative to the page's LAYOUT viewport, not the smaller
+    // VISUAL viewport a person can actually see and touch — so part of the
+    // "full-screen" modal (often the footer, where Save/Cancel live) ends up
+    // outside what's visible or reachable by touch. It also explains an odd
+    // zoom level lingering on the species list right after closing the map —
+    // the page was left pinch-zoomed in from interacting with the map.
+    // Tightening the viewport's max-scale while the map is open, and
+    // restoring it afterwards, prevents the page itself from being zoomed
+    // during that window; re-applying the viewport meta tag's content also
+    // snaps any zoom already in effect back to 1x immediately (a standard
+    // technique — mobile browsers re-read and re-apply scale the moment the
+    // tag's content changes, even in response to the same open/close cycle).
+    let savedViewportContent = null;
+    function lockPageZoom(){
+      const meta = document.querySelector('meta[name="viewport"]');
+      if(!meta) return;
+      savedViewportContent = meta.getAttribute("content");
+      meta.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover");
+    }
+    function unlockPageZoom(){
+      const meta = document.querySelector('meta[name="viewport"]');
+      if(!meta || savedViewportContent==null) return;
+      meta.setAttribute("content", savedViewportContent);
+      savedViewportContent = null;
+    }
     // The device/browser "back" action (Android's back button or edge-swipe
     // gesture, or a desktop browser's own Back button) should close the map
     // instead of navigating the page away from the survey entirely. Opening
@@ -4082,6 +4118,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         + '</div>';
       document.body.appendChild(overlay);
       lockBodyScroll();
+      lockPageZoom();
       pushHistoryGuard();
       window.addEventListener("popstate", onPopState);
       overlay.addEventListener("click", e=>{ if(e.target===overlay || e.target.dataset.mmClose) cancel(); });
@@ -4380,14 +4417,20 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         state.movingPoint = null;
         showCrosshair(false);
         footForOverview();
+        renderOverviewLayers();
         setStatus("Tap a point or polygon to view it, or draw a new polygon.");
       });
     }
+    // While a point is actively being repositioned (state.movingPoint set),
+    // ITS marker is drawn larger, in a different colour, with a white halo —
+    // so when several points sit close together it's unambiguous which one
+    // is about to move, rather than every point looking identical.
     function renderOverviewLayers(){
       (state.overviewMarkers||[]).forEach(m=>{ if(map) map.removeLayer(m); });
       (state.overviewPolyLayers||[]).forEach(l=>{ if(map) map.removeLayer(l); });
       state.overviewMarkers = []; state.overviewPolyLayers = [];
       const data = state.getOverviewData ? state.getOverviewData() : { points:[], polygons:[] };
+      const moving = state.movingPoint;
       (data.polygons||[]).forEach(pg=>{
         if((pg.vertices||[]).length>1){
           const polyLayer = L.polygon(pg.vertices, { color:"#c9a227", weight:2, fillOpacity:0.1 }).addTo(map);
@@ -4396,7 +4439,10 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         }
       });
       (data.points||[]).forEach(pt=>{
-        const marker = L.circleMarker([pt.lat,pt.lon], { radius:7, color:"#2f6fed", weight:2, fillColor:"#2f6fed", fillOpacity:0.9 }).addTo(map);
+        const isSelected = !!(moving && moving.recordId===pt.recordId && moving.pointId===pt.pointId);
+        const marker = isSelected
+          ? L.circleMarker([pt.lat,pt.lon], { radius:11, color:"#fff", weight:3, fillColor:"#e0642f", fillOpacity:1, className:"mm-point-selected" }).addTo(map)
+          : L.circleMarker([pt.lat,pt.lon], { radius:7, color:"#2f6fed", weight:2, fillColor:"#2f6fed", fillOpacity:0.9 }).addTo(map);
         if(typeof marker.on === "function") marker.on("click", ()=> showPointInfo(pt));
         state.overviewMarkers.push(marker);
       });
@@ -4404,6 +4450,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     function startMovingPoint(pt){
       if(!map) return;
       state.movingPoint = { recordId: pt.recordId, pointId: pt.pointId };
+      renderOverviewLayers();
       showCrosshair(true);
       map.setView([pt.lat, pt.lon], Math.max(map.getZoom(), 19));
       footForMovePoint();
@@ -4419,6 +4466,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       state = null;
       window.removeEventListener("popstate", onPopState);
       unlockBodyScroll();
+      unlockPageZoom();
       popHistoryGuardIfNeeded();
     }
     function cancel(){
@@ -4636,6 +4684,20 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // an edit landing on the wrong species entirely. Every handler below
   // re-resolves the row fresh, by id, at the moment the event fires, so it
   // can never act on a stale position (see the shared rowIndexById() helper).
+  // A link out to VicFlora for the genus a species record belongs to — not
+  // every genus has its own dedicated dichotomous key on VicFlora (only
+  // larger/harder groups get one, e.g. Eucalyptus), and there's no reliable
+  // way to predict which do or to derive a key's numeric VicFlora URL from
+  // the species name alone. Linking to VicFlora's own search for the genus
+  // is the one link that's always correct: it lands on the genus (or a
+  // short list to pick from for a genus name that isn't unique), and
+  // VicFlora's own genus page is what surfaces its species key — "Key to
+  // the species of <genus>" — right there when one exists.
+  function vicFloraGenusUrl(sci){
+    const genus = String(sci||"").trim().split(/\s+/)[0].replace(/[^A-Za-z-]/g,"");
+    if(!genus) return null;
+    return "https://vicflora.rbg.vic.gov.au/flora/search?q="+encodeURIComponent(genus);
+  }
   function briefRowHtml(r, i){
     const badges = (r.type==="invasive"?' <span class="badge inv">INVASIVE</span>':'')
       + (r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')
@@ -4664,6 +4726,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const collapseBtn = collapsible ? '<button type="button" class="notes-btn" data-expand="'+FHKit.esc(r.id)+'" title="Collapse">▲ Collapse</button>' : '';
     const notesBtn = '<button type="button" class="notes-btn'+(hasNotes?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+FHKit.esc(r.id)+'" title="Field notes for this species">Field Notes'+(hasNotes?' ●':'')+'</button>';
     const photosBtn = '<button type="button" class="notes-btn'+(photoCount?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+FHKit.esc(r.id)+'" title="Photos for this species">Photos'+(photoCount?' ('+photoCount+')':'')+'</button>';
+    const keyUrl = vicFloraGenusUrl(r.sci);
+    const keyBtn = keyUrl ? '<a class="notes-btn" href="'+FHKit.esc(keyUrl)+'" target="_blank" rel="noopener" title="Look up this genus on VicFlora — opens its species key there, if one exists">VicFlora Key ↗</a>' : '';
     // Location is only captured/shown for species flagged "Significant" —
     // most species get no geo-line at all, and no location prompt. A species
     // can carry more than one point (e.g. several individuals/patches seen in
@@ -4688,7 +4752,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const actionLine = '<div class="geo-line"><button type="button" data-geo-retry="'+FHKit.esc(r.id)+'">'+(pts.length ? "+ Add another point" : "Set location")+'</button></div>';
       geoLine = (pts.length ? '<div class="geo-points">'+pointLines+'</div>' : '') + actionLine;
     }
-    const head = '<div class="sp-name-row"><div>'+FHKit.esc(r.common||r.sci)+(FHKit.consBadge(r.ffg,r.epbc)?' '+FHKit.consBadge(r.ffg,r.epbc):'')+(r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')+(r.significant?' <span class="badge ind" title="Significant species">SIGNIFICANT</span>':'')+'</div><div class="row-actions">'+collapseBtn+notesBtn+photosBtn+'</div></div>'
+    const head = '<div class="sp-name-row"><div>'+FHKit.esc(r.common||r.sci)+(FHKit.consBadge(r.ffg,r.epbc)?' '+FHKit.consBadge(r.ffg,r.epbc):'')+(r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')+(r.significant?' <span class="badge ind" title="Significant species">SIGNIFICANT</span>':'')+'</div><div class="row-actions">'+collapseBtn+notesBtn+photosBtn+keyBtn+'</div></div>'
       + '<div class="sci"><span>'+FHKit.esc(r.sci)+'</span><span class="rec-id" title="Unique identifier for this species record">'+FHKit.esc(r.id||"")+'</span>'
       + (r.addedBy ? '<span class="added-by" title="Recorded by">— '+FHKit.esc(r.addedBy)+'</span>' : '') + '</div>'
       + geoLine
