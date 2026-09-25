@@ -336,6 +336,43 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
   max-width:none;max-height:none;border-radius:0}
 .map-canvas-wrap{flex:1 1 auto;min-height:0}
 .map-canvas-wrap #mapContainer{width:100%;height:100%;min-height:0}
+/* Draggable polygon vertex handles (see MapModal's makeVertexMarker) — an
+   L.divIcon, so it needs its own look rather than Leaflet's default
+   div-icon box (a white square with a grey border, from leaflet.css).
+   Sized bigger than the visible dot so there's a real touch target for a
+   fingertip, without the handle itself looking oversized on the map. */
+.leaflet-div-icon.map-vertex-handle{background:transparent;border:none}
+.map-vertex-handle-dot{display:block;width:14px;height:14px;margin:6px;border-radius:50%;
+  background:#2f6fed;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);
+  cursor:grab;touch-action:none}
+.map-vertex-handle-dot:active{cursor:grabbing;background:#1d4fc4}
+/* Full-screen map mode (see the full-screen override above) puts the
+   header's close button and the footer's action buttons flush against the
+   true edges of the screen. On a notched/rounded-corner phone, one with a
+   gesture-navigation home-indicator strip, or rotated to landscape with the
+   notch on a side edge, a small fixed padding isn't enough — the safe area
+   can be 40-60px deep, hiding these controls under the notch/status bar or
+   sitting in the gesture strip where a tap doesn't even register (exactly
+   the "exit button doesn't work" / "confirm button is off screen" reports).
+   max(existing padding, env(safe-area-inset-*)) keeps today's padding as a
+   floor on ordinary screens and only grows it where the device actually
+   reports an inset. */
+.map-modal-head{
+  padding-top:max(10px, env(safe-area-inset-top, 0px));
+  padding-left:max(12px, env(safe-area-inset-left, 0px));
+  padding-right:max(12px, env(safe-area-inset-right, 0px))}
+.map-modal-status{
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px))}
+.map-hint{
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px))}
+.map-modal-foot{
+  padding-bottom:max(10px, env(safe-area-inset-bottom, 0px));
+  padding-left:max(14px, env(safe-area-inset-left, 0px));
+  padding-right:max(14px, env(safe-area-inset-right, 0px))}
+.map-rail{right:max(10px, env(safe-area-inset-right, 0px))}
+.map-layer-menu{right:calc(max(10px, env(safe-area-inset-right, 0px)) + 48px)}
 </style>
 <!-- Aerial imagery map (for precise point placement/adjustment and polygon
      drawing — see MapModal). Loaded with no integrity/crossorigin hash: a
@@ -1717,7 +1754,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-25.2";
+  const BUILD_VERSION = "2026-09-25.4";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -4081,10 +4118,51 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       vertexMarkers.forEach(m=>map.removeLayer(m)); vertexMarkers=[];
       if(state.vertices.length){
         if(state.vertices.length>1) polyLayer = L.polygon(state.vertices, { color:"#c9a227", weight:3, fillOpacity:0.15 }).addTo(map);
-        state.vertices.forEach(v=>{
-          vertexMarkers.push(L.circleMarker(v, { radius:5, color:"#2f6fed", weight:2, fillColor:"#2f6fed", fillOpacity:1 }).addTo(map));
+        state.vertices.forEach((v,i)=>{
+          vertexMarkers.push(makeVertexMarker(v, i));
         });
       }
+    }
+    // A draggable handle for one polygon corner — grabbing and dragging it
+    // repositions that vertex directly, alongside the existing "+ Add
+    // Point"/Undo flow (still the only way to add a brand-new corner or
+    // remove the most recently placed one). Real Leaflet only supports
+    // dragging on L.marker (via its Draggable mixin) — L.circleMarker and
+    // every other L.Path-based layer don't support the "draggable" option —
+    // so this uses an L.marker with a small custom divIcon sized to match
+    // the same blue-dot look the vertex markers always had. Falls back to a
+    // plain, non-draggable L.circleMarker if L.marker/L.divIcon aren't
+    // available (e.g. a test's minimal fake Leaflet) — the polygon still
+    // draws fine there, it just can't be dragged, same defensive pattern
+    // used elsewhere in this file for optional Leaflet/geolocation APIs.
+    function makeVertexMarker(latlng, index){
+      if(typeof L.marker !== "function" || typeof L.divIcon !== "function"){
+        return L.circleMarker(latlng, { radius:5, color:"#2f6fed", weight:2, fillColor:"#2f6fed", fillOpacity:1 }).addTo(map);
+      }
+      const icon = L.divIcon({
+        className: "map-vertex-handle", iconSize:[26,26], iconAnchor:[13,13],
+        html: '<span class="map-vertex-handle-dot"></span>'
+      });
+      const marker = L.marker(latlng, { draggable:true, icon, keyboard:false, zIndexOffset:1000 }).addTo(map);
+      if(typeof marker.on === "function"){
+        // While actually being dragged: update the vertex + the connecting
+        // outline live, WITHOUT a full redrawPolygon() (which would tear
+        // down and recreate this very marker mid-drag and abort it) —
+        // cheap and keeps Leaflet's own drag handling uninterrupted.
+        marker.on("drag", ()=>{
+          if(typeof marker.getLatLng !== "function") return;
+          const ll = marker.getLatLng();
+          state.vertices[index] = [ll.lat, ll.lng];
+          if(polyLayer && typeof polyLayer.setLatLngs === "function") polyLayer.setLatLngs(state.vertices);
+        });
+        // Once the drag finishes, a full redraw resyncs every marker's
+        // captured index against the (unchanged) vertex count/order.
+        marker.on("dragend", ()=>{
+          redrawPolygon();
+          setStatus(state.vertices.length+" point"+(state.vertices.length===1?"":"s")+" — drag a corner to reshape it, or “+ Add Point” for a new one.");
+        });
+      }
+      return marker;
     }
     function tryGps(onDone){
       if(!(window.navigator && navigator.geolocation && navigator.geolocation.getCurrentPosition)){
@@ -4125,7 +4203,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         state.vertices.push(centerLatLon());
         redrawPolygon();
         footForPolygon();
-        setStatus(state.vertices.length+" point"+(state.vertices.length===1?"":"s")+" placed — pan and tap “+ Add Point” for each corner, then “Finish Polygon” once you have at least 3.");
+        setStatus(state.vertices.length+" point"+(state.vertices.length===1?"":"s")+" placed — drag a corner to adjust it, pan and tap “+ Add Point” for another, then “Finish Polygon” once you have at least 3.");
       });
       foot.querySelector("#mmUndo").addEventListener("click", ()=>{
         state.vertices.pop();
@@ -4234,7 +4312,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       };
       overlay.querySelector("#mmTitle").textContent = opts.title || (opts.mode==="polygon" ? "Draw polygon" : opts.mode==="overview" ? "Survey map" : "Set location");
       overlay.querySelector("#mmHint").textContent = opts.mode==="polygon"
-        ? "Pan the map so the pin marks each corner, then tap “+ Add Point”. Repeat for every corner, then “Finish Polygon”."
+        ? "Drag any corner to move it. Pan the map and tap “+ Add Point” for a new corner, “Undo” to remove the last, then “Finish Polygon”."
         : opts.mode==="overview" ? "Tap a point or polygon to view it, or draw a new polygon."
         : "Pan the map so the pin marks the exact spot, then tap “Save Point”.";
       if(opts.mode==="point") footForPoint();
