@@ -1764,7 +1764,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-25.9";
+  const BUILD_VERSION = "2026-09-25.10";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -3854,6 +3854,45 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       meta.setAttribute("content", savedViewportContent);
       savedViewportContent = null;
     }
+    // 100dvh is meant to shrink to whatever's actually left once a mobile
+    // browser's OWN retracting chrome (an address bar/toolbar that hides and
+    // reappears as the page is scrolled or tapped) is accounted for — but
+    // that calculation is done by the underlying rendering ENGINE, which
+    // only knows about its own vendor's browser chrome. Chrome on iOS is a
+    // wrapper app with its own toolbar layered on top of the system's
+    // WebKit engine, and reports suggest that combination doesn't always
+    // keep dvh in sync with Chrome's own toolbar — dvh can end up taller
+    // than what's actually visible, pushing this full-screen modal's own
+    // footer buttons (Save/Cancel, or the point-info sheet's Close/Adjust on
+    // Map) below the visible screen, and shifting further as that toolbar
+    // shows/hides while interacting — exactly the "buttons drop lower and
+    // move out of reach" report. Measuring the true visible height directly
+    // in JS (visualViewport.height, which every mobile browser keeps
+    // accurate as ITS OWN chrome comes and goes, regardless of what other
+    // app chrome is layered on top) and setting it as an explicit pixel
+    // height sidesteps that whole class of viewport-unit ambiguity; a
+    // visualViewport resize listener keeps it correct for as long as the
+    // map stays open, in case that toolbar shows/hides mid-interaction.
+    let viewportResizeHandler = null;
+    function applyViewportHeight(){
+      if(!overlay) return;
+      const card = overlay.querySelector(".map-modal-card");
+      if(!card) return;
+      const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+      if(vh) card.style.height = vh + "px";
+    }
+    function startWatchingViewportHeight(){
+      applyViewportHeight();
+      viewportResizeHandler = () => applyViewportHeight();
+      if(window.visualViewport) window.visualViewport.addEventListener("resize", viewportResizeHandler);
+      else window.addEventListener("resize", viewportResizeHandler);
+    }
+    function stopWatchingViewportHeight(){
+      if(!viewportResizeHandler) return;
+      if(window.visualViewport) window.visualViewport.removeEventListener("resize", viewportResizeHandler);
+      else window.removeEventListener("resize", viewportResizeHandler);
+      viewportResizeHandler = null;
+    }
     // The device/browser "back" action (Android's back button or edge-swipe
     // gesture, or a desktop browser's own Back button) should close the map
     // instead of navigating the page away from the survey entirely. Opening
@@ -4117,6 +4156,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         + '<div class="map-modal-foot map-dock" id="mmFoot"></div>'
         + '</div>';
       document.body.appendChild(overlay);
+      startWatchingViewportHeight();
       lockBodyScroll();
       lockPageZoom();
       pushHistoryGuard();
@@ -4465,6 +4505,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       if(overlay){ overlay.remove(); overlay=null; }
       state = null;
       window.removeEventListener("popstate", onPopState);
+      stopWatchingViewportHeight();
       unlockBodyScroll();
       unlockPageZoom();
       popHistoryGuardIfNeeded();
