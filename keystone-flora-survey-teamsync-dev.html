@@ -1758,7 +1758,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-25.6";
+  const BUILD_VERSION = "2026-09-25.7";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -3788,6 +3788,60 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     // GPS update) whenever the map is rebuilt, e.g. after returning to the
     // overview once a polygon is finished.
     let myLocWatchId=null, myLocMarker=null, myLocCircle=null, lastMyLocCoords=null;
+    // The map opens as a full-screen fixed overlay, but the survey page
+    // underneath can already be scrolled (a long species checklist/polygon
+    // list) when it's opened. Some mobile browsers position a `position:
+    // fixed` overlay relative to the page's last scroll offset rather than
+    // the true visible viewport, which can leave part of the "fixed"
+    // full-screen modal — usually the bottom, where the footer buttons are —
+    // rendered outside what's actually visible on screen. Locking the
+    // background page's scroll for as long as the map is open (and
+    // restoring it afterwards) avoids that class of bug entirely.
+    let savedScrollY = 0, scrollLocked = false;
+    function lockBodyScroll(){
+      if(scrollLocked) return;
+      savedScrollY = window.scrollY || window.pageYOffset || 0;
+      document.body.style.position = "fixed";
+      document.body.style.top = (-savedScrollY) + "px";
+      document.body.style.left = "0";
+      document.body.style.right = "0";
+      document.body.style.width = "100%";
+      scrollLocked = true;
+    }
+    function unlockBodyScroll(){
+      if(!scrollLocked) return;
+      document.body.style.position = "";
+      document.body.style.top = "";
+      document.body.style.left = "";
+      document.body.style.right = "";
+      document.body.style.width = "";
+      try{ window.scrollTo(0, savedScrollY); }catch(e){}
+      scrollLocked = false;
+    }
+    // The device/browser "back" action (Android's back button or edge-swipe
+    // gesture, or a desktop browser's own Back button) should close the map
+    // instead of navigating the page away from the survey entirely. Opening
+    // the map pushes one history entry as a guard; popstate closes the map
+    // the same way tapping its own header close button would, and closing
+    // the map any other way consumes that same guard entry (via
+    // history.back()) so a later real "back" press isn't left doing nothing.
+    let historyGuardPushed = false;
+    function pushHistoryGuard(){
+      try{ history.pushState({ mmOpen:true }, ""); historyGuardPushed = true; }
+      catch(e){ historyGuardPushed = false; }
+    }
+    function popHistoryGuardIfNeeded(){
+      if(historyGuardPushed){
+        historyGuardPushed = false;
+        try{ history.back(); }catch(e){}
+      }
+    }
+    function onPopState(){
+      if(state){
+        historyGuardPushed = false; // this entry is already being consumed by the browser itself
+        cancel();
+      }
+    }
     // "Walk a polygon" — hold the "+ Add Polygon" button (instead of tapping
     // it) to draw a polygon by physically walking its boundary: a corner is
     // appended automatically from a live GPS watch as the surveyor moves,
@@ -4027,6 +4081,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         + '<div class="map-modal-foot map-dock" id="mmFoot"></div>'
         + '</div>';
       document.body.appendChild(overlay);
+      lockBodyScroll();
+      pushHistoryGuard();
+      window.addEventListener("popstate", onPopState);
       overlay.addEventListener("click", e=>{ if(e.target===overlay || e.target.dataset.mmClose) cancel(); });
       mapEl = overlay.querySelector("#mapContainer");
       currentBase = null;
@@ -4360,6 +4417,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       if(map){ map.remove(); map=null; }
       if(overlay){ overlay.remove(); overlay=null; }
       state = null;
+      window.removeEventListener("popstate", onPopState);
+      unlockBodyScroll();
+      popHistoryGuardIfNeeded();
     }
     function cancel(){
       const cb = state && state.onCancel;
