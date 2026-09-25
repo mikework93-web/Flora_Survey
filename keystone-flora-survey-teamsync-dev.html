@@ -327,6 +327,14 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 .map-fab.recording{background:var(--red);color:#fff;border-color:var(--red);animation:mapFabPulse 1.2s ease-in-out infinite}
 @keyframes mapFabPulse{0%,100%{box-shadow:0 0 0 0 rgba(179,38,30,.55)}50%{box-shadow:0 0 0 8px rgba(179,38,30,0)}}
 .map-track-line{pointer-events:none}
+/* The toolbar "…" menu used to be positioned relative to its own small
+   button wrapper (right:0) — on a narrow phone that could land the dropdown
+   partly off the edge of the screen (clipped/"cut off"). Anchoring it to the
+   toolbar itself instead, with a safe-area-aware inset, keeps it fully
+   on-screen regardless of exactly where the button renders. */
+.fh-menu-wrap{position:static}
+.fh-menu{right:max(10px, env(safe-area-inset-right, 0px))}
+.mm-my-location{pointer-events:none}
 </style>
 <!-- Aerial imagery map (for precise point placement/adjustment and polygon
      drawing — see MapModal). Loaded with no integrity/crossorigin hash: a
@@ -3729,6 +3737,20 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     let state=null; // { mode:'point'|'polygon'|'overview', vertices:[[lat,lon],...], onSave, onCancel,
                      //   promptSpeciesOnFinish, pendingVertices }
     let trackLayers=[], unsubTrack=null;
+    // "My location" — a live blue dot + accuracy circle (QField-style),
+    // shown whenever the map view is open, independent of the separate GPS
+    // Track feature above (this is just an on-screen orientation aid, never
+    // recorded/saved). Uses its own continuous watchPosition, started when
+    // the map is built and stopped when it's closed; the last-known fix is
+    // cached so the dot reappears immediately (without waiting for a fresh
+    // GPS update) whenever the map is rebuilt, e.g. after returning to the
+    // overview once a polygon is finished.
+    let myLocWatchId=null, myLocMarker=null, myLocCircle=null, lastMyLocCoords=null;
+    // Slide-up info sheet — shared by showSpeciesSheet (species-after-draw)
+    // and the point/polygon "tap to view" sheets below. Only one dismiss
+    // handler is active at a time; the scrim-tap listener (wired once in
+    // build()) just calls whichever one is current.
+    let currentSheetDismiss=null;
 
     // Two basemaps (QField-style layer switcher, top-right FAB) — Esri aerial
     // imagery by default, with OpenStreetMap as a fallback if Esri tiles ever
@@ -3776,6 +3798,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       state.pendingVertices = vertices;
       scrim.classList.add("show");
       sheet.classList.add("show");
+      currentSheetDismiss = finishSpeciesSheet;
       const input = sheet.querySelector("#mmSheetSpecies");
       setTimeout(()=>{ try{ input.focus(); }catch(e){} }, 0);
       sheet.querySelector("#mmSheetDone").addEventListener("click", ()=> finishSpeciesSheet());
@@ -3787,8 +3810,104 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const species = input ? input.value.split(",").map(s=>s.trim()).filter(Boolean) : [];
       const verts = state.pendingVertices;
       const cb = state.onSave;
-      close();
-      if(cb) cb(verts, species);
+      const hadOverview = !!state.getOverviewData;
+      state.pendingVertices = null;
+      closeInfoSheet();
+      // Team Sync's onSave (openAddPolygonFlow) is async — it awaits the
+      // live-sync create before pushing the new polygon into local state —
+      // so the overview can't be redrawn until that resolves, or the just-
+      // finished polygon wouldn't be on the map yet. Promise.resolve() also
+      // handles a plain synchronous onSave (e.g. reshaping via
+      // adjustPolygonShape) without waiting an extra tick either way.
+      Promise.resolve(cb ? cb(verts, species) : null).then(()=>{
+        // Finishing a polygon stays in map mode (back to the overview
+        // showing everything, including what was just drawn) instead of
+        // closing back to the species list — as long as this open() call
+        // was handed the overview data it needs to do that; a bare
+        // standalone open() without it just closes, as before.
+        if(!state) return; // modal was closed some other way while onSave was in flight
+        if(hadOverview) returnToOverview(); else close();
+      });
+    }
+    function closeInfoSheet(){
+      if(!overlay) return;
+      const scrim = overlay.querySelector("#mmSheetScrim");
+      const sheet = overlay.querySelector("#mmSheet");
+      if(scrim) scrim.classList.remove("show");
+      if(sheet) sheet.classList.remove("show");
+      currentSheetDismiss = null;
+    }
+    // Tap a point marker in the overview: show what species it is before
+    // doing anything else. "Adjust on Map" hands off to the existing
+    // pan-under-crosshair reposition flow; the sheet itself never moves it.
+    function showPointInfo(pt){
+      const scrim = overlay.querySelector("#mmSheetScrim");
+      const sheet = overlay.querySelector("#mmSheet");
+      sheet.innerHTML = '<div class="map-sheet-grip"></div>'
+        + '<div class="map-sheet-head">'+FHKit.esc(pt.label||"Point")+'</div>'
+        + '<div class="map-sheet-sub">'+pt.lat.toFixed(5)+', '+pt.lon.toFixed(5)+'</div>'
+        + '<div class="map-sheet-foot"><button type="button" class="ghost" id="mmSheetClose">Close</button>'
+        + '<button type="button" class="btn" id="mmSheetAdjustPoint" style="margin-left:8px">Adjust on Map</button></div>';
+      scrim.classList.add("show");
+      sheet.classList.add("show");
+      currentSheetDismiss = closeInfoSheet;
+      sheet.querySelector("#mmSheetClose").addEventListener("click", closeInfoSheet);
+      sheet.querySelector("#mmSheetAdjustPoint").addEventListener("click", ()=>{ closeInfoSheet(); startMovingPoint(pt); });
+    }
+    // Tap a polygon in the overview: see (and edit) its species, jump into
+    // reshaping it, or delete it outright — all without leaving the map.
+    function showPolygonInfo(pg){
+      const scrim = overlay.querySelector("#mmSheetScrim");
+      const sheet = overlay.querySelector("#mmSheet");
+      sheet.innerHTML = '<div class="map-sheet-grip"></div>'
+        + '<div class="map-sheet-head">Polygon &middot; '+(pg.vertices||[]).length+' points</div>'
+        + '<div class="map-sheet-sub">Species (comma-separated)</div>'
+        + '<div class="map-sheet-body"><input type="text" id="mmSheetPolySpecies" placeholder="e.g. Themeda triandra, Acacia dealbata" value="'+FHKit.esc((pg.species||[]).join(", "))+'"></div>'
+        + '<div class="map-sheet-foot" style="justify-content:space-between">'
+        +   '<button type="button" class="ghost" id="mmSheetDeletePoly" style="color:var(--red)">Delete</button>'
+        +   '<span><button type="button" class="ghost" id="mmSheetAdjustPoly">Adjust Shape</button> '
+        +   '<button type="button" class="btn" id="mmSheetDonePoly">Done</button></span>'
+        + '</div>';
+      scrim.classList.add("show");
+      sheet.classList.add("show");
+      function commitSpecies(){
+        const input = sheet.querySelector("#mmSheetPolySpecies");
+        const species = input ? input.value.split(",").map(s=>s.trim()).filter(Boolean) : (pg.species||[]);
+        if(state.onEditPolygonSpecies) state.onEditPolygonSpecies(pg.id, species);
+      }
+      function done(){ commitSpecies(); closeInfoSheet(); renderOverviewLayers(); }
+      currentSheetDismiss = done;
+      sheet.querySelector("#mmSheetDonePoly").addEventListener("click", done);
+      sheet.querySelector("#mmSheetAdjustPoly").addEventListener("click", ()=>{
+        commitSpecies();
+        closeInfoSheet();
+        if(state.onAdjustPolygon) state.onAdjustPolygon(pg.id);
+      });
+      sheet.querySelector("#mmSheetDeletePoly").addEventListener("click", ()=>{
+        if(!confirm("Delete this polygon? This can't be undone.")) return;
+        if(state.onDeletePolygon) state.onDeletePolygon(pg.id);
+        closeInfoSheet();
+        renderOverviewLayers();
+      });
+    }
+    // Switches the SAME open modal from polygon-draw mode back into the
+    // overview, in place — no closing back to the species-list screen. Used
+    // once a polygon is finished/reshaped, whenever the overview callbacks
+    // needed to do that were supplied to this open() call.
+    function returnToOverview(){
+      state.mode = "overview";
+      state.vertices = [];
+      // Clear the polygon-draw scaffolding (the draft rubber-band shape and
+      // its vertex dots) — otherwise it lingers on the map as a leftover
+      // layer once renderOverviewLayers() draws the finalised polygon.
+      if(polyLayer){ if(map) map.removeLayer(polyLayer); polyLayer=null; }
+      vertexMarkers.forEach(m=>{ if(map) map.removeLayer(m); }); vertexMarkers=[];
+      overlay.querySelector("#mmTitle").textContent = "Survey Map";
+      overlay.querySelector("#mmHint").textContent = "Tap a point or polygon to view it, or draw a new polygon.";
+      footForOverview();
+      showCrosshair(false);
+      renderOverviewLayers();
+      setStatus("Tap a point or polygon to view it, or draw a new polygon.");
     }
 
     function computeOverviewCenterZoom(coords){
@@ -3807,6 +3926,36 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     function showCrosshair(show){
       const pin = overlay.querySelector(".map-center-pin");
       if(pin) pin.style.display = show ? "" : "none";
+    }
+    // Draws/updates the "my location" blue dot + accuracy circle on whatever
+    // map instance currently exists, using the most recent GPS fix. Called
+    // both from the live watchPosition callback and right after ensureMap()
+    // rebuilds the map (using the cached last-known fix), so the dot never
+    // just vanishes when the modal transitions between modes.
+    function renderMyLocation(coords){
+      lastMyLocCoords = coords;
+      if(!map) return;
+      if(myLocCircle){ map.removeLayer(myLocCircle); myLocCircle=null; }
+      if(myLocMarker){ map.removeLayer(myLocMarker); myLocMarker=null; }
+      const latlng = [coords.latitude, coords.longitude];
+      if(typeof L.circle === "function" && typeof coords.accuracy === "number"){
+        myLocCircle = L.circle(latlng, { radius: coords.accuracy, color:"#2f6fed", weight:1, fillColor:"#2f6fed", fillOpacity:0.12, className:"mm-my-location" }).addTo(map);
+      }
+      myLocMarker = L.circleMarker(latlng, { radius:7, color:"#fff", weight:2, fillColor:"#2f6fed", fillOpacity:1, className:"mm-my-location" }).addTo(map);
+    }
+    function startMyLocationWatch(){
+      if(myLocWatchId!=null) return;
+      if(!(window.navigator && navigator.geolocation && navigator.geolocation.watchPosition)) return;
+      myLocWatchId = navigator.geolocation.watchPosition(
+        pos => renderMyLocation(pos.coords),
+        ()=>{ /* no fix yet/denied — the dot just doesn't show until one arrives */ },
+        { enableHighAccuracy:true, maximumAge:5000, timeout:20000 }
+      );
+    }
+    function stopMyLocationWatch(){
+      if(myLocWatchId!=null && window.navigator && navigator.geolocation && navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(myLocWatchId);
+      myLocWatchId = null;
+      myLocMarker = null; myLocCircle = null; lastMyLocCoords = null;
     }
 
     function build(){
@@ -3844,7 +3993,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
           if(coords){ fab.classList.add("active"); if(map) map.setView([coords.latitude, coords.longitude], Math.max(map.getZoom(),19)); }
         });
       });
-      overlay.querySelector("#mmSheetScrim").addEventListener("click", ()=> finishSpeciesSheet());
+      overlay.querySelector("#mmSheetScrim").addEventListener("click", ()=>{ if(currentSheetDismiss) currentSheetDismiss(); });
       syncTrackFab();
       overlay.querySelector("#mmTrackFab").addEventListener("click", ()=>{
         if(isTracking()){ stopTracking(); FHKit.toast("Tracking stopped"); }
@@ -3854,6 +4003,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         refreshTrackStatus();
       });
       unsubTrack = onTrackUpdate(()=>{ redrawTrackLine(); refreshTrackStatus(); });
+      startMyLocationWatch();
     }
     // Reflects whether a GPS track is currently being recorded on the rail's
     // track FAB — a pulsing red "stop" icon while on, a plain gold "record"
@@ -3921,6 +4071,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       if(state.mode==="polygon") redrawPolygon();
       else if(state.mode==="overview") renderOverviewLayers();
       redrawTrackLine();
+      myLocMarker = null; myLocCircle = null;
+      if(lastMyLocCoords) renderMyLocation(lastMyLocCoords);
     }
     function centerLatLon(){ const c = map.getCenter(); return [c.lat, c.lng]; }
     function redrawPolygon(){
@@ -3983,8 +4135,16 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         if(state.vertices.length<3){ FHKit.toast("A polygon needs at least 3 points"); return; }
         const verts = state.vertices.slice();
         if(state.promptSpeciesOnFinish){ showSpeciesSheet(verts); return; }
-        const cb = state.onSave; close();
-        if(cb) cb(verts);
+        const cb = state.onSave;
+        const hadOverview = !!state.getOverviewData;
+        // Same "stay in map mode" behaviour as finishSpeciesSheet() — used
+        // here by the no-species-prompt path (reshaping an existing
+        // polygon) — and the same Promise.resolve() wrapping, in case this
+        // onSave is ever async too.
+        Promise.resolve(cb ? cb(verts) : null).then(()=>{
+          if(!state) return;
+          if(hadOverview) returnToOverview(); else close();
+        });
       });
     }
     function footForOverview(){
@@ -4016,7 +4176,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         state.movingPoint = null;
         showCrosshair(false);
         footForOverview();
-        setStatus("Tap a point to reposition it, or draw a new polygon.");
+        setStatus("Tap a point or polygon to view it, or draw a new polygon.");
       });
     }
     function renderOverviewLayers(){
@@ -4026,12 +4186,14 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const data = state.getOverviewData ? state.getOverviewData() : { points:[], polygons:[] };
       (data.polygons||[]).forEach(pg=>{
         if((pg.vertices||[]).length>1){
-          state.overviewPolyLayers.push(L.polygon(pg.vertices, { color:"#c9a227", weight:2, fillOpacity:0.1 }).addTo(map));
+          const polyLayer = L.polygon(pg.vertices, { color:"#c9a227", weight:2, fillOpacity:0.1 }).addTo(map);
+          if(typeof polyLayer.on === "function") polyLayer.on("click", ()=> showPolygonInfo(pg));
+          state.overviewPolyLayers.push(polyLayer);
         }
       });
       (data.points||[]).forEach(pt=>{
         const marker = L.circleMarker([pt.lat,pt.lon], { radius:7, color:"#2f6fed", weight:2, fillColor:"#2f6fed", fillOpacity:0.9 }).addTo(map);
-        if(typeof marker.on === "function") marker.on("click", ()=> startMovingPoint(pt));
+        if(typeof marker.on === "function") marker.on("click", ()=> showPointInfo(pt));
         state.overviewMarkers.push(marker);
       });
     }
@@ -4046,6 +4208,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     function close(){
       if(unsubTrack){ unsubTrack(); unsubTrack=null; }
       trackLayers = [];
+      stopMyLocationWatch();
       if(map){ map.remove(); map=null; }
       if(overlay){ overlay.remove(); overlay=null; }
       state = null;
@@ -4064,13 +4227,14 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         vertices: (opts.mode==="polygon" ? (opts.existing||[]).map(v=>v.slice()) : []),
         onSave: opts.onSave, onCancel: opts.onCancel,
         getOverviewData: opts.getOverviewData, onMovePoint: opts.onMovePoint, onRequestAddPolygon: opts.onRequestAddPolygon,
+        onEditPolygonSpecies: opts.onEditPolygonSpecies, onDeletePolygon: opts.onDeletePolygon, onAdjustPolygon: opts.onAdjustPolygon,
         movingPoint: null, overviewMarkers: [], overviewPolyLayers: [],
         promptSpeciesOnFinish: !!opts.promptSpeciesOnFinish, pendingVertices: null
       };
       overlay.querySelector("#mmTitle").textContent = opts.title || (opts.mode==="polygon" ? "Draw polygon" : opts.mode==="overview" ? "Survey map" : "Set location");
       overlay.querySelector("#mmHint").textContent = opts.mode==="polygon"
         ? "Pan the map so the pin marks each corner, then tap “+ Add Point”. Repeat for every corner, then “Finish Polygon”."
-        : opts.mode==="overview" ? "Tap a point to reposition it, or draw a new polygon."
+        : opts.mode==="overview" ? "Tap a point or polygon to view it, or draw a new polygon."
         : "Pan the map so the pin marks the exact spot, then tap “Save Point”.";
       if(opts.mode==="point") footForPoint();
       else if(opts.mode==="polygon") footForPolygon();
@@ -4095,7 +4259,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
           showCrosshair(false);
           if(initial){
             ensureMap(initial[0], initial[1], overviewZoom||19);
-            setStatus("Tap a point to reposition it, or draw a new polygon.");
+            setStatus("Tap a point or polygon to view it, or draw a new polygon.");
           } else {
             ensureMap(-37.0, 144.0, 7);
             setStatus("No points or polygons captured yet — draw a polygon to get started.");
@@ -4677,11 +4841,51 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     if(id){ siteNotes = siteNotes.filter(n=>n.id!==id); renderSiteNotes(); autosave(); }
   });
 
+  // Shared by every MapModal.open() call the main screen makes — handed to
+  // "overview" opens directly, and ALSO to "polygon" opens (draw/reshape) so
+  // that finishing a polygon there can switch back into the overview in
+  // place (see returnToOverview() in MapModal) instead of closing outright.
+  // Unlike the no-sync build, edits/deletes/reshapes made here also need to
+  // propagate through Team Sync — mirroring the same live-sync calls the
+  // Polygons list's own input/click handlers make.
+  function overviewCallbacks(){
+    return {
+      getOverviewData: () => ({
+        points: rows.filter(r=>r.significant).flatMap(r=>(r.points||[]).map(p=>(
+          { recordId:r.id, pointId:p.id, lat:p.lat, lon:p.lon, label:(r.common||r.sci) }
+        ))),
+        polygons: polygons.map(pg=>({ id:pg.id, vertices:pg.vertices||[], species:pg.species||[], notes:pg.notes||"" }))
+      }),
+      onMovePoint: (recordId, pointId, lat, lon) => {
+        const i = rowIndexById(recordId); if(i<0) return;
+        const cur = rows[i];
+        const pp = (cur.points||[]).find(x=>x.id===pointId); if(!pp) return;
+        pp.lat = lat; pp.lon = lon;
+        delete pp.accuracy; // no longer a raw GPS fix — it's been manually placed
+        render(); autosave();
+        liveSyncField(cur, { pointsJson: encodePointsField(cur.points) });
+      },
+      onRequestAddPolygon: openAddPolygonFlow,
+      onEditPolygonSpecies: (id, species) => {
+        const pg = polygons.find(p=>p.id===id); if(!pg) return;
+        pg.species = species; renderPolygons(); autosave();
+        liveSyncPolygonField(pg, { speciesJson: encodePointsField(pg.species) });
+      },
+      onDeletePolygon: (id) => {
+        const pg = polygons.find(p=>p.id===id);
+        polygons = polygons.filter(p=>p.id!==id);
+        renderPolygons(); autosave();
+        if(pg) liveDeletePolygon(pg);
+      },
+      onAdjustPolygon: (id) => adjustPolygonShape(id)
+    };
+  }
   function openAddPolygonFlow(){
     MapModal.open({
       mode: "polygon",
       title: "Draw polygon",
       promptSpeciesOnFinish: true,
+      ...overviewCallbacks(),
       onSave: async (vertices, species) => {
         const pg = { id: makePolygonId(), vertices, species: species||[], notes: "", createdBy: userName() };
         if(live.active){
@@ -4698,32 +4902,35 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     });
   }
   $("addPolygonBtn").addEventListener("click", openAddPolygonFlow);
+  // Reshape an existing polygon's vertices on the map — used by both the
+  // Polygons list's own "Adjust shape on map" button and the map's own
+  // polygon "tap to view" sheet (see MapModal.showPolygonInfo).
+  function adjustPolygonShape(id){
+    const pg = polygons.find(p=>p.id===id);
+    if(!pg) return;
+    MapModal.open({
+      mode: "polygon",
+      existing: pg.vertices,
+      title: "Adjust polygon shape",
+      ...overviewCallbacks(),
+      onSave: (vertices) => {
+        pg.vertices = vertices; renderPolygons(); autosave();
+        liveSyncPolygonField(pg, { verticesJson: encodePointsField(pg.vertices) });
+      }
+    });
+  }
 
   // Opens a survey-wide map view showing every captured point and polygon at
-  // once. Tapping a point marker reuses the same pan-under-crosshair flow as
-  // adjustPoint() to reposition it (resolved fresh by id at save time, same
-  // rowIndexById() reasoning as captureLocation/adjustPoint above); "+ Add
-  // Polygon" hands off to the normal standalone polygon-draw flow.
+  // once. Tapping a point marker shows its species and reuses the same
+  // pan-under-crosshair flow as adjustPoint() to reposition it (resolved
+  // fresh by id at save time, same rowIndexById() reasoning as
+  // captureLocation/adjustPoint above); tapping a polygon shows/edits its
+  // species, reshapes it, or deletes it; "+ Add Polygon" hands off to the
+  // normal standalone polygon-draw flow.
   function openSurveyMapView(){
     MapModal.open({
       mode: "overview",
-      getOverviewData: () => ({
-        points: rows.filter(r=>r.significant).flatMap(r=>(r.points||[]).map(p=>(
-          { recordId:r.id, pointId:p.id, lat:p.lat, lon:p.lon, label:(r.common||r.sci) }
-        ))),
-        polygons: polygons.map(pg=>({ id:pg.id, vertices:pg.vertices||[] }))
-      }),
-      onMovePoint: (recordId, pointId, lat, lon) => {
-        const i = rowIndexById(recordId); if(i<0) return;
-        const cur = rows[i];
-        const pp = (cur.points||[]).find(x=>x.id===pointId);
-        if(!pp) return;
-        pp.lat = lat; pp.lon = lon;
-        delete pp.accuracy;
-        render(); autosave();
-        liveSyncField(cur, { pointsJson: encodePointsField(cur.points) });
-      },
-      onRequestAddPolygon: openAddPolygonFlow
+      ...overviewCallbacks()
     });
   }
   $("polyList").addEventListener("input", e=>{
@@ -4754,18 +4961,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
     const adj = e.target.closest("[data-poly-adjust]");
     if(adj){
-      const pg = polygons.find(p=>p.id===adj.dataset.polyAdjust);
-      if(pg){
-        MapModal.open({
-          mode: "polygon",
-          existing: pg.vertices,
-          title: "Adjust polygon shape",
-          onSave: (vertices) => {
-            pg.vertices = vertices; renderPolygons(); autosave();
-            liveSyncPolygonField(pg, { verticesJson: encodePointsField(pg.vertices) });
-          }
-        });
-      }
+      adjustPolygonShape(adj.dataset.polyAdjust);
       return;
     }
   });
