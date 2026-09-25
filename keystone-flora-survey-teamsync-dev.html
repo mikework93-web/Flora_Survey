@@ -290,6 +290,16 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 .map-fab.active{background:var(--gold);color:#3a2c05;border-color:var(--gold)}
 .map-fab.locating{animation:mapFabSpin 1s linear infinite;color:var(--gold)}
 @keyframes mapFabSpin{to{transform:rotate(360deg)}}
+/* A "confirm this location" tick anchored just below the crosshair itself
+   (see confirmCurrentLocation/showConfirmFab) — a guaranteed-reachable way
+   to confirm a point's placement, since it lives inside the map canvas
+   rather than the footer, which some mobile browsers' own retracting
+   chrome can leave unreachable at the bottom of the screen. */
+.map-fab-confirm{position:absolute;left:50%;top:50%;transform:translate(-50%,30px);
+  width:44px;height:44px;border-radius:50%;border:2px solid #fff;background:#2e7d32;color:#fff;
+  font-size:1.3rem;font-weight:700;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer;z-index:510}
+.map-fab-confirm:active{transform:translate(-50%,30px) scale(.94)}
 .map-layer-menu{position:absolute;right:58px;top:10px;z-index:530;background:#fff;border:1px solid var(--border);
   border-radius:10px;padding:5px;display:none;flex-direction:column;gap:2px;box-shadow:0 6px 20px rgba(0,0,0,.3);
   min-width:150px}
@@ -1764,7 +1774,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-25.10";
+  const BUILD_VERSION = "2026-09-25.11";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -4106,6 +4116,15 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const pin = overlay.querySelector(".map-center-pin");
       if(pin) pin.style.display = show ? "" : "none";
     }
+    // A floating green "confirm location" tick, anchored just below the
+    // crosshair itself (inside the map canvas, never the footer) — a
+    // guaranteed-reachable way to confirm a point's placement/reposition
+    // even on a mobile browser whose own retracting chrome leaves the
+    // footer buttons unreachable. See confirmCurrentLocation().
+    function showConfirmFab(show){
+      const btn = overlay.querySelector("#mmConfirmFab");
+      if(btn) btn.style.display = show ? "flex" : "none";
+    }
     // Draws/updates the "my location" blue dot + accuracy circle on whatever
     // map instance currently exists, using the most recent GPS fix. Called
     // both from the live watchPosition callback and right after ensureMap()
@@ -4148,6 +4167,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         + '<div class="map-canvas-wrap">'
         +   '<div id="mapContainer"></div>'
         +   '<div class="map-center-pin"><svg width="40" height="40" viewBox="0 0 44 44"><circle cx="22" cy="22" r="13" fill="none" stroke="#c9a227" stroke-width="2.5"/><line x1="22" y1="1" x2="22" y2="14" stroke="#c9a227" stroke-width="2.5"/><line x1="22" y1="30" x2="22" y2="43" stroke="#c9a227" stroke-width="2.5"/><line x1="1" y1="22" x2="14" y2="22" stroke="#c9a227" stroke-width="2.5"/><line x1="30" y1="22" x2="43" y2="22" stroke="#c9a227" stroke-width="2.5"/><circle cx="22" cy="22" r="2.5" fill="#c9a227"/></svg></div>'
+        +   '<button type="button" class="map-fab-confirm" id="mmConfirmFab" title="Confirm this location" aria-label="Confirm this location" style="display:none">✓</button>'
         +   '<div class="map-rail"><button type="button" class="map-fab" id="mmLayerBtn" title="Basemap" aria-label="Basemap">▤</button><button type="button" class="map-fab" id="mmGpsFab" title="My location" aria-label="My location">◎</button><button type="button" class="map-fab" id="mmTrackFab" title="Track your path" aria-label="Track your path">⏺</button></div>'
         +   '<div class="map-layer-menu" id="mmLayerMenu"></div>'
         +   '<div class="map-sheet-scrim" id="mmSheetScrim"></div>'
@@ -4169,6 +4189,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       overlay.querySelector("#mmLayerBtn").addEventListener("click", ()=>{
         overlay.querySelector("#mmLayerMenu").classList.toggle("show");
       });
+      overlay.querySelector("#mmConfirmFab").addEventListener("click", confirmCurrentLocation);
       overlay.querySelector("#mmGpsFab").addEventListener("click", ()=>{
         const fab = overlay.querySelector("#mmGpsFab");
         fab.classList.add("locating"); fab.classList.remove("active");
@@ -4389,12 +4410,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     function footForPoint(){
       const foot = overlay.querySelector("#mmFoot");
       foot.innerHTML = '<button type="button" class="btn" id="mmSave"><span class="fi">✓</span>Save Point</button>';
-      foot.querySelector("#mmSave").addEventListener("click", ()=>{
-        if(!map){ FHKit.toast("The map hasn't loaded yet — see the message above."); return; }
-        const [lat,lon] = centerLatLon();
-        const cb = state.onSave; close();
-        if(cb) cb(lat, lon);
-      });
+      foot.querySelector("#mmSave").addEventListener("click", confirmCurrentLocation);
+      showConfirmFab(true);
     }
     function footForPolygon(){
       const foot = overlay.querySelector("#mmFoot");
@@ -4427,6 +4444,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       foot.querySelector("#mmWalkFinish").addEventListener("click", finishPolygonDraw);
     }
     function footForOverview(){
+      showConfirmFab(false);
       const foot = overlay.querySelector("#mmFoot");
       foot.innerHTML = '<button type="button" class="btn light" id="mmAddPoly" title="Tap to draw by hand — press and hold to walk the boundary with GPS"><span class="fi">▰</span>Add Polygon</button>'
         + '<button type="button" class="ghost" id="mmOverviewClose">Close</button>';
@@ -4438,21 +4456,37 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       );
       foot.querySelector("#mmOverviewClose").addEventListener("click", cancel);
     }
-    function footForMovePoint(){
-      const foot = overlay.querySelector("#mmFoot");
-      foot.innerHTML = '<button type="button" class="btn" id="mmSave"><span class="fi">✓</span>Save Point</button>'
-        + '<button type="button" class="ghost" id="mmCancelMove">Cancel</button>';
-      foot.querySelector("#mmSave").addEventListener("click", ()=>{
-        if(!map){ FHKit.toast("The map hasn't loaded yet — see the message above."); return; }
-        const [lat,lon] = centerLatLon();
+    // Confirming a point's location — whether placing a brand-new
+    // "Significant" point (state.mode==="point") or repositioning an
+    // existing one from the overview (state.movingPoint set) — is the same
+    // action either way: read whatever the crosshair is currently pinned
+    // over and hand it off. Shared by the footer's own "Save Point" button
+    // AND the floating green tick FAB (see showConfirmFab) so there are two
+    // independent ways to reach it — the footer can be unreachable on some
+    // mobile browsers when their own chrome eats into the visible screen,
+    // but the tick FAB sits inside the map canvas itself, right below the
+    // crosshair, which is never affected by that.
+    function confirmCurrentLocation(){
+      if(!map){ FHKit.toast("The map hasn't loaded yet — see the message above."); return; }
+      const [lat,lon] = centerLatLon();
+      if(state.movingPoint){
         const moving = state.movingPoint;
-        if(moving && state.onMovePoint) state.onMovePoint(moving.recordId, moving.pointId, lat, lon);
+        if(state.onMovePoint) state.onMovePoint(moving.recordId, moving.pointId, lat, lon);
         state.movingPoint = null;
         showCrosshair(false);
         footForOverview();
         renderOverviewLayers();
         setStatus("Point moved. Tap another point to reposition it, or Close when you're done.");
-      });
+      } else {
+        const cb = state.onSave; close();
+        if(cb) cb(lat, lon);
+      }
+    }
+    function footForMovePoint(){
+      const foot = overlay.querySelector("#mmFoot");
+      foot.innerHTML = '<button type="button" class="btn" id="mmSave"><span class="fi">✓</span>Save Point</button>'
+        + '<button type="button" class="ghost" id="mmCancelMove">Cancel</button>';
+      foot.querySelector("#mmSave").addEventListener("click", confirmCurrentLocation);
       foot.querySelector("#mmCancelMove").addEventListener("click", ()=>{
         state.movingPoint = null;
         showCrosshair(false);
@@ -4492,6 +4526,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       state.movingPoint = { recordId: pt.recordId, pointId: pt.pointId };
       renderOverviewLayers();
       showCrosshair(true);
+      showConfirmFab(true);
       map.setView([pt.lat, pt.lon], Math.max(map.getZoom(), 19));
       footForMovePoint();
       setStatus("Pan the map to reposition "+(pt.label||"this point")+", or tap “Use GPS”.");
