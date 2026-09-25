@@ -43,6 +43,16 @@ header img{max-width:360px;width:72%;height:auto;display:block;margin:0 auto}
 #fh-bar .grow{flex:1;color:var(--gold-light);font-size:12.5px;font-weight:700;letter-spacing:.6px;
   text-transform:uppercase}
 #fh-bar .actions{display:flex;gap:8px;flex-wrap:wrap}
+/* Compact "…" toolbar menu — replaces a row of five-plus separate buttons
+   that used to crowd the top banner. */
+.fh-menu-wrap{position:relative}
+.fh-menu{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--border);
+  border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.3);min-width:172px;z-index:400;
+  display:none;flex-direction:column;padding:6px}
+.fh-menu.show{display:flex}
+.fh-menu button{background:transparent;border:0;text-align:left;padding:9px 12px;font-size:13px;
+  font-family:var(--sans);color:var(--ink);border-radius:6px;cursor:pointer}
+.fh-menu button:hover,.fh-menu button:active{background:var(--cream)}
 .btn{border:1px solid var(--gold);background:var(--gold);color:var(--charcoal-deep);font-weight:700;
   font-size:12.5px;letter-spacing:.3px;padding:8px 14px;border-radius:6px;cursor:pointer;font-family:var(--sans);
   white-space:nowrap}
@@ -220,6 +230,7 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 .map-modal-head h3{margin:0;padding:0;font-size:14px;background:none;color:inherit}
 .map-modal-head button.ghost{border:1px solid rgba(255,255,255,.35);background:transparent;color:var(--gold-light);
   border-radius:5px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:var(--sans)}
+.map-canvas-wrap{position:relative}
 #mapContainer{width:100%;height:min(52vh,420px);min-height:240px;background:#e8e4d8}
 .map-modal-status{padding:8px 16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);
   display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -238,14 +249,13 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
 /* ---- Polygons list (mirrors .site-note's card styling) ---- */
 .poly-item{border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:10px;background:#fff}
 .poly-item-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
-.poly-item-species{font-size:13px;color:var(--ink)}
-.poly-item-species .none{color:var(--muted);font-style:italic}
 .poly-item-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .poly-item-actions button{border:1px solid var(--border);background:#fff;border-radius:5px;padding:5px 10px;
   font-size:11.5px;cursor:pointer;font-family:var(--sans)}
-.poly-item textarea{width:100%;min-height:50px;border:1px solid var(--border);border-radius:5px;
-  padding:8px 10px;font-size:13px;font-family:var(--sans);resize:vertical;background:var(--cream);color:var(--ink);margin-top:6px}
-.poly-item textarea:focus{outline:none;border-color:var(--gold);background:#fff}
+.poly-item textarea,.poly-item input[type="text"]{width:100%;border:1px solid var(--border);border-radius:5px;
+  padding:8px 10px;font-size:13px;font-family:var(--sans);background:var(--cream);color:var(--ink);margin-top:6px}
+.poly-item textarea{min-height:50px;resize:vertical}
+.poly-item textarea:focus,.poly-item input[type="text"]:focus{outline:none;border-color:var(--gold);background:#fff}
 
 @media (max-width:480px){
   header img{width:90%}
@@ -258,6 +268,65 @@ button.x{background:none;border:none;color:var(--red);font-size:18px;font-weight
   .live-row input, .live-row button{max-width:none!important;width:100%}
   .live-row span{text-align:center}
 }
+/* Open Map fills the entire phone screen — a survey map is the one screen
+   here where every pixel of real screen space matters (precise placement
+   against aerial imagery at high zoom), unlike the plain list/text modals. */
+@media (max-width:600px){
+  .map-modal-card{position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;
+    max-width:none;max-height:none;border-radius:0}
+  .map-canvas-wrap{flex:1 1 auto;min-height:0}
+  .map-canvas-wrap #mapContainer{width:100%;height:100%;min-height:0}
+}
+
+/* ---- QField-style chrome overlay for the map modal: topbar polish, a
+   basemap/GPS FAB rail floating over the map, dock-style footer buttons, and
+   a slide-up "species" sheet shown right after a new polygon is finished.
+   These rules deliberately layer on top of the map-modal-* rules above
+   (same selectors/specificity, later in the sheet wins) rather than
+   replacing them, so none of the rules above need to change. ---- */
+.map-modal-card{position:relative}
+.map-modal-head{border-radius:0;padding:10px 12px 8px}
+.map-modal-head #mmTitle{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+  border-radius:8px;padding:4px 10px;font-size:12.5px}
+.map-modal-head button[data-mm-close]{width:34px;height:34px;padding:0;border-radius:9px;font-size:16px;
+  display:inline-flex;align-items:center;justify-content:center}
+.map-center-pin{transform:translate(-50%,-50%);font-size:0;filter:drop-shadow(0 0 2px rgba(0,0,0,.5))}
+.map-rail{position:absolute;right:10px;top:10px;z-index:520;display:flex;flex-direction:column;gap:8px}
+.map-fab{width:42px;height:42px;border-radius:12px;border:1px solid var(--border);background:#fff;
+  color:var(--charcoal);font-size:1.1rem;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 12px rgba(0,0,0,.25);cursor:pointer}
+.map-fab:active{transform:scale(.94)}
+.map-fab.active{background:var(--gold);color:#3a2c05;border-color:var(--gold)}
+.map-fab.locating{animation:mapFabSpin 1s linear infinite;color:var(--gold)}
+@keyframes mapFabSpin{to{transform:rotate(360deg)}}
+.map-layer-menu{position:absolute;right:58px;top:10px;z-index:530;background:#fff;border:1px solid var(--border);
+  border-radius:10px;padding:5px;display:none;flex-direction:column;gap:2px;box-shadow:0 6px 20px rgba(0,0,0,.3);
+  min-width:150px}
+.map-layer-menu.show{display:flex}
+.map-layer-menu button{border:0;background:transparent;text-align:left;padding:8px 10px;border-radius:7px;
+  font-size:12.5px;font-family:var(--sans);cursor:pointer;color:var(--charcoal)}
+.map-layer-menu button.on{background:var(--cream);color:#8a6d1a;font-weight:700}
+#mmFoot.map-dock{display:flex;gap:8px;flex-wrap:wrap;justify-content:stretch}
+#mmFoot.map-dock button{flex:1 1 0;min-width:84px;display:flex;flex-direction:column;align-items:center;
+  gap:2px;padding:9px 6px;font-size:11px;font-weight:700;letter-spacing:.01em}
+#mmFoot.map-dock button .fi{font-size:1.05rem;line-height:1}
+.map-sheet-scrim{position:absolute;inset:0;background:rgba(20,16,8,.42);z-index:600;display:none}
+.map-sheet-scrim.show{display:block}
+.map-sheet{position:absolute;left:0;right:0;bottom:0;z-index:650;background:#fff;
+  border-radius:16px 16px 0 0;max-height:60%;display:flex;flex-direction:column;
+  transform:translateY(100%);transition:transform .22s ease;box-shadow:0 -10px 30px rgba(0,0,0,.3)}
+.map-sheet.show{transform:translateY(0)}
+.map-sheet-grip{width:38px;height:4px;border-radius:99px;background:var(--border);margin:9px auto 2px}
+.map-sheet-head{padding:2px 18px 8px;font-size:13.5px;font-weight:700;color:var(--charcoal)}
+.map-sheet-sub{padding:0 18px 10px;font-size:11.5px;color:var(--muted)}
+.map-sheet-body{padding:0 18px 12px}
+.map-sheet-body input[type="text"]{width:100%;border:1px solid var(--border);border-radius:7px;
+  padding:9px 10px;font-size:13px;font-family:var(--sans);background:var(--cream);color:var(--ink)}
+.map-sheet-body input[type="text"]:focus{outline:none;border-color:var(--gold);background:#fff}
+.map-sheet-foot{padding:8px 18px 16px;display:flex;justify-content:flex-end}
+.map-fab.recording{background:var(--red);color:#fff;border-color:var(--red);animation:mapFabPulse 1.2s ease-in-out infinite}
+@keyframes mapFabPulse{0%,100%{box-shadow:0 0 0 0 rgba(179,38,30,.55)}50%{box-shadow:0 0 0 8px rgba(179,38,30,0)}}
+.map-track-line{pointer-events:none}
 </style>
 <!-- Aerial imagery map (for precise point placement/adjustment and polygon
      drawing — see MapModal). Loaded with no integrity/crossorigin hash: a
@@ -1622,6 +1691,15 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   let polygons = [];     // {id, vertices:[[lat,lon],...], species:[names...], notes, createdBy} — habitat/plot
                           // areas drawn on the aerial map, separate from individually-located Significant points.
                           // Synced the same way species records are (each polygon its own shared doc).
+  let tracks = [];        // {id, points:[{lat,lon,ts}], startedAt, endedAt} — GPS breadcrumb trail(s) of where
+                          // this device has physically walked across the site. Purely an on-map reference aid:
+                          // saved with the survey (so it survives a reload) but deliberately NEVER included in
+                          // the xlsx or GeoPackage/GIS exports, and — unlike points/polygons — NEVER synced to
+                          // teammates in Team Sync; it's local to this device only. See startTracking()/
+                          // stopTracking() below.
+  let activeTrackId = null;
+  let trackWatchId = null;
+  let trackListeners = [];  // callbacks fired on every newly-recorded track point, while the map view is open
 
   // ── Self-update check ────────────────────────────────────────────────
   // A plain "Add to Home Screen" shortcut has no built-in way to notice
@@ -2834,6 +2912,65 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   function getFolder(){ try{ return JSON.parse(localStorage.getItem(FOLDER_KEY))||{}; }catch(e){ return {}; } }
   function putFolder(o){ localStorage.setItem(FOLDER_KEY, JSON.stringify(o)); }
 
+  // ── GPS Track: "where have I been" — a continuous GPS breadcrumb trail,
+  // started/stopped from inside the map view (see the rail's track FAB in
+  // MapModal below) but recorded via a plain navigator.geolocation.watchPosition
+  // that runs independent of the map modal's own open/close lifecycle, so it
+  // keeps logging points even after the map is closed and the user is back on
+  // the main species-list screen. Never included in the xlsx or GeoPackage/GIS
+  // exports, and never pushed to the live session either — it's a personal,
+  // local-only on-map reference aid.
+  function makeTrackId(){ return "TRK-"+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+  // Haversine distance in metres — used only to filter out GPS jitter (see
+  // TRACK_MIN_METERS) so a stationary device doesn't fill the track with
+  // dozens of near-identical points.
+  function trackMeters(a, b){
+    const R = 6371000, toRad = d => d*Math.PI/180;
+    const dLat = toRad(b.lat-a.lat), dLon = toRad(b.lon-a.lon);
+    const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2;
+    return 2*R*Math.asin(Math.sqrt(Math.max(0,Math.min(1,s))));
+  }
+  const TRACK_MIN_METERS = 5;
+  function currentTrack(){ return tracks.find(t=>t.id===activeTrackId) || null; }
+  function isTracking(){ return !!activeTrackId; }
+  function onTrackUpdate(cb){ trackListeners.push(cb); return function(){ trackListeners = trackListeners.filter(f=>f!==cb); }; }
+  function notifyTrackUpdate(){ trackListeners.forEach(cb=>{ try{ cb(); }catch(e){} }); }
+  function startTracking(){
+    if(isTracking()) return;
+    if(!(window.navigator && navigator.geolocation && navigator.geolocation.watchPosition)){
+      FHKit.toast("Location tracking isn't supported on this device.");
+      return;
+    }
+    const t = { id: makeTrackId(), points: [], startedAt: new Date().toISOString(), endedAt: null };
+    tracks.push(t);
+    activeTrackId = t.id;
+    trackWatchId = navigator.geolocation.watchPosition(
+      pos=>{
+        const t2 = currentTrack(); if(!t2) return;
+        const pt = { lat: pos.coords.latitude, lon: pos.coords.longitude, ts: Date.now() };
+        const last = t2.points[t2.points.length-1];
+        if(last && trackMeters(last, pt) < TRACK_MIN_METERS) return;
+        t2.points.push(pt);
+        autosave();
+        notifyTrackUpdate();
+      },
+      ()=>{ /* a transient GPS error just means no new fixes for now — tracking stays "on" */ },
+      { enableHighAccuracy:true, maximumAge:5000, timeout:20000 }
+    );
+    autosave();
+    notifyTrackUpdate();
+  }
+  function stopTracking(){
+    if(!isTracking()) return;
+    if(trackWatchId!=null && window.navigator && navigator.geolocation && navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(trackWatchId);
+    trackWatchId = null;
+    const t = currentTrack();
+    if(t) t.endedAt = new Date().toISOString();
+    activeTrackId = null;
+    autosave();
+    notifyTrackUpdate();
+  }
+
   // A failed localStorage write here used to be swallowed completely
   // silently (empty catch blocks) — meaning if a survey ever grew past
   // whatever quota the browser allows (as little as ~5MB on some mobile
@@ -2927,6 +3064,11 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
     autosave();
   }
+  // Always shows the modal shell — even with zero saved surveys — because
+  // Import and Merge now live here (moved off the crowded top toolbar) and
+  // both need to stay reachable with an empty folder: Import is exactly how
+  // the FIRST saved survey often arrives on a fresh device, and Merge's own
+  // "need at least 2" state is handled inside openMergeSurveysFlow itself.
   function loadFromFolder(){
     const o = getFolder();
     // Each saved survey is named "Site name / Date" — the same protocol used
@@ -2939,10 +3081,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       if(sa!==sb) return sa<sb ? -1 : 1;
       return new Date(mb.date||0) - new Date(ma.date||0);
     });
-    if(!keys.length){ FHKit.toast("No saved surveys yet"); return; }
     const ov = document.createElement("div"); ov.className="fh-modal";
-    ov.innerHTML = '<div class="fh-modal-card"><h3>Saved Folder</h3><div class="fh-modal-list">'
-      + keys.map(key=>{
+    const listHtml = keys.length ? keys.map(key=>{
           const s = o[key]||{}; const m = s.meta||{};
           const nSp = (s.species||[]).length;
           const nPh = (s.species||[]).reduce((n,r)=> n + ((r.photos||[]).length), 0);
@@ -2953,9 +3093,17 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
             + '<span><button data-load="'+FHKit.esc(key)+'">Load</button>'
             + '<button class="del" data-del="'+FHKit.esc(key)+'">Delete</button></span></div>';
         }).join("")
-      + '</div><div class="fh-modal-foot"><button class="ghost" data-close="1">Close</button></div></div>';
+      : '<p class="muted" style="margin:10px 12px">No saved surveys yet — tap Save to add one, or Import a previously exported survey below.</p>';
+    ov.innerHTML = '<div class="fh-modal-card"><h3>Saved Folder</h3><div class="fh-modal-list">'
+      + listHtml
+      + '</div><div class="fh-modal-foot" style="justify-content:space-between">'
+      + '<span><button class="ghost" id="fhImport" title="Import a previously exported survey (Excel + GeoPackage + photos) as a new Saved Folder entry" data-import="1">Import…</button> '
+      + '<button class="ghost" id="fhMerge" title="Combine two or more saved surveys into one new entry" data-merge="1">Merge…</button></span>'
+      + '<button class="ghost" data-close="1">Close</button></div></div>';
     document.body.appendChild(ov);
     ov.addEventListener("click", e=>{
+      if(e.target.dataset.import){ ov.remove(); openImportFlow(); return; }
+      if(e.target.dataset.merge){ ov.remove(); openMergeSurveysFlow(); return; }
       if(e.target===ov || e.target.dataset.close){ ov.remove(); return; }
       const ln = e.target.dataset.load, dn = e.target.dataset.del;
       if(ln){
@@ -2988,7 +3136,10 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         delete o[dn];
         try{ putFolder(o); clearStorageWarning("localStorage"); }catch(e){ showStorageWarning("localStorage", e); }
         const row = e.target.closest(".fh-modal-row"); if(row) row.remove();
-        if(!Object.keys(o).length) ov.remove();
+        const list = ov.querySelector(".fh-modal-list");
+        if(list && !list.querySelector(".fh-modal-row")){
+          list.innerHTML = '<p class="muted" style="margin:10px 12px">No saved surveys yet — tap Save to add one, or Import a previously exported survey below.</p>';
+        }
       }
     });
   }
@@ -3287,9 +3438,13 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
 
 
   function meta(){ return { site:$("site").value, date:$("date").value }; }
-  function snapshot(){ return { folderKey:folderKey, meta:meta(), species:rows.map(r=>{ const o = Object.assign({},r, {photos:(r.photos||[]).map(p=>Object.assign({},p)), points:(r.points||[]).map(p=>Object.assign({},p))}); delete o._liveUpdatedAt; delete o._liveCode; return o; }), siteNotes:siteNotes.map(n=>Object.assign({},n)), polygons:polygons.map(p=>{ const o = Object.assign({},p,{vertices:(p.vertices||[]).map(v=>v.slice()), species:(p.species||[]).slice()}); delete o._liveUpdatedAt; delete o._liveCode; return o; }), savedAt:new Date().toISOString() }; }
+  function snapshot(){ return { folderKey:folderKey, meta:meta(), species:rows.map(r=>{ const o = Object.assign({},r, {photos:(r.photos||[]).map(p=>Object.assign({},p)), points:(r.points||[]).map(p=>Object.assign({},p))}); delete o._liveUpdatedAt; delete o._liveCode; return o; }), siteNotes:siteNotes.map(n=>Object.assign({},n)), polygons:polygons.map(p=>{ const o = Object.assign({},p,{vertices:(p.vertices||[]).map(v=>v.slice()), species:(p.species||[]).slice()}); delete o._liveUpdatedAt; delete o._liveCode; return o; }), tracks:tracks.map(t=>Object.assign({},t,{points:(t.points||[]).map(p=>Object.assign({},p))})), savedAt:new Date().toISOString() }; }
   function restore(s){
     if(!s) return; const m = s.meta||{};
+    // Loading a different saved survey shouldn't leave an active GPS track
+    // recording against whatever was open before — stop it first so a track
+    // never bleeds from one survey into another.
+    stopTracking();
     folderKey = s.folderKey || s.id || makeFolderKey();
     $("site").value=m.site||""; $("date").value=m.date||FHKit.today();
     // The reserve this loaded survey belongs to, for switchReserveIfNeeded()
@@ -3339,6 +3494,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       delete o._liveCode;
       return o;
     });
+    tracks = Array.isArray(s.tracks)
+      ? s.tracks.map(t=>Object.assign({}, t, { points:(t.points||[]).map(p=>Object.assign({},p)) }))
+      : [];
     render(); renderSiteNotes(); renderPolygons();
   }
   function suggestName(){ const s=($("site").value||"Site").trim()||"Site"; return s+" — "+($("date").value||FHKit.today()); }
@@ -3568,7 +3726,70 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // manual placement even if GPS is denied/unsupported/absent).
   const MapModal = (function(){
     let overlay=null, mapEl=null, map=null, polyLayer=null, vertexMarkers=[];
-    let state=null; // { mode:'point'|'polygon'|'overview', vertices:[[lat,lon],...], onSave, onCancel }
+    let state=null; // { mode:'point'|'polygon'|'overview', vertices:[[lat,lon],...], onSave, onCancel,
+                     //   promptSpeciesOnFinish, pendingVertices }
+    let trackLayers=[], unsubTrack=null;
+
+    // Two basemaps (QField-style layer switcher, top-right FAB) — Esri aerial
+    // imagery by default, with OpenStreetMap as a fallback if Esri tiles ever
+    // fail to load in the field (no API key / connectivity issue with one
+    // provider shouldn't strand the whole map).
+    const BASE_LAYERS = {
+      esri: { name:"Esri Imagery", url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", opts:{ maxZoom:20, maxNativeZoom:19 } },
+      osm:  { name:"OpenStreetMap", url:"https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", opts:{ maxZoom:19, subdomains:["a","b","c"] } }
+    };
+    let currentBase=null, currentBaseKey="esri";
+    function applyBase(){
+      if(!map) return;
+      if(currentBase){ map.removeLayer(currentBase); currentBase=null; }
+      const b = BASE_LAYERS[currentBaseKey] || BASE_LAYERS.esri;
+      currentBase = L.tileLayer(b.url, b.opts);
+      currentBase.addTo(map);
+    }
+    function renderLayerMenu(){
+      const menu = overlay && overlay.querySelector("#mmLayerMenu");
+      if(!menu) return;
+      menu.innerHTML = Object.entries(BASE_LAYERS).map(([k,b])=>
+        '<button type="button" class="'+(k===currentBaseKey?"on":"")+'" data-base="'+k+'">'+b.name+'</button>'
+      ).join("");
+      menu.querySelectorAll("[data-base]").forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          currentBaseKey = btn.dataset.base;
+          applyBase();
+          renderLayerMenu();
+          menu.classList.remove("show");
+        });
+      });
+    }
+    // Slide-up "species" sheet — shown right over the map the instant a new
+    // polygon is finished, so species can be free-typed without leaving the
+    // map (mirrors the Polygons list's own free-text field; either can be
+    // used/edited later — this is just the fastest path right after drawing).
+    function showSpeciesSheet(vertices){
+      const scrim = overlay.querySelector("#mmSheetScrim");
+      const sheet = overlay.querySelector("#mmSheet");
+      sheet.innerHTML = '<div class="map-sheet-grip"></div>'
+        + '<div class="map-sheet-head">Species in this polygon</div>'
+        + '<div class="map-sheet-sub">Optional — comma-separated. You can also add or edit this later in the Polygons list.</div>'
+        + '<div class="map-sheet-body"><input type="text" id="mmSheetSpecies" placeholder="e.g. Themeda triandra, Acacia dealbata"></div>'
+        + '<div class="map-sheet-foot"><button type="button" class="btn" id="mmSheetDone">Done</button></div>';
+      state.pendingVertices = vertices;
+      scrim.classList.add("show");
+      sheet.classList.add("show");
+      const input = sheet.querySelector("#mmSheetSpecies");
+      setTimeout(()=>{ try{ input.focus(); }catch(e){} }, 0);
+      sheet.querySelector("#mmSheetDone").addEventListener("click", ()=> finishSpeciesSheet());
+    }
+    function finishSpeciesSheet(){
+      if(!state || !state.pendingVertices) return;
+      const sheet = overlay.querySelector("#mmSheet");
+      const input = sheet.querySelector("#mmSheetSpecies");
+      const species = input ? input.value.split(",").map(s=>s.trim()).filter(Boolean) : [];
+      const verts = state.pendingVertices;
+      const cb = state.onSave;
+      close();
+      if(cb) cb(verts, species);
+    }
 
     function computeOverviewCenterZoom(coords){
       if(!coords.length) return null;
@@ -3593,23 +3814,95 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       overlay.className = "fh-modal";
       overlay.innerHTML =
           '<div class="fh-modal-card map-modal-card">'
-        + '<div class="map-modal-head"><h3 id="mmTitle">Location</h3><button type="button" class="ghost" data-mm-close="1">Close</button></div>'
+        + '<div class="map-modal-head"><button type="button" class="ghost" data-mm-close="1" aria-label="Close">‹</button><h3 id="mmTitle">Location</h3></div>'
         + '<div class="map-modal-status" id="mmStatus">Loading map…</div>'
         + '<p class="map-hint" id="mmHint"></p>'
-        + '<div style="position:relative">'
+        + '<div class="map-canvas-wrap">'
         +   '<div id="mapContainer"></div>'
-        +   '<div class="map-center-pin">📍</div>'
+        +   '<div class="map-center-pin"><svg width="40" height="40" viewBox="0 0 44 44"><circle cx="22" cy="22" r="13" fill="none" stroke="#c9a227" stroke-width="2.5"/><line x1="22" y1="1" x2="22" y2="14" stroke="#c9a227" stroke-width="2.5"/><line x1="22" y1="30" x2="22" y2="43" stroke="#c9a227" stroke-width="2.5"/><line x1="1" y1="22" x2="14" y2="22" stroke="#c9a227" stroke-width="2.5"/><line x1="30" y1="22" x2="43" y2="22" stroke="#c9a227" stroke-width="2.5"/><circle cx="22" cy="22" r="2.5" fill="#c9a227"/></svg></div>'
+        +   '<div class="map-rail"><button type="button" class="map-fab" id="mmLayerBtn" title="Basemap" aria-label="Basemap">▤</button><button type="button" class="map-fab" id="mmGpsFab" title="My location" aria-label="My location">◎</button><button type="button" class="map-fab" id="mmTrackFab" title="Track your path" aria-label="Track your path">⏺</button></div>'
+        +   '<div class="map-layer-menu" id="mmLayerMenu"></div>'
+        +   '<div class="map-sheet-scrim" id="mmSheetScrim"></div>'
+        +   '<div class="map-sheet" id="mmSheet"></div>'
         + '</div>'
-        + '<div class="map-modal-foot" id="mmFoot"></div>'
+        + '<div class="map-modal-foot map-dock" id="mmFoot"></div>'
         + '</div>';
       document.body.appendChild(overlay);
       overlay.addEventListener("click", e=>{ if(e.target===overlay || e.target.dataset.mmClose) cancel(); });
       mapEl = overlay.querySelector("#mapContainer");
+      currentBase = null;
+      trackLayers = [];
+      renderLayerMenu();
+      overlay.querySelector("#mmLayerBtn").addEventListener("click", ()=>{
+        overlay.querySelector("#mmLayerMenu").classList.toggle("show");
+      });
+      overlay.querySelector("#mmGpsFab").addEventListener("click", ()=>{
+        const fab = overlay.querySelector("#mmGpsFab");
+        fab.classList.add("locating"); fab.classList.remove("active");
+        tryGps(coords=>{
+          fab.classList.remove("locating");
+          if(coords){ fab.classList.add("active"); if(map) map.setView([coords.latitude, coords.longitude], Math.max(map.getZoom(),19)); }
+        });
+      });
+      overlay.querySelector("#mmSheetScrim").addEventListener("click", ()=> finishSpeciesSheet());
+      syncTrackFab();
+      overlay.querySelector("#mmTrackFab").addEventListener("click", ()=>{
+        if(isTracking()){ stopTracking(); FHKit.toast("Tracking stopped"); }
+        else { startTracking(); FHKit.toast("Tracking your path — keeps recording even after you close the map"); }
+        syncTrackFab();
+        redrawTrackLine();
+        refreshTrackStatus();
+      });
+      unsubTrack = onTrackUpdate(()=>{ redrawTrackLine(); refreshTrackStatus(); });
+    }
+    // Reflects whether a GPS track is currently being recorded on the rail's
+    // track FAB — a pulsing red "stop" icon while on, a plain gold "record"
+    // dot while off. This can be true the moment the map opens (tracking runs
+    // independent of the modal, so a session started earlier is still going).
+    function syncTrackFab(){
+      const fab = overlay && overlay.querySelector("#mmTrackFab");
+      if(!fab) return;
+      const on = isTracking();
+      fab.classList.toggle("recording", on);
+      fab.innerHTML = on ? "⏹" : "⏺";
+      fab.title = on ? "Stop tracking your path" : "Start tracking your path";
+    }
+    // Draws every recorded track as its own polyline — pulled fresh from the
+    // outer `tracks` array each time (never stale: reflects new points logged
+    // while this map view is open, via the onTrackUpdate subscription above).
+    function redrawTrackLine(){
+      if(!map) return;
+      trackLayers.forEach(l=>map.removeLayer(l));
+      trackLayers = [];
+      tracks.forEach(t=>{
+        const pts = t.points||[];
+        if(pts.length>1){
+          trackLayers.push(L.polyline(pts.map(p=>[p.lat,p.lon]), { color:"#2f6fed", weight:3, opacity:0.85, className:"map-track-line" }).addTo(map));
+        }
+      });
+    }
+    // Appends a short "tracking your path" note to whatever status text is
+    // already showing, so reopening the map (or a new point arriving while
+    // it's open) makes it obvious a background track is still recording —
+    // without needing a separate always-visible indicator on the main screen.
+    function refreshTrackStatus(){
+      if(!overlay || !state) return;
+      const el = overlay.querySelector("#mmStatus");
+      if(!el || el.classList.contains("error")) return;
+      const base = (el.textContent||"").replace(/\s*Tracking your path \(\d+ pts?\)\.$/,"");
+      if(isTracking()){
+        const t = currentTrack();
+        const n = t ? t.points.length : 0;
+        el.textContent = base + " Tracking your path ("+n+" pt"+(n===1?"":"s")+").";
+      } else {
+        el.textContent = base;
+      }
     }
     function setStatus(text, isError){
       const el = overlay.querySelector("#mmStatus");
       el.textContent = text;
       el.classList.toggle("error", !!isError);
+      if(!isError) refreshTrackStatus();
     }
     function ensureMap(lat, lon, zoom){
       if(map){ map.remove(); map=null; }
@@ -3622,12 +3915,12 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         return;
       }
       map = L.map(mapEl, { attributionControl:false, zoomControl:true, center:[lat,lon], zoom: zoom||19 });
-      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapTile/{z}/{y}/{x}", {
-        maxZoom:20, maxNativeZoom:19
-      }).addTo(map);
+      currentBase = null;
+      applyBase();
       setTimeout(()=>{ if(map) map.invalidateSize(); }, 0);
       if(state.mode==="polygon") redrawPolygon();
       else if(state.mode==="overview") renderOverviewLayers();
+      redrawTrackLine();
     }
     function centerLatLon(){ const c = map.getCenter(); return [c.lat, c.lng]; }
     function redrawPolygon(){
@@ -3661,11 +3954,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
     function footForPoint(){
       const foot = overlay.querySelector("#mmFoot");
-      foot.innerHTML = '<button type="button" class="btn light" id="mmGps">Use GPS</button>'
-        + '<button type="button" class="btn" id="mmSave">Save Point</button>';
-      foot.querySelector("#mmGps").addEventListener("click", ()=>{
-        tryGps(coords=>{ if(coords && map) map.setView([coords.latitude, coords.longitude], Math.max(map.getZoom(),19)); });
-      });
+      foot.innerHTML = '<button type="button" class="btn" id="mmSave"><span class="fi">✓</span>Save Point</button>';
       foot.querySelector("#mmSave").addEventListener("click", ()=>{
         if(!map){ FHKit.toast("The map hasn't loaded yet — see the message above."); return; }
         const [lat,lon] = centerLatLon();
@@ -3675,13 +3964,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
     function footForPolygon(){
       const foot = overlay.querySelector("#mmFoot");
-      foot.innerHTML = '<button type="button" class="btn light" id="mmGps">Use GPS</button>'
-        + '<button type="button" class="btn light" id="mmUndo"'+(state.vertices.length?'':' disabled')+'>Undo Last Point</button>'
-        + '<button type="button" class="btn" id="mmAdd">+ Add Point</button>'
-        + '<button type="button" class="btn" id="mmFinish"'+(state.vertices.length<3?' disabled':'')+'>Finish Polygon</button>';
-      foot.querySelector("#mmGps").addEventListener("click", ()=>{
-        tryGps(coords=>{ if(coords && map) map.setView([coords.latitude, coords.longitude], Math.max(map.getZoom(),19)); });
-      });
+      foot.innerHTML = '<button type="button" class="btn light" id="mmUndo"'+(state.vertices.length?'':' disabled')+'><span class="fi">↶</span>Undo</button>'
+        + '<button type="button" class="btn" id="mmAdd"><span class="fi">＋</span>Add pt</button>'
+        + '<button type="button" class="btn" id="mmFinish"'+(state.vertices.length<3?' disabled':'')+'><span class="fi">✓</span>Finish</button>';
       foot.querySelector("#mmAdd").addEventListener("click", ()=>{
         if(!map){ FHKit.toast("The map hasn't loaded yet — see the message above."); return; }
         state.vertices.push(centerLatLon());
@@ -3697,13 +3982,14 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       foot.querySelector("#mmFinish").addEventListener("click", ()=>{
         if(state.vertices.length<3){ FHKit.toast("A polygon needs at least 3 points"); return; }
         const verts = state.vertices.slice();
+        if(state.promptSpeciesOnFinish){ showSpeciesSheet(verts); return; }
         const cb = state.onSave; close();
         if(cb) cb(verts);
       });
     }
     function footForOverview(){
       const foot = overlay.querySelector("#mmFoot");
-      foot.innerHTML = '<button type="button" class="btn light" id="mmAddPoly">+ Add Polygon</button>'
+      foot.innerHTML = '<button type="button" class="btn light" id="mmAddPoly"><span class="fi">▰</span>Add Polygon</button>'
         + '<button type="button" class="ghost" id="mmOverviewClose">Close</button>';
       foot.querySelector("#mmAddPoly").addEventListener("click", ()=>{
         const cb = state.onRequestAddPolygon; close();
@@ -3713,12 +3999,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
     function footForMovePoint(){
       const foot = overlay.querySelector("#mmFoot");
-      foot.innerHTML = '<button type="button" class="btn light" id="mmGps">Use GPS</button>'
-        + '<button type="button" class="btn" id="mmSave">Save Point</button>'
+      foot.innerHTML = '<button type="button" class="btn" id="mmSave"><span class="fi">✓</span>Save Point</button>'
         + '<button type="button" class="ghost" id="mmCancelMove">Cancel</button>';
-      foot.querySelector("#mmGps").addEventListener("click", ()=>{
-        tryGps(coords=>{ if(coords && map) map.setView([coords.latitude, coords.longitude], Math.max(map.getZoom(),19)); });
-      });
       foot.querySelector("#mmSave").addEventListener("click", ()=>{
         if(!map){ FHKit.toast("The map hasn't loaded yet — see the message above."); return; }
         const [lat,lon] = centerLatLon();
@@ -3762,6 +4044,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       setStatus("Pan the map to reposition "+(pt.label||"this point")+", or tap “Use GPS”.");
     }
     function close(){
+      if(unsubTrack){ unsubTrack(); unsubTrack=null; }
+      trackLayers = [];
       if(map){ map.remove(); map=null; }
       if(overlay){ overlay.remove(); overlay=null; }
       state = null;
@@ -3780,7 +4064,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         vertices: (opts.mode==="polygon" ? (opts.existing||[]).map(v=>v.slice()) : []),
         onSave: opts.onSave, onCancel: opts.onCancel,
         getOverviewData: opts.getOverviewData, onMovePoint: opts.onMovePoint, onRequestAddPolygon: opts.onRequestAddPolygon,
-        movingPoint: null, overviewMarkers: [], overviewPolyLayers: []
+        movingPoint: null, overviewMarkers: [], overviewPolyLayers: [],
+        promptSpeciesOnFinish: !!opts.promptSpeciesOnFinish, pendingVertices: null
       };
       overlay.querySelector("#mmTitle").textContent = opts.title || (opts.mode==="polygon" ? "Draw polygon" : opts.mode==="overview" ? "Survey map" : "Set location");
       overlay.querySelector("#mmHint").textContent = opts.mode==="polygon"
@@ -3936,62 +4221,17 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   function renderPolygons(){
     const list = $("polyList");
     list.innerHTML = polygons.map(pg=>{
-      const speciesHtml = (pg.species&&pg.species.length)
-        ? FHKit.esc(pg.species.join("; "))
-        : '<span class="none">No species tagged yet</span>';
       return '<div class="poly-item">'
         + '<div class="poly-item-head"><b>'+FHKit.esc(pg.id)+'</b><span class="muted">'+(pg.vertices||[]).length+' points</span>'
         + '<button type="button" class="x" data-del-poly="'+FHKit.esc(pg.id)+'" title="Remove this polygon">&times;</button></div>'
-        + '<div class="poly-item-species">'+speciesHtml+'</div>'
+        + '<label class="detail-label" style="display:block;margin:6px 0 0">Species (comma-separated)</label>'
+        + '<input type="text" class="poly-species-input" data-poly-species-text="'+FHKit.esc(pg.id)+'" placeholder="e.g. Themeda triandra, Acacia dealbata" value="'+FHKit.esc((pg.species||[]).join(", "))+'">'
         + '<textarea data-poly-notes="'+FHKit.esc(pg.id)+'" placeholder="Notes for this polygon (habitat description, condition, etc.)…">'+FHKit.esc(pg.notes||"")+'</textarea>'
         + '<div class="poly-item-actions">'
-        + '<button type="button" data-poly-species="'+FHKit.esc(pg.id)+'">Tag species</button>'
         + '<button type="button" data-poly-adjust="'+FHKit.esc(pg.id)+'">Adjust shape on map</button>'
         + '</div></div>';
     }).join("") || '<p class="muted" style="margin:0 0 10px">No polygons drawn yet — tap “+ Add Polygon” to draw one on the map.</p>';
     $("polyCount").textContent = polygons.length ? "("+polygons.length+")" : "";
-  }
-  // Lets species be tagged onto a polygon either by ticking them from the
-  // current checklist (so the name always matches exactly) or by typing
-  // extra names not yet in the checklist (e.g. something only noted here).
-  function showPolygonSpeciesModal(polygonId){
-    const pg = polygons.find(p=>p.id===polygonId);
-    if(!pg) return;
-    const seen = new Set(); const options = [];
-    rows.forEach(r=>{
-      const key = r.sci || r.common || "";
-      if(!key || seen.has(key)) return;
-      seen.add(key);
-      options.push({ key, label: (r.common && r.common!==r.sci) ? (r.common+" — "+r.sci) : r.sci });
-    });
-    options.sort((a,b)=>a.label.localeCompare(b.label, undefined, { sensitivity:"base", numeric:true }));
-    const checked = new Set(pg.species||[]);
-    const otherExisting = (pg.species||[]).filter(s=>!options.some(o=>o.key===s));
-    const ov = document.createElement("div"); ov.className="fh-modal";
-    ov.innerHTML = '<div class="fh-modal-card"><h3>Tag species in this polygon</h3>'
-      + '<div class="map-modal-body">'
-      + (options.length
-          ? '<div class="map-species-pick">'+options.map(o=>
-              '<label><input type="checkbox" value="'+FHKit.esc(o.key)+'"'+(checked.has(o.key)?" checked":"")+'> '+FHKit.esc(o.label)+'</label>'
-            ).join("")+'</div>'
-          : '<p>No species in the checklist yet — add some above, or list them below.</p>')
-      + '<label class="detail-label" style="display:block;margin-top:12px">Other species (one per line)</label>'
-      + '<textarea id="polyOtherSpecies" style="width:100%;min-height:60px;border:1px solid var(--border);border-radius:5px;padding:8px 10px;font-size:13px;font-family:var(--sans)">'
-      + FHKit.esc(otherExisting.join("\n"))
-      + '</textarea>'
-      + '</div>'
-      + '<div class="map-modal-foot"><button type="button" class="btn" id="polySpeciesSave">Save</button><button type="button" class="ghost" data-close="1">Cancel</button></div></div>';
-    document.body.appendChild(ov);
-    const close = ()=> ov.remove();
-    ov.addEventListener("click", e=>{ if(e.target===ov || e.target.dataset.close) close(); });
-    ov.querySelector("#polySpeciesSave").addEventListener("click", ()=>{
-      const chosen = [...ov.querySelectorAll('.map-species-pick input:checked')].map(el=>el.value);
-      const other = (ov.querySelector("#polyOtherSpecies").value||"").split("\n").map(s=>s.trim()).filter(Boolean);
-      pg.species = [...new Set([...chosen, ...other])];
-      renderPolygons(); autosave();
-      liveSyncPolygonField(pg, { speciesJson: encodePointsField(pg.species) });
-      close();
-    });
   }
   // A compact, scannable line for a previously-listed species — just the
   // common + scientific name (already in alphabetical order, per sortRows)
@@ -4441,8 +4681,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     MapModal.open({
       mode: "polygon",
       title: "Draw polygon",
-      onSave: async (vertices) => {
-        const pg = { id: makePolygonId(), vertices, species: [], notes: "", createdBy: userName() };
+      promptSpeciesOnFinish: true,
+      onSave: async (vertices, species) => {
+        const pg = { id: makePolygonId(), vertices, species: species||[], notes: "", createdBy: userName() };
         if(live.active){
           try{ await liveCreatePolygonForItem(pg); }
           catch(e){
@@ -4453,7 +4694,6 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         }
         polygons.push(pg);
         renderPolygons(); autosave();
-        showPolygonSpeciesModal(pg.id); // prompt straight away to tag species, per the request
       }
     });
   }
@@ -4491,6 +4731,16 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     if(id){
       const pg = polygons.find(p=>p.id===id);
       if(pg){ pg.notes = e.target.value; autosave(); liveSyncPolygonFieldDebounced(pg, { notes:pg.notes }); }
+      return;
+    }
+    const sid = e.target.dataset.polySpeciesText;
+    if(sid){
+      const pg = polygons.find(p=>p.id===sid);
+      if(pg){
+        pg.species = e.target.value.split(",").map(s=>s.trim()).filter(Boolean);
+        autosave();
+        liveSyncPolygonFieldDebounced(pg, { speciesJson: encodePointsField(pg.species) });
+      }
     }
   });
   $("polyList").addEventListener("click", e=>{
@@ -4502,8 +4752,6 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       if(pg) liveDeletePolygon(pg);
       return;
     }
-    const tag = e.target.closest("[data-poly-species]");
-    if(tag){ showPolygonSpeciesModal(tag.dataset.polySpecies); return; }
     const adj = e.target.closest("[data-poly-adjust]");
     if(adj){
       const pg = polygons.find(p=>p.id===adj.dataset.polyAdjust);
@@ -4522,22 +4770,36 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
   });
 
-  // ── Toolbar: New / Saved Folder / Export (xlsx + photos zip) / Save ──────
+  // ── Toolbar: a compact "…" menu (New / Saved Folder / Map / Export / Save)
+  // replaces what used to be five-plus separate buttons crowding the banner.
+  // Import and Merge moved off the toolbar entirely — they now live inside
+  // the Saved Folder modal itself (see loadFromFolder). ──────────────────
   const bar = $("fh-bar");
   bar.innerHTML = '<strong class="grow">Flora Survey</strong>'
     + '<span class="actions">'
-    + '<button class="btn sec" id="fhNew">New</button>'
-    + '<button class="btn sec" id="fhLoad" title="All surveys you\'ve saved">Saved Folder</button>'
-    + '<button class="btn sec" id="fhImport" title="Import a previously exported survey (Excel + GeoPackage + photos) as a new Saved Folder entry">Import</button>'
-    + '<button class="btn sec" id="fhMerge" title="Combine two or more saved surveys into one new entry">Merge</button>'
-    + '<button class="btn sec" id="fhMap" title="See every captured point and polygon on one map">Map</button>'
-    + '<button class="btn sec" id="fhExport">Export</button>'
-    + '<button class="btn" id="fhSave">Save</button>'
+    + '<div class="fh-menu-wrap">'
+    +   '<button type="button" class="btn sec" id="fhMenuBtn" aria-haspopup="true" aria-expanded="false" title="More">Menu &#8942;</button>'
+    +   '<div class="fh-menu" id="fhMenu">'
+    +     '<button type="button" id="fhNew">New</button>'
+    +     '<button type="button" id="fhLoad">Saved Folder</button>'
+    +     '<button type="button" id="fhMap">Map</button>'
+    +     '<button type="button" id="fhExport">Export</button>'
+    +     '<button type="button" id="fhSave">Save</button>'
+    +   '</div>'
+    + '</div>'
     + '</span>';
+  const fhMenu = bar.querySelector("#fhMenu"), fhMenuBtn = bar.querySelector("#fhMenuBtn");
+  function closeFhMenu(){ fhMenu.classList.remove("show"); fhMenuBtn.setAttribute("aria-expanded","false"); }
+  fhMenuBtn.addEventListener("click", e=>{
+    e.stopPropagation();
+    const willShow = !fhMenu.classList.contains("show");
+    fhMenu.classList.toggle("show", willShow);
+    fhMenuBtn.setAttribute("aria-expanded", willShow ? "true" : "false");
+  });
+  document.addEventListener("click", e=>{ if(!bar.contains(e.target)) closeFhMenu(); });
+  fhMenu.addEventListener("click", e=>{ if(e.target.tagName==="BUTTON") closeFhMenu(); });
   bar.querySelector("#fhNew").onclick    = newSurvey;
   bar.querySelector("#fhLoad").onclick   = loadFromFolder;
-  bar.querySelector("#fhImport").onclick = openImportFlow;
-  bar.querySelector("#fhMerge").onclick  = openMergeSurveysFlow;
   bar.querySelector("#fhMap").onclick    = openSurveyMapView;
   bar.querySelector("#fhSave").onclick   = saveToFolder;
   bar.querySelector("#fhExport").onclick = exportSurvey;
