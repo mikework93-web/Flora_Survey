@@ -614,7 +614,109 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
       .then(function (out) { mem.set(key, out); persist(key, out); return out; });
   }
 
-  window.FHVicFlora = { search: search, endpoint: ENDPOINT };
+  /* ---- Genus -> identification key live lookup ----
+     The "VicFlora Key" link used to always point at VicFlora's genus SEARCH
+     page (still the safe fallback — see vicFloraGenusUrl() in the main app),
+     because there's no way to derive a key's numeric VicFlora URL from the
+     species name alone. This resolves the actual key page when one exists,
+     via the same GraphQL endpoint, in two steps:
+       1) taxonConceptAutocomplete(q: genus) to find the genus's own taxon
+          concept id (an exact, case-insensitive name match; ACCEPTED status
+          preferred over a synonym on a tie).
+       2) taxonConcept(id) { identificationKeys } to get that taxon's key(s).
+     Resolves to null (never rejects) on any failure — no matching genus, no
+     key for that genus, a network error, or a timeout — so callers always
+     have a safe fallback to use instead. */
+  var TAXON_KEYS_QUERY = "query($id:ID!){taxonConcept(id:$id){id identificationKeys{id title}}}";
+  var KEY_CACHE_KEY = "fh_vicflora_keyurl_cache_v1";
+  var keyMem = new Map();
+  var keyDisk = {};
+  try { keyDisk = JSON.parse(localStorage.getItem(KEY_CACHE_KEY) || "{}") || {}; } catch (e) { keyDisk = {}; }
+
+  function persistKeyUrl(key, val) {
+    try {
+      keyDisk[key] = val;
+      var keys = Object.keys(keyDisk);
+      while (keys.length > 500) { delete keyDisk[keys.shift()]; }
+      localStorage.setItem(KEY_CACHE_KEY, JSON.stringify(keyDisk));
+    } catch (e) { /* ignore */ }
+  }
+
+  // Same GET-then-POST-with-timeout shape as gql() above, but for an
+  // arbitrary query + variables rather than the fixed autocomplete QUERY.
+  function gqlAny(method, query, variables) {
+    var url, opts;
+    var controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var timeoutId = controller && setTimeout(function () { controller.abort(); }, GQL_TIMEOUT_MS);
+    if (method === "GET") {
+      url = ENDPOINT + "?query=" + encodeURIComponent(query) +
+            "&variables=" + encodeURIComponent(JSON.stringify(variables));
+      opts = { method: "GET", headers: { "Accept": "application/json" } };
+    } else {
+      url = ENDPOINT;
+      opts = {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ query: query, variables: variables })
+      };
+    }
+    if (controller) opts.signal = controller.signal;
+    return fetch(url, opts).then(function (res) {
+      if (!res.ok) throw new Error("VicFlora HTTP " + res.status);
+      return res.json();
+    }).then(function (json) {
+      if (json && json.errors && json.errors.length) throw new Error("VicFlora GraphQL error");
+      return json;
+    }).finally(function () { if (timeoutId) clearTimeout(timeoutId); });
+  }
+
+  function gqlAnyWithFallback(query, variables) {
+    return gqlAny("GET", query, variables).catch(function (err) {
+      if (err && err.name === "AbortError") throw err;
+      return gqlAny("POST", query, variables);
+    });
+  }
+
+  function findGenusTaxonId(genus) {
+    return gqlAnyWithFallback(QUERY, { q: genus }).then(function (json) {
+      var arr = (json && json.data && json.data.taxonConceptAutocomplete) || [];
+      var target = genus.toLowerCase();
+      var best = null;
+      for (var i = 0; i < arr.length; i++) {
+        var t = arr[i] || {};
+        var sci = ((t.taxonName && t.taxonName.fullName) || "").trim().toLowerCase();
+        if (sci !== target) continue;
+        if (!best || (t.taxonomicStatus === "ACCEPTED" && best.taxonomicStatus !== "ACCEPTED")) best = t;
+      }
+      return best ? best.id : null;
+    });
+  }
+
+  function fetchIdentificationKeys(taxonId) {
+    return gqlAnyWithFallback(TAXON_KEYS_QUERY, { id: taxonId }).then(function (json) {
+      var tc = json && json.data && json.data.taxonConcept;
+      return (tc && tc.identificationKeys) || [];
+    });
+  }
+
+  // Resolves to a VicFlora key page URL, or null if none can be found.
+  function lookupGenusKeyUrl(genus) {
+    genus = (genus || "").trim();
+    if (!genus) return Promise.resolve(null);
+    var key = genus.toLowerCase();
+    if (keyMem.has(key)) return Promise.resolve(keyMem.get(key));
+    if (Object.prototype.hasOwnProperty.call(keyDisk, key)) { keyMem.set(key, keyDisk[key]); return Promise.resolve(keyDisk[key]); }
+    return findGenusTaxonId(genus)
+      .then(function (taxonId) { return taxonId ? fetchIdentificationKeys(taxonId) : []; })
+      .then(function (keys) {
+        var url = (keys && keys.length) ? ("https://vicflora.rbg.vic.gov.au/flora/key/" + keys[0].id) : null;
+        keyMem.set(key, url); persistKeyUrl(key, url);
+        return url;
+      })
+      .catch(function () { return null; }); // network error/timeout — caller falls back
+  }
+
+  window.FHVicFlora = { search: search, endpoint: ENDPOINT, lookupGenusKeyUrl: lookupGenusKeyUrl };
 })();
 
 </script>
@@ -1774,7 +1876,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-25.11";
+  const BUILD_VERSION = "2026-09-26.1";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -4512,12 +4614,37 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
           state.overviewPolyLayers.push(polyLayer);
         }
       });
+      // A point that sits inside (or right on the edge of) a polygon needs
+      // to reliably win a tap over that polygon — a polygon usually has
+      // plenty of its own open area to tap elsewhere, but a point can only
+      // ever be tapped where it is. Two things make that reliable:
+      // 1) Leaflet delivers a click to every interactive vector layer
+      //    stacked at that spot, topmost first, UNLESS a handler stops it
+      //    from bubbling further — by default it keeps going, so without
+      //    this a point's own handler still runs, but the polygon
+      //    UNDERNEATH then also fires straight after and overwrites the
+      //    same info sheet with its own content, so the point's tap looks
+      //    like it did nothing (the polygon appears to "win"). Calling
+      //    stopPropagation the moment a point is hit stops the polygon
+      //    beneath from ever seeing that click.
+      // 2) A point's own dot is a small, precise touch target. An invisible,
+      //    larger "hit target" circle is added first (so the visible dot
+      //    still paints on top of it) purely to widen what counts as
+      //    tapping the point at all, before priority even comes into it.
+      function stopBubbling(e){
+        if(L && L.DomEvent && typeof L.DomEvent.stopPropagation === "function") L.DomEvent.stopPropagation(e);
+        else if(e && e.originalEvent && typeof e.originalEvent.stopPropagation === "function") e.originalEvent.stopPropagation();
+      }
       (data.points||[]).forEach(pt=>{
+        const onPointClick = e=>{ stopBubbling(e); showPointInfo(pt); };
+        const hit = L.circleMarker([pt.lat,pt.lon], { radius:18, stroke:false, fillOpacity:0.001, className:"mm-point-hit" }).addTo(map);
+        if(typeof hit.on === "function") hit.on("click", onPointClick);
+        state.overviewMarkers.push(hit);
         const isSelected = !!(moving && moving.recordId===pt.recordId && moving.pointId===pt.pointId);
         const marker = isSelected
           ? L.circleMarker([pt.lat,pt.lon], { radius:11, color:"#fff", weight:3, fillColor:"#e0642f", fillOpacity:1, className:"mm-point-selected" }).addTo(map)
           : L.circleMarker([pt.lat,pt.lon], { radius:7, color:"#2f6fed", weight:2, fillColor:"#2f6fed", fillOpacity:0.9 }).addTo(map);
-        if(typeof marker.on === "function") marker.on("click", ()=> showPointInfo(pt));
+        if(typeof marker.on === "function") marker.on("click", onPointClick);
         state.overviewMarkers.push(marker);
       });
     }
@@ -4803,7 +4930,13 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const notesBtn = '<button type="button" class="notes-btn'+(hasNotes?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+FHKit.esc(r.id)+'" title="Field notes for this species">Field Notes'+(hasNotes?' ●':'')+'</button>';
     const photosBtn = '<button type="button" class="notes-btn'+(photoCount?' has-notes':'')+(isOpen?' open':'')+'" data-notes-toggle="'+FHKit.esc(r.id)+'" title="Photos for this species">Photos'+(photoCount?' ('+photoCount+')':'')+'</button>';
     const keyUrl = vicFloraGenusUrl(r.sci);
-    const keyBtn = keyUrl ? '<a class="notes-btn" href="'+FHKit.esc(keyUrl)+'" target="_blank" rel="noopener" title="Look up this genus on VicFlora — opens its species key there, if one exists">VicFlora Key ↗</a>' : '';
+    // data-vic-key-genus carries the bare genus name so a click can try a
+    // live lookup (see the tbody click handler) for the genus's ACTUAL key
+    // page first — href/target/rel stay set to the search-page fallback so
+    // the link still works exactly as before if JS lookup isn't used
+    // (right-click "open in new tab", middle-click, JS disabled, etc.).
+    const keyGenus = String(r.sci||"").trim().split(/\s+/)[0].replace(/[^A-Za-z-]/g,"");
+    const keyBtn = keyUrl ? '<a class="notes-btn" href="'+FHKit.esc(keyUrl)+'" target="_blank" rel="noopener" data-vic-key-genus="'+FHKit.esc(keyGenus)+'" title="Look up this genus on VicFlora — opens its species key there, if one exists">VicFlora Key ↗</a>' : '';
     // Location is only captured/shown for species flagged "Significant" —
     // most species get no geo-line at all, and no location prompt. A species
     // can carry more than one point (e.g. several individuals/patches seen in
@@ -5109,6 +5242,28 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     if(fn!=null && fn!==""){ const idx=rowIndexById(fn); if(idx<0) return; const r=rows[idx]; r.fieldNotes = e.target.value; autosave(); liveSyncFieldDebounced(r, {fieldNotes:r.fieldNotes}); }
   });
   $("tbody").addEventListener("click", e=>{
+    const keyLink = e.target.closest("[data-vic-key-genus]");
+    if(keyLink){
+      const genus = keyLink.dataset.vicKeyGenus;
+      const fallbackUrl = keyLink.getAttribute("href");
+      if(genus && window.FHVicFlora && window.FHVicFlora.lookupGenusKeyUrl){
+        e.preventDefault();
+        // Open the tab synchronously, still inside this click's user-gesture
+        // call stack, so mobile popup blockers don't block it — an
+        // window.open() called only after the lookup resolves (below) is
+        // unreliable for that. Once the live lookup resolves, just point
+        // this already-open tab at the real destination.
+        const tab = window.open("", "_blank");
+        window.FHVicFlora.lookupGenusKeyUrl(genus).then(url=>{
+          const dest = url || fallbackUrl;
+          if(!dest) return;
+          if(tab && !tab.closed) tab.location = dest; else window.open(dest, "_blank");
+        }).catch(()=>{
+          if(fallbackUrl && tab && !tab.closed) tab.location = fallbackUrl;
+        });
+      }
+      return;
+    }
     const ex = e.target.closest("[data-expand]");
     if(ex){
       const id = ex.dataset.expand;
