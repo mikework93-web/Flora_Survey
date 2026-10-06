@@ -840,6 +840,25 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
 .vk-path summary{padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer;color:var(--ink)}
 .vk-path ol{margin:0;padding:0 12px 10px 12px;list-style:none;font-size:13px;line-height:1.45}
 .vk-path li{padding:6px 0;border-top:1px solid var(--line-soft)}
+.vk-keyhead{margin:14px 0 8px;font-weight:800;font-size:15px}
+.vk-keyhead a{color:var(--gold-dark)}
+.vk-keysel{display:block;margin:0 0 8px;font-size:13px}
+.vk-keysel select{width:100%;min-height:40px;margin-top:3px}
+.vk-vw{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0 12px;position:sticky;top:0;z-index:3;background:var(--bg,var(--cream));padding:6px 0}
+.vk-vw button[data-view]{min-height:40px;padding:0 14px;border:1px solid var(--border);border-radius:3px;background:var(--field);color:var(--ink);font:700 13px var(--sans);cursor:pointer}
+.vk-vw button[aria-pressed="true"]{background:var(--gold-dark);color:var(--on-gold);border-color:var(--gold-dark)}
+.vk-sub{min-height:32px;padding:0 10px;border:1px solid var(--border);border-radius:3px;background:var(--field);color:var(--ink);font:700 12px var(--sans);cursor:pointer}
+.vk-cp{padding:10px 0;border-top:1px solid var(--line-soft);scroll-margin-top:60px}
+.vk-cp.flash{background:var(--cream)}
+.vk-cph{font-size:15px;margin-bottom:4px}
+.vk-cph small{color:var(--muted);font-weight:400}
+.vk-lead,.vk-irow{font-size:14px;line-height:1.5;padding:3px 0}
+.vk-lab{display:inline-block;min-width:26px;margin-right:6px;font-weight:800;color:var(--gold-dark)}
+.vk-arrow{color:var(--muted)}
+.vk-go{color:var(--gold-dark);font-weight:700}
+.vk-taxon a{color:inherit}
+.vk-ind{margin-left:10px;padding-left:10px;border-left:2px solid var(--line-soft)}
+.vk-il{padding-top:2px}
 .vk-foot{margin:22px 0 0;font-size:11.5px;color:var(--muted)}
 .vk-foot a{color:var(--gold-dark)}
 
@@ -1098,10 +1117,10 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
     }
     if (controller) opts.signal = controller.signal;
     return fetch(url, opts).then(function (res) {
-      if (!res.ok) throw new Error("VicFlora HTTP " + res.status);
+      if (!res.ok) throw new Error("VicFlora HTTP " + res.status + (res.status === 429 ? " (rate limited)" : ""));
       return res.json();
     }).then(function (json) {
-      if (json && json.errors && json.errors.length) throw new Error("VicFlora GraphQL error");
+      if (json && json.errors && json.errors.length) throw new Error("VicFlora GraphQL error: " + String(json.errors[0].message || "").slice(0, 80));
       return normalise(json);
     }).finally(function () { if (timeoutId) clearTimeout(timeoutId); });
   }
@@ -1178,10 +1197,10 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
     }
     if (controller) opts.signal = controller.signal;
     return fetch(url, opts).then(function (res) {
-      if (!res.ok) throw new Error("VicFlora HTTP " + res.status);
+      if (!res.ok) throw new Error("VicFlora HTTP " + res.status + (res.status === 429 ? " (rate limited)" : ""));
       return res.json();
     }).then(function (json) {
-      if (json && json.errors && json.errors.length) throw new Error("VicFlora GraphQL error");
+      if (json && json.errors && json.errors.length) throw new Error("VicFlora GraphQL error: " + String(json.errors[0].message || "").slice(0, 80));
       return json;
     }).finally(function () { if (timeoutId) clearTimeout(timeoutId); });
   }
@@ -1501,26 +1520,26 @@ window.FHFuzzy = (function () {
         meta = { id: "state", finished: null, queue: [], keyQueue: [], counts: { taxa: 0, keys: 0, fail: 0 }, seenKeys: {}, started: new Date().toISOString() };
         byId = {}; kids = {}; names = [];
         status("Finding the top of the VicFlora classification...");
-        return gql(Q_FAM, { q: "Cyperaceae" }, 20000).then(function (j) {
+        return retry(function () { return gql(Q_FAM, { q: "Cyperaceae" }, 30000); }, 3).then(function (j) {
           var fam = ((j.data && j.data.taxonConceptAutocomplete) || []).filter(function (t) { return t.taxonRank === "FAMILY"; })[0];
           if (!fam) throw new Error("no family");
-          return gql(Q_ROOT, { id: fam.id }, 20000);
+          return retry(function () { return gql(Q_ROOT, { id: fam.id }, 30000); }, 3);
         }).then(function (j) {
           var h = j.data.taxonConcept.higherClassification || [];
           var rootId = h.length ? h[0].id : j.data.taxonConcept.id;
-          return gql(Q_ROOT, { id: rootId }, 20000).then(function (r) { return r.data.taxonConcept; });
+          return retry(function () { return gql(Q_ROOT, { id: rootId }, 30000); }, 3).then(function (r) { return r.data.taxonConcept; });
         }).then(function (root) {
           return storeBatch([{ t: root, parent: null }]).then(function () { meta.queue.push(root.id); return saveMeta(); });
         });
       });
     }
-    if (!fresh && meta && meta.queue) { meta.queue = (meta.queue || []).concat(meta.inflight || []); meta.inflight = []; meta.failedOnce = 0; }
+    if (!fresh && meta && meta.queue) { meta.queue = (meta.queue || []).concat(meta.inflight || [], meta.skipped || []); meta.inflight = []; meta.skipped = []; meta.tries = {}; meta.consec = 0; }
     return p.then(treePhase).then(keyPhase).then(function () {
       if (stopFlag) { status("Paused. Open this again and tap Resume to continue."); return; }
       meta.finished = new Date().toISOString();
       return saveMeta().then(function () { return getAll("taxa"); }).then(function (l) { buildIndex(l); status("Done"); });
     }).catch(function (e) {
-      status("Stopped: " + ((e && e.message) || "error") + ". Check your connection, then tap Resume.");
+      status("Stopped: " + ((e && e.message) || "error") + ". Progress is saved. Wait a minute or two, then tap Resume.");
     }).then(function () { running = false; emit(); });
   }
   function clearAll() {
@@ -1536,28 +1555,43 @@ window.FHFuzzy = (function () {
     })());
     return Promise.all(workers);
   }
+  function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function treePhase() {
-    var initial = meta.queue.length, since = 0;
-    return pool(3, function () {
+    var since = 0;
+    meta.consec = 0; meta.tries = meta.tries || {}; meta.skipped = meta.skipped || [];
+    return pool(2, function () {
       if (!meta.queue.length) return null;
       var id = meta.queue.shift();
       var node = byId[id];
       var q = node && node.rank === "GENUS" ? Q_GENUS : Q_UP;
       meta.inflight = (meta.inflight || []).concat([id]);
-      return retry(function () { return gql(q, { id: id }, 90000); }, 3).then(function (j) {
+      function handle(j, deep) {
         var c = (j.data && j.data.taxonConcept && j.data.taxonConcept.children) || [], list = [];
         c.forEach(function (x) {
           list.push({ t: x, parent: id });
-          if (WALK[x.taxonRank]) meta.queue.push(x.id);
+          if (WALK[x.taxonRank] || (deep && !WALK[x.taxonRank])) meta.queue.push(x.id);
           (x.children || []).forEach(function (y) { list.push({ t: y, parent: x.id }); });
         });
         return storeBatch(list);
-      }).catch(function () { meta.counts.fail++; meta.queue.push(id); meta.failedOnce = (meta.failedOnce || 0) + 1; if (meta.failedOnce > 30) { stopFlag = true; throw new Error("too many failed requests"); } })
-        .then(function () {
-          meta.inflight = (meta.inflight || []).filter(function (i) { return i !== id; });
-          if (++since % 5 === 0) saveMeta();
-          status("Downloading names and descriptions (" + meta.counts.taxa + " taxa so far)", meta.counts.taxa, 0);
-        });
+      }
+      function clean() {
+        meta.inflight = (meta.inflight || []).filter(function (i) { return i !== id; });
+        if (++since % 5 === 0) saveMeta();
+        status("Downloading names and descriptions (" + meta.counts.taxa + " taxa so far)", meta.counts.taxa, 0);
+      }
+      return retry(function () { return gql(q, { id: id }, 90000); }, 2).then(function (j) { return handle(j, false); }, function (e1) {
+        // A big genus can be too heavy in one request: take it in smaller pieces.
+        if (q !== Q_GENUS) throw e1;
+        return retry(function () { return gql(Q_UP, { id: id }, 90000); }, 1).then(function (j) { return handle(j, true); });
+      }).then(function () { meta.consec = 0; delete meta.tries[id]; clean(); return delay(150); }, function (e) {
+        run.lastErr = (e && e.message) || "error";
+        meta.counts.fail++; meta.consec = (meta.consec || 0) + 1;
+        meta.tries[id] = (meta.tries[id] || 0) + 1;
+        if (meta.tries[id] >= 4) meta.skipped.push(id); else meta.queue.push(id);
+        clean();
+        if (meta.consec >= 12) { stopFlag = true; throw new Error("VicFlora keeps refusing requests (" + run.lastErr + ")"); }
+        return delay(Math.min(15000, 1500 * meta.consec));
+      });
     }).then(function () { return saveMeta(); });
   }
   function keyPhase() {
@@ -1581,10 +1615,7 @@ window.FHFuzzy = (function () {
         });
     }).then(function () {
       var missing = Object.keys(meta.seenKeys).filter(function (k) { return meta.seenKeys[k] !== 1; });
-      if (missing.length && !stopFlag) {
-        // keep unreachable keys listed but do not block finishing
-        meta.missingKeys = missing;
-      }
+      if (!stopFlag) meta.missingKeys = missing;   // unreachable keys are listed, they do not block finishing
       return saveMeta();
     });
   }
@@ -1600,12 +1631,14 @@ window.FHFuzzy = (function () {
       var pct = st.total ? Math.min(100, Math.round(100 * st.done / st.total)) : 0;
       h += '<p class="vo-line"><b>Downloading.</b> Keep this screen open and stay on Wi-Fi if you can.</p>' +
         '<p class="vo-line">' + esc(st.text) + "</p>" +
+        (run.lastErr ? '<p class="vo-line muted">Some requests are being retried (last error: ' + esc(run.lastErr) + '). This is normal if it is brief.</p>' : "") +
         (st.total ? '<div class="vo-bar"><i style="width:' + pct + '%"></i></div>' : '<div class="vo-bar ind"><i></i></div>') +
         '<div class="vo-btns"><button type="button" class="btn light" id="voStop">Pause</button></div>';
     } else {
       if (s && s.finished) {
         h += '<p class="vo-line"><b>Ready for offline use.</b> ' + s.taxa.toLocaleString() + " taxa and " + s.keys.toLocaleString() + " keys saved on this device (" + esc(fmtDate(s.finished)) + ").</p>" +
           '<p class="vo-line muted">Species search, descriptions and VicKey now work with no signal. Photos are not saved.</p>' +
+          ((meta.missingKeys && meta.missingKeys.length) || (meta.skipped && meta.skipped.length) ? '<p class="vo-line"><b>Not everything came down:</b> ' + ((meta.missingKeys || []).length ? (meta.missingKeys.length + " keys ") : "") + ((meta.skipped || []).length ? ((meta.skipped.length) + " groups of taxa ") : "") + 'could not be fetched. <button type="button" class="btn light" id="voRetry">Retry the missing parts</button></p>' : "") +
           '<div class="vo-btns"><button type="button" class="btn" id="voUpdate">Update data</button><button type="button" class="btn light" id="voRemove">Remove from this device</button></div>';
       } else if (s && s.partial) {
         h += '<p class="vo-line"><b>Download paused.</b> ' + s.taxa.toLocaleString() + ' taxa saved so far. Offline features turn on when it finishes.</p>' +
@@ -1622,6 +1655,7 @@ window.FHFuzzy = (function () {
     body.innerHTML = h;
     var b;
     if ((b = body.querySelector("#voGo"))) b.onclick = function () { startDownload(false); render(); };
+    if ((b = body.querySelector("#voRetry"))) b.onclick = function () { startDownload(false); render(); };
     if ((b = body.querySelector("#voUpdate"))) b.onclick = function () { startDownload(true); render(); };
     if ((b = body.querySelector("#voStop"))) b.onclick = function () { stopFlag = true; b.disabled = true; b.textContent = "Pausing..."; };
     if ((b = body.querySelector("#voRemove"))) b.onclick = function () {
@@ -1936,12 +1970,14 @@ window.FHFuzzy = (function () {
   var MODES = {
     species: { tab: "Species", rank: "SPECIES", one: "Species", intro: "Pick a species, then another species from the same genus. You get their VicFlora descriptions side by side and the step in the genus key where they separate.", ph: "Search species, e.g. Carex appressa", child: "SPECIES", up: "GENUS", second: "Compare with (same genus)" },
     genus: { tab: "Genus", rank: "GENUS", one: "Genus", intro: "Pick a genus, then another genus from the same family. You get the family key step where they separate.", ph: "Search genus, e.g. Carex", child: "GENUS", up: "FAMILY", second: "Compare with (same family)" },
+    key: { tab: "Genus key", rank: "GENUS", keyMode: true },
     family: { tab: "Family", rank: "FAMILY", one: "Family", intro: "Pick two families. You get their VicFlora descriptions side by side and the step in the families key where they separate.", ph: "Search family, e.g. Cyperaceae", child: null, up: null, second: "Compare with (any family)" }
   };
 
   var root = null, guard = false, mode = "species", S = null, runId = 0;
 
-  function resetState() { S = { a: null, b: null, tA: null, opts: null }; }
+  function resetState() { S = { a: null, b: null, tA: null, opts: null }; K = { keys: [], key: null, view: "bracket", stack: [], genus: null }; }
+  var K = { keys: [], key: null, view: "bracket", stack: [], genus: null };
 
   function open() {
     if (root) return;
@@ -1951,7 +1987,7 @@ window.FHFuzzy = (function () {
     root.setAttribute("role", "dialog");
     root.setAttribute("aria-label", "VicKey");
     root.innerHTML =
-      '<div class="vk-head"><b>VicKey<small>Compare species, genera and families using VicFlora</small></b><button type="button" class="vk-x" aria-label="Close VicKey">&#10005;</button></div>' +
+      '<div class="vk-head"><b>VicKey<small>Compare species, genera and families, or read a genus key, using VicFlora</small></b><button type="button" class="vk-x" aria-label="Close VicKey">&#10005;</button></div>' +
       '<div class="vk-tabs" role="tablist">' + Object.keys(MODES).map(function (m) { return '<button type="button" class="vk-tab" role="tab" data-mode="' + m + '">' + MODES[m].tab + '</button>'; }).join("") + '</div>' +
       '<div class="vk-body" id="vkBody"></div>';
     document.body.appendChild(root);
@@ -2015,6 +2051,7 @@ window.FHFuzzy = (function () {
   function render() {
     var M = MODES[mode], body = $b();
     root.querySelectorAll(".vk-tab").forEach(function (t) { t.setAttribute("aria-selected", t.dataset.mode === mode ? "true" : "false"); });
+    if (M.keyMode) { renderKeyMode(); return; }
     body.innerHTML =
       '<p class="vk-intro">' + esc(M.intro) + '</p>' +
       '<p class="vk-off" id="vkOff"></p>' +
@@ -2034,6 +2071,95 @@ window.FHFuzzy = (function () {
       if (i === "") return;
       pickB(S.opts[+i]);
     });
+  }
+
+
+  /* ---------- Genus key: read a whole key, bracketed or indented ---------- */
+  function letter(i) { return String.fromCharCode(97 + i); }
+  function leadEnd(key, l, bracket) {
+    if (l.item) {
+      var it = key.items[l.item] || {}, nmx = it.item_name || "";
+      var h = ' <span class="vk-arrow">&rarr;</span> <b class="vk-taxon">' + (it.url && /^https?:/.test(it.url) ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener"><i>' + esc(nmx) + '</i></a>' : '<i>' + esc(nmx) + '</i>') + '</b>';
+      if (it.to_key) h += ' <button type="button" class="vk-sub" data-key="' + esc(it.to_key) + '">Open its key</button>';
+      return h;
+    }
+    if (bracket && key.number[l.lead_id]) return ' <span class="vk-arrow">&rarr;</span> <a href="#" class="vk-go" data-cp="' + key.number[l.lead_id] + '">go to ' + key.number[l.lead_id] + "</a>";
+    return "";
+  }
+  function bracketHtml(key) {
+    var nodes = Object.keys(key.number).sort(function (a, b) { return key.number[a] - key.number[b]; });
+    var from = {};
+    nodes.forEach(function (n) { (key.byParent[n] || []).forEach(function (l, i) { if (!l.item) from[l.lead_id] = key.number[n] + letter(i); }); });
+    return nodes.map(function (n) {
+      var no = key.number[n];
+      return '<div class="vk-cp" data-no="' + no + '"><div class="vk-cph"><b>' + no + '</b>' + (from[n] ? ' <small>(from ' + from[n] + ")</small>" : "") + "</div>" +
+        (key.byParent[n] || []).map(function (l, i) {
+          return '<div class="vk-lead"><span class="vk-lab">' + no + letter(i) + "</span>" + inline(cleanText(l.lead_text)) + leadEnd(key, l, true) + "</div>";
+        }).join("") + "</div>";
+    }).join("");
+  }
+  function indentHtml(key, node) {
+    var no = key.number[node];
+    return (key.byParent[node] || []).map(function (l, i) {
+      var h = '<div class="vk-il"><div class="vk-irow"><span class="vk-lab">' + no + letter(i) + "</span>" + inline(cleanText(l.lead_text)) + leadEnd(key, l, false) + "</div>";
+      if (!l.item && key.byParent[l.lead_id]) h += '<div class="vk-ind">' + indentHtml(key, l.lead_id) + "</div>";
+      return h + "</div>";
+    }).join("");
+  }
+  function renderKeyMode() {
+    var body = $b();
+    body.innerHTML =
+      '<p class="vk-intro">Search a genus to read its VicFlora identification key as a bracketed key or an indented key. Once the VicFlora data is downloaded this works with no signal.</p>' +
+      '<p class="vk-off" id="vkOff"></p>' +
+      '<div class="vk-col" style="max-width:520px"><label for="vkA">Genus</label><input id="vkA" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search genus, e.g. Carex"><div class="vk-list" id="vkListA"></div></div>' +
+      '<div id="vkOut"></div>';
+    offLine();
+    typeahead(body.querySelector("#vkA"), body.querySelector("#vkListA"), ["GENUS"], pickGenusKey);
+  }
+  function pickGenusKey(r) {
+    var my = ++runId;
+    K = { keys: [], key: null, view: K.view || "bracket", stack: [], genus: r };
+    status("Loading the key for <i>" + esc(r.name) + "</i>...");
+    node(r.id).then(function (t) {
+      if (my !== runId) return;
+      K.keys = (t && t.identificationKeys) || [];
+      if (!K.keys.length) { status("VicFlora has no identification key for <i>" + esc(r.name) + "</i>.", false); return; }
+      return loadKey(K.keys[0].id, my);
+    }).catch(function () { if (my === runId) status("Could not load that genus. Check your connection, or download VicFlora for offline use.", true); });
+  }
+  function loadKey(id, my) {
+    keyFetches = 0;
+    status("Loading the key...");
+    return getKey(id).then(function (key) {
+      if (my !== runId) return;
+      if (!key) { status("Could not load that key (" + esc(VFOffline.keyErrors().slice(-3).join("; ") || "not saved on this device") + "). Download VicFlora for offline use to keep every key on this device.", true); return; }
+      K.key = key; showKeyView();
+    });
+  }
+  function showKeyView() {
+    var out = $b().querySelector("#vkOut"), key = K.key;
+    var h = '<div class="vk-keyhead"><a href="' + VF + "key/" + esc(key.id) + '" target="_blank" rel="noopener">' + esc(key.title) + "</a></div>";
+    if (K.keys.length > 1) h += '<label class="vk-keysel">Key <select id="vkKeySel">' + K.keys.map(function (k) { return '<option value="' + esc(k.id) + '"' + (String(k.id) === key.id ? " selected" : "") + ">" + esc(k.title) + "</option>"; }).join("") + "</select></label>";
+    h += '<div class="vk-vw">' + (K.stack.length ? '<button type="button" class="vk-sub" id="vkKeyBack">&larr; Back</button>' : "") +
+      '<button type="button" data-view="bracket" aria-pressed="' + (K.view === "bracket") + '">Bracketed</button><button type="button" data-view="indent" aria-pressed="' + (K.view === "indent") + '">Indented</button></div>';
+    h += '<div class="vk-keybody ' + (K.view === "indent" ? "ind" : "brk") + '">' + (K.view === "indent" ? indentHtml(key, key.root) : bracketHtml(key)) + "</div>";
+    h += '<p class="vk-foot">Key: VicFlora / KeyBase, Royal Botanic Gardens Victoria.</p>';
+    out.innerHTML = h;
+    var my = runId;
+    out.onclick = function (e) {
+      var b;
+      if ((b = e.target.closest("[data-view]"))) { K.view = b.dataset.view; showKeyView(); return; }
+      if ((b = e.target.closest("[data-cp]"))) {
+        e.preventDefault();
+        var tgt = out.querySelector('.vk-cp[data-no="' + b.dataset.cp + '"]');
+        if (tgt) { tgt.scrollIntoView({ block: "start", behavior: "smooth" }); tgt.classList.add("flash"); setTimeout(function () { tgt.classList.remove("flash"); }, 1400); }
+        return;
+      }
+      if ((b = e.target.closest("[data-key]"))) { K.stack.push(K.key.id); loadKey(b.dataset.key, my); return; }
+      if (e.target.closest("#vkKeyBack")) { var prev = K.stack.pop(); loadKey(prev, my); }
+    };
+    var sel = out.querySelector("#vkKeySel");
+    if (sel) sel.onchange = function () { K.stack = []; loadKey(sel.value, my); };
   }
 
   function offLine() {
@@ -3574,7 +3700,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-06.9";
+  const BUILD_VERSION = "2026-10-06.10";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
