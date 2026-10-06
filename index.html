@@ -1238,43 +1238,57 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
     return esc(s).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\*([^*]+)\*/g, "<i>$1</i>").replace(/_([^_]+)_/g, "<i>$1</i>");
   }
 
-  var LABELS = {
-    leaf: "Leaves", leaves: "Leaves", "leaf-blades": "Leaves", phyllodes: "Leaves", phyllode: "Leaves", fronds: "Fronds", frond: "Fronds",
-    culm: "Culms", culms: "Culms", stem: "Stems", stems: "Stems", branches: "Branches", branchlets: "Branchlets", twigs: "Branchlets",
-    inflorescence: "Inflorescence", inflorescences: "Inflorescence", spikelet: "Spikelets", spikelets: "Spikelets", spikes: "Spikes", spike: "Spikes",
-    flower: "Flowers", flowers: "Flowers", perianth: "Perianth", sepals: "Sepals", petals: "Petals", corolla: "Corolla", calyx: "Calyx",
-    stamens: "Stamens", anthers: "Anthers", style: "Style", styles: "Style", ovary: "Ovary", stigma: "Stigma",
-    fruit: "Fruit", fruits: "Fruit", utricles: "Fruit", utricle: "Fruit", nut: "Fruit", nuts: "Fruit", achenes: "Fruit", achene: "Fruit", capsule: "Fruit", capsules: "Fruit",
-    seeds: "Seeds", seed: "Seeds", ligule: "Ligule", ligules: "Ligule", sheath: "Sheaths", sheaths: "Sheaths", hairs: "Hairs", indumentum: "Hairs",
-    bracts: "Bracts", bract: "Bracts", glumes: "Glumes", lemma: "Lemma", lemmas: "Lemma", palea: "Palea", cones: "Cones", scales: "Scales",
-    rhizome: "Rhizome", roots: "Roots", bulb: "Bulb", tuber: "Tubers", tubers: "Tubers", habit: "Habit", herb: "Habit", herbs: "Habit",
-    shrub: "Habit", shrubs: "Habit", tree: "Habit", trees: "Habit", subshrub: "Habit", climber: "Habit", climbers: "Habit",
-    bark: "Bark", stipules: "Stipules", petiole: "Petiole", petioles: "Petiole", tepals: "Tepals", staminodes: "Staminodes", pappus: "Pappus", receptacle: "Receptacle",
-    florets: "Florets", floret: "Florets", fertile: "Fertile parts", sori: "Sori", sorus: "Sori", spores: "Spores", indusium: "Indusium"
-  };
-  function labelFor(word) {
-    var w = word.toLowerCase().replace(/[^a-z-]/g, "");
-    if (LABELS[w]) return LABELS[w];
-    return w ? w.charAt(0).toUpperCase() + w.slice(1) : "Other";
+  // Botanical categories, in the order a flora description is usually read.
+  // Each clause of a VicFlora description is filed under the category whose
+  // keyword appears EARLIEST in that clause, not by its first word.
+  var CATS = [
+    ["Habit and size", /\b(tree|shrub|subshrub|herb|herbs|sedge|grass|rush|climber|twiner|fern|perennial|annual|biennial|tussock|habit|plants?|rhizomes?|roots?|bulbs?|tubers?|stolons?|shoots?|epiphyte|geophyte|aquatic|tall|height|high|spreading|tufted|mat-forming|clump|clumps)\b/],
+    ["Stems and culms", /\b(culms?|stems?|branches|branchlets?|twigs?|internodes?|nodes?|cladodes?|trunk|caudex)\b/],
+    ["Bark", /\b(bark)\b/],
+    ["Leaves", /\b(leaf|leaves|blades?|lamina|laminae|phyllodes?|fronds?|pinnae|pinnules?|petioles?|stipules?|needles?|leaflets?|cotyledons?)\b/],
+    ["Ligules and sheaths", /\b(ligules?|sheaths?|auricles?|collar)\b/],
+    ["Hairs and surface", /\b(hairs?|hairy|indumentum|pubescen\w*|glabrous|glabrescent|tomentum|tomentose|scabrous|scabrid|papillose|glaucous|waxy|bloom|hispid|villous|strigose|puberulent)\b/],
+    ["Inflorescence and spikelets", /\b(inflorescences?|panicles?|racemes?|spikes?|spikelets?|umbels?|cymes?|heads?|capitul\w*|peduncles?|involucres?|bracts?|bracteoles?|glumes?|lemmas?|paleas?|rachis|pedicels?|spathe|spadix)\b/],
+    ["Flowers", /\b(flowers?|perianth|sepals?|petals?|tepals?|corollas?|calyx|calyces|stamens?|anthers?|styles?|stigmas?|ovary|ovaries|staminodes?|florets?|hypanthium|labellum|column|filaments?)\b/],
+    ["Fruit and seeds", /\b(fruits?|utricles?|nuts?|achenes?|capsules?|seeds?|berry|berries|follicles?|drupes?|cones?|pods?|legumes?|cypsela\w*|schizocarps?|samaras?|perigynium|beak|valves?|mericarps?|seeds)\b/],
+    ["Spores and sori", /\b(sori|sorus|spores?|indusium|sporangi\w*)\b/],
+    ["Flowering and fruiting time", /\b(flowering|fruiting|flowers?\s+(in|from|mainly|chiefly|spring|summer|autumn|winter)|(spring|summer|autumn|winter)\b|(jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|phenology)\b/],
+    ["Distribution and habitat", /\b(occurs?|occurring|widespread|common|commonly|uncommon|rare|scattered|throughout|restricted|confined|endemic|distribution|native|naturalised|introduced|found|grows|growing|habitat|soils?|swamps?|woodlands?|forests?|grasslands?|heath\w*|coastal|alpine|subalpine|montane|region|bioregion|state|victoria|gippsland|grampians|murray|altitudes?|lowland|highland|ranges?|plains|streams?|wetlands?|riparian|sandy|clay|granite|limestone|new zealand|tasmania|australia)\b/],
+    ["Notes and similar species", /\b(confus\w*|similar|resembl\w*|distinguish\w*|differs?|separated|related|allied|hybrids?|variable|variation|taxonomy|compare|cf\.)\b/]
+  ];
+  var OVERRIDE = { "Flowering and fruiting time": 1, "Notes and similar species": 1, "Distribution and habitat": 1 };
+  function categorise(clause) {
+    var low = clause.toLowerCase().replace(/\*/g, ""), best = null, pos = 1e9;
+    for (var i = 0; i < CATS.length; i++) {
+      var m = CATS[i][1].exec(low);
+      if (m && m.index < pos) { pos = m.index; best = CATS[i][0]; }
+    }
+    return best;
   }
 
-  // VicFlora descriptions are prose: "Culms erect, ... Leaves ... Inflorescence ...".
-  // Split into sentences and group them under the organ word each one starts with.
+  // VicFlora descriptions are prose. Split into clauses (sentences, then
+  // semicolons) and file each under a botanical category. A clause with no
+  // recognisable keyword (e.g. "solid.") continues the clause before it.
   function parseProfile(text) {
     var t = cleanText(text);
     var out = { order: [], map: {} };
     if (!t) return out;
-    var parts = t.replace(/\.\s+(?=[A-Z][a-z])/g, ".\u0001").split("\u0001");
-    for (var i = 0; i < parts.length; i++) {
-      var p = parts[i].trim();
-      if (!p) continue;
-      var m = p.match(/^\*?([A-Za-z-]+)/);
-      var label = m ? labelFor(m[1]) : "Other";
-      if (/^(Easily|Similar|Distinguished|Close|Often confused|Related)/.test(p)) label = "Compare with";
-      if (i === 0 && label === "Other") label = "General";
-      if (!out.map[label]) { out.map[label] = []; out.order.push(label); }
-      out.map[label].push(p);
-    }
+    var sentences = t.replace(/\.\s+(?=[A-Z][a-z])/g, ".\u0001").split("\u0001");
+    var prev = "Other";
+    sentences.forEach(function (sent) {
+      sent.replace(/;\s+/g, ";\u0002").split("\u0002").forEach(function (clause, ci) {
+        clause = clause.trim();
+        if (!clause) return;
+        var cat = categorise(clause);
+        if (!cat) cat = (ci > 0 || out.order.length) ? prev : "Habit and size";
+        prev = cat;
+        if (!out.map[cat]) { out.map[cat] = []; out.order.push(cat); }
+        out.map[cat].push(clause);
+      });
+    });
+    // Present in botanical order.
+    var rank = {}; CATS.forEach(function (c, i) { rank[c[0]] = i; });
+    out.order.sort(function (x, y) { return (rank[x] == null ? 99 : rank[x]) - (rank[y] == null ? 99 : rank[y]); });
     return out;
   }
   function sameText(a, b) {
@@ -1284,6 +1298,8 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
   function featureRows(pa, pb) {
     var labels = pa.order.slice();
     pb.order.forEach(function (l) { if (labels.indexOf(l) < 0) labels.push(l); });
+    var rk = {}; CATS.forEach(function (c, i) { rk[c[0]] = i; });
+    labels.sort(function (x, y) { return (rk[x] == null ? 99 : rk[x]) - (rk[y] == null ? 99 : rk[y]); });
     return labels.map(function (l) {
       var a = pa.map[l] || null, b = pb.map[l] || null;
       return { label: l, a: a, b: b, same: !!(a && b && sameText(a, b)) };
@@ -1661,7 +1677,7 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
 
   function cell(arr) {
     if (!arr) return '<td class="none">Not described</td>';
-    return "<td>" + arr.map(inline).join(" ") + "</td>";
+    return "<td>" + arr.map(inline).join("<br>") + "</td>";
   }
   function stepList(path, from, to) {
     return path.slice(from, to).map(function (s) { return '<li><span class="vk-stepno">Step ' + (s.no || "?") + '</span>' + inline(s.text) + "</li>"; }).join("");
@@ -1682,7 +1698,7 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
       h += '<div class="vk-tablewrap"><table class="vk-table" id="vkFeat"><thead><tr><th>Feature</th><th>' + esc(nA) + '</th><th>' + esc(nB) + '</th></tr></thead><tbody>' +
         rows.map(function (r) { return '<tr class="' + (r.same ? "same" : "diff") + '"><th scope="row">' + esc(r.label) + "</th>" + cell(r.a) + cell(r.b) + "</tr>"; }).join("") +
         "</tbody></table></div>";
-      h += '<p class="vk-foot">Rows are grouped by the part each VicFlora sentence starts with. Read the full wording in VicFlora before relying on a difference.</p>';
+      h += '<p class="vk-foot">Each phrase of the VicFlora description is filed under a botanical category (habit, stems, leaves, flowers, fruit, distribution and so on). Read the full wording in VicFlora before relying on a difference.</p>';
     }
 
     h += '<div class="vk-h">Where the key separates them</div>';
@@ -2900,7 +2916,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-06.2";
+  const BUILD_VERSION = "2026-10-06.3";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
