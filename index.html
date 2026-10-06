@@ -3744,7 +3744,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-06.11";
+  const BUILD_VERSION = "2026-10-07.1";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -3811,6 +3811,16 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   const FH_KEY = "florasurvey";
   const WORKING_KEY = "fh_"+FH_KEY+"_working";   // in-progress autosave draft (crash recovery)
   const FOLDER_KEY  = "fh_"+FH_KEY+"_folder";    // { [folderKey]: snapshot } — explicit saves
+  /* Surveys live in IndexedDB, not localStorage. localStorage holds only about 5 MB per site
+     (shared with every other page on the same address), and a survey with a few dozen photo
+     thumbnails plus GPS tracks fills it, after which saving stops. IndexedDB has room for
+     hundreds of MB. localStorage is still used as the fallback if IndexedDB is unavailable,
+     and for surveys saved by older versions (they are moved across on the first save). */
+  const IDB_FLAG = "fh_"+FH_KEY+"_idbstate";
+  const STATE_DB = "fh_"+FH_KEY+"_state";
+  let stateDbP = null, stateUsable = !!window.indexedDB, stateQueue = Promise.resolve(), restorePending = false;
+  let folderCache = null;
+  const folderWritten = new Map();
   const NAME_KEY  = "fh_"+FH_KEY+"_username";    // remembered "Your name" for this device
   const LIVE_KEY  = "fh_"+FH_KEY+"_live";        // { code, refreshToken } — so a reload can silently rejoin
   const LIVE_QUEUE_KEY = "fh_"+FH_KEY+"_livequeue"; // ops that couldn't reach the server yet (offline)
@@ -5130,8 +5140,82 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }while(used.has(id));
     return id;
   }
-  function getFolder(){ try{ return JSON.parse(localStorage.getItem(FOLDER_KEY))||{}; }catch(e){ return {}; } }
-  function putFolder(o){ localStorage.setItem(FOLDER_KEY, JSON.stringify(o)); }
+  function openStateDB(){
+    if(stateDbP) return stateDbP;
+    stateDbP = new Promise((resolve, reject)=>{
+      if(!window.indexedDB){ reject(new Error("indexedDB unavailable")); return; }
+      let req;
+      try{ req = indexedDB.open(STATE_DB, 1); }catch(e){ reject(e); return; }
+      req.onupgradeneeded = ()=>{ req.result.createObjectStore("folder"); req.result.createObjectStore("kv"); };
+      req.onsuccess = ()=> resolve(req.result);
+      req.onerror = ()=> reject(req.error||new Error("Could not open survey storage"));
+      req.onblocked = ()=> reject(new Error("Survey storage is blocked"));
+    });
+    stateDbP.catch(()=>{ stateDbP = null; });
+    return stateDbP;
+  }
+  function idbRun(store, mode, fn){
+    return openStateDB().then(db => new Promise((resolve, reject)=>{
+      const tx = db.transaction(store, mode); let out;
+      try{ out = fn(tx.objectStore(store)); }catch(e){ reject(e); return; }
+      tx.oncomplete = ()=> resolve(out && out.result !== undefined ? out.result : undefined);
+      tx.onerror = tx.onabort = ()=> reject(tx.error||new Error("Could not save"));
+    }));
+  }
+  function legacyFolder(){ try{ return JSON.parse(localStorage.getItem(FOLDER_KEY))||{}; }catch(e){ return {}; } }
+  function getFolder(){ if(!folderCache) folderCache = legacyFolder(); return folderCache; }
+  // Pull saved surveys out of IndexedDB into the in-memory folder (what is already in memory wins).
+  function loadFolderFromIDB(){
+    if(!stateUsable) return Promise.resolve();
+    return idbRun("folder", "readonly", st => {
+      const out = { result: null }, keys = st.getAllKeys(), vals = st.getAll();
+      vals.onsuccess = ()=>{ out.result = { k: keys.result, v: vals.result }; };
+      return out;
+    }).then(res=>{
+      if(!res) return;
+      const c = getFolder();
+      res.k.forEach((k, i)=>{ if(!(k in c)) c[k] = res.v[i]; folderWritten.set(k, c[k]); });
+    }).catch(()=>{});
+  }
+  function putFolder(o){
+    folderCache = o;
+    if(!stateUsable){ localStorage.setItem(FOLDER_KEY, JSON.stringify(o)); return; }   // throws if full, as before
+    const ops = [], del = [];
+    Object.keys(o).forEach(k=>{ if(folderWritten.get(k) !== o[k]) ops.push([k, o[k]]); });
+    folderWritten.forEach((v, k)=>{ if(!(k in o)) del.push(k); });
+    if(!ops.length && !del.length) return;
+    ops.forEach(p=> folderWritten.set(p[0], p[1])); del.forEach(k=> folderWritten.delete(k));
+    stateQueue = stateQueue.then(()=> idbRun("folder", "readwrite", st=>{ ops.forEach(p=> st.put(p[1], p[0])); del.forEach(k=> st.delete(k)); }))
+      .then(()=>{
+        try{ localStorage.removeItem(FOLDER_KEY); localStorage.setItem(IDB_FLAG, "1"); }catch(e){}
+        clearStorageWarning("localStorage");
+      }, err=>{
+        ops.forEach(p=> folderWritten.delete(p[0]));
+        try{ localStorage.setItem(FOLDER_KEY, JSON.stringify(o)); clearStorageWarning("localStorage"); }
+        catch(e2){ showStorageWarning("localStorage", err); }
+      });
+  }
+  function saveWorking(snap){
+    if(!stateUsable){ localStorage.setItem(WORKING_KEY, JSON.stringify(snap)); return; }
+    stateQueue = stateQueue.then(()=> idbRun("kv", "readwrite", st=>{ st.put({ t: Date.now(), snap: snap }, "working"); }))
+      .then(()=>{
+        try{ localStorage.removeItem(WORKING_KEY); localStorage.setItem(IDB_FLAG, "1"); }catch(e){}
+        clearStorageWarning("localStorage");
+      }, err=>{
+        try{ localStorage.setItem(WORKING_KEY, JSON.stringify(snap)); clearStorageWarning("localStorage"); }
+        catch(e2){ showStorageWarning("localStorage", e2.name==="QuotaExceededError" ? e2 : err); }
+      });
+  }
+  function loadWorking(){
+    if(!stateUsable) return Promise.resolve(null);
+    return idbRun("kv", "readonly", st=> st.get("working")).then(r=> (r && r.snap) || null).catch(()=>null);
+  }
+  function clearWorking(){
+    try{ localStorage.removeItem(WORKING_KEY); }catch(e){}
+    if(!stateUsable) return Promise.resolve();
+    stateQueue = stateQueue.then(()=> idbRun("kv", "readwrite", st=>{ st.delete("working"); })).catch(()=>{});
+    return stateQueue;
+  }
 
   // ── GPS Track: "where have I been" — a continuous GPS breadcrumb trail,
   // started/stopped from inside the map view (see the rail's track FAB in
@@ -5298,16 +5382,16 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   function autosave(){
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(()=>{
+      if(restorePending){ autosave(); return; }   // wait until the saved draft has been loaded
       const snap = snapshot();
       try{
-        localStorage.setItem(WORKING_KEY, JSON.stringify(snap));
+        saveWorking(snap);
         // Once a Site/location name has been entered, also keep this
         // survey's entry in the Saved Folder itself up to date automatically
         // — so work isn't lost if "Save" is never explicitly tapped.
         if(($("site").value||"").trim()){
           const o = getFolder(); o[folderKey] = snap; putFolder(o);
         }
-        clearStorageWarning("localStorage");
       }catch(e){ showStorageWarning("localStorage", e); }
     }, 400);
   }
@@ -5343,7 +5427,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       try{ localStorage.removeItem(LIVE_KEY); }catch(e){}
       renderLiveUI();
     }
-    restore(o[key]); surveyStarted = true; applySurveyState(); autosave();
+    restore(JSON.parse(JSON.stringify(o[key]))); surveyStarted = true; applySurveyState(); autosave();
     const site = ((o[key].meta||{}).site||"").trim() || "Survey";
     FHKit.toast(wasLive ? 'Opened "'+site+'". Left Team Sync first; Start or Join again to sync this one.' : 'Opened "'+site+'"');
     window.scrollTo({ top:0, behavior:"smooth" });
@@ -5425,11 +5509,10 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     setTimeout(()=>{ try{ $("site").focus(); }catch(e){} }, 300);
   }
   function startNewSurvey(){
-    try{ localStorage.removeItem(WORKING_KEY); }catch(e){}
     // A "new" survey is a clean break — don't silently rejoin the live
     // session this device was just part of when the page reloads.
     try{ localStorage.removeItem(LIVE_KEY); localStorage.removeItem(LIVE_QUEUE_KEY); }catch(e){}
-    location.reload();
+    clearWorking().then(()=>location.reload(), ()=>location.reload());
   }
 
   // ── Import: reconstruct a survey from previously-exported files (an
@@ -8283,7 +8366,25 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
 
   let working = null;
   try{ working = JSON.parse(localStorage.getItem(WORKING_KEY)); }catch(e){}
-  if(working){ try{ restore(working); }catch(e){} }
+  let idbFlag = false; try{ idbFlag = localStorage.getItem(IDB_FLAG) === "1"; }catch(e){}
+  // Older versions kept the draft in localStorage: use it straight away. Newer ones keep it in IndexedDB.
+  if(working && !idbFlag){ try{ restore(working); }catch(e){} }
+  if(stateUsable){
+    restorePending = true;
+    Promise.race([
+      Promise.all([loadFolderFromIDB(), (working && !idbFlag) ? Promise.resolve(null) : loadWorking()]),
+      new Promise(r=> setTimeout(()=>r(null), 5000))
+    ]).then(res=>{
+      const w = res && res[1];
+      if(w){ try{ restore(w); }catch(e){} }
+      else if(working && idbFlag){ try{ restore(working); }catch(e){} }   // nothing in IndexedDB: fall back to the old copy
+    }).catch(()=>{}).then(()=>{
+      restorePending = false;
+      // Move surveys saved by older versions out of localStorage (frees the space it was using).
+      try{ const f = getFolder(); if(Object.keys(f).length) putFolder(f); }catch(e){}
+      try{ renderHome(); }catch(e){}
+    });
+  }
 
   render();
   renderSiteNotes();
