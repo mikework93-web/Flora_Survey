@@ -1120,7 +1120,11 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
       if (!res.ok) throw new Error("VicFlora HTTP " + res.status + (res.status === 429 ? " (rate limited)" : ""));
       return res.json();
     }).then(function (json) {
-      if (json && json.errors && json.errors.length) throw new Error("VicFlora GraphQL error: " + String(json.errors[0].message || "").slice(0, 80));
+      if (json && json.errors && json.errors.length) {
+        // GraphQL can return an error for one field AND the rest of the data. Keep the data.
+        var okData = json.data && Object.keys(json.data).some(function (k) { return json.data[k] != null; });
+        if (!okData) { var e0 = json.errors[0] || {}; throw new Error("VicFlora GraphQL error: " + String(e0.message || "").slice(0, 120) + (e0.path ? " (at " + e0.path.join(".") + ")" : "")); }
+      }
       return normalise(json);
     }).finally(function () { if (timeoutId) clearTimeout(timeoutId); });
   }
@@ -1200,7 +1204,11 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
       if (!res.ok) throw new Error("VicFlora HTTP " + res.status + (res.status === 429 ? " (rate limited)" : ""));
       return res.json();
     }).then(function (json) {
-      if (json && json.errors && json.errors.length) throw new Error("VicFlora GraphQL error: " + String(json.errors[0].message || "").slice(0, 80));
+      if (json && json.errors && json.errors.length) {
+        // GraphQL can return an error for one field AND the rest of the data. Keep the data.
+        var okData = json.data && Object.keys(json.data).some(function (k) { return json.data[k] != null; });
+        if (!okData) { var e0 = json.errors[0] || {}; throw new Error("VicFlora GraphQL error: " + String(e0.message || "").slice(0, 120) + (e0.path ? " (at " + e0.path.join(".") + ")" : "")); }
+      }
       return json;
     }).finally(function () { if (timeoutId) clearTimeout(timeoutId); });
   }
@@ -1318,6 +1326,9 @@ window.FHFuzzy = (function () {
   var Q_ROOT = "query($id:ID!){taxonConcept(id:$id){id taxonRank taxonomicStatus taxonName{fullName} identificationKeys{id title} higherClassification{id}}}";
   var Q_UP = "query($id:ID!){taxonConcept(id:$id){children{" + F + "}}}";
   var Q_GENUS = "query($id:ID!){taxonConcept(id:$id){children{" + F + " children{" + F + "}}}}";
+  var Q_LITE = "query($id:ID!){taxonConcept(id:$id){children{id taxonRank taxonomicStatus taxonName{fullName} establishmentMeans epbc ffg preferredVernacularName{name} identificationKeys{id title}}}}";
+  var Q_MIN = "query($id:ID!){taxonConcept(id:$id){children{id taxonRank taxonomicStatus taxonName{fullName}}}}";
+  var Q_PROF = "query($id:ID!){taxonConcept(id:$id){currentProfile{profile}}}";
   var Q_FAM = "query($q:String!){taxonConceptAutocomplete(q:$q){id taxonRank}}";
   var WALK = { LIFE: 1, KINGDOM: 1, SUBKINGDOM: 1, PHYLUM: 1, SUBPHYLUM: 1, CLASS: 1, SUBCLASS: 1, SUPERORDER: 1, ORDER: 1, SUBORDER: 1, FAMILY: 1, GENUS: 1, SECTION: 1 };
   var SURVEY_RANKS = { SPECIES: 1, SUBSPECIES: 1, VARIETY: 1, FORM: 1, GENUS: 1 };
@@ -1534,7 +1545,7 @@ window.FHFuzzy = (function () {
       });
     }
     if (!fresh && meta && meta.queue) { meta.queue = (meta.queue || []).concat(meta.inflight || [], meta.skipped || []); meta.inflight = []; meta.skipped = []; meta.tries = {}; meta.consec = 0; }
-    return p.then(treePhase).then(keyPhase).then(function () {
+    return p.then(treePhase).then(profilePhase).then(keyPhase).then(function () {
       if (stopFlag) { status("Paused. Open this again and tap Resume to continue."); return; }
       meta.finished = new Date().toISOString();
       return saveMeta().then(function () { return getAll("taxa"); }).then(function (l) { buildIndex(l); status("Done"); });
@@ -1565,13 +1576,14 @@ window.FHFuzzy = (function () {
       var node = byId[id];
       var q = node && node.rank === "GENUS" ? Q_GENUS : Q_UP;
       meta.inflight = (meta.inflight || []).concat([id]);
-      function handle(j, deep) {
+      function handle(j, deep, lite) {
         var c = (j.data && j.data.taxonConcept && j.data.taxonConcept.children) || [], list = [];
         c.forEach(function (x) {
           list.push({ t: x, parent: id });
-          if (WALK[x.taxonRank] || (deep && !WALK[x.taxonRank])) meta.queue.push(x.id);
+          if (WALK[x.taxonRank] || deep) meta.queue.push(x.id);
           (x.children || []).forEach(function (y) { list.push({ t: y, parent: x.id }); });
         });
+        if (lite) { meta.needProfile = meta.needProfile || []; list.forEach(function (o) { meta.needProfile.push(o.t.id); }); }
         return storeBatch(list);
       }
       function clean() {
@@ -1579,11 +1591,18 @@ window.FHFuzzy = (function () {
         if (++since % 5 === 0) saveMeta();
         status("Downloading names and descriptions (" + meta.counts.taxa + " taxa so far)", meta.counts.taxa, 0);
       }
-      return retry(function () { return gql(q, { id: id }, 90000); }, 2).then(function (j) { return handle(j, false); }, function (e1) {
-        // A big genus can be too heavy in one request: take it in smaller pieces.
-        if (q !== Q_GENUS) throw e1;
-        return retry(function () { return gql(Q_UP, { id: id }, 90000); }, 1).then(function (j) { return handle(j, true); });
-      }).then(function () { meta.consec = 0; delete meta.tries[id]; clean(); return delay(150); }, function (e) {
+      // Heavy request first; if VicFlora rejects it, ask for less (no descriptions, then names only).
+      // Descriptions skipped here are fetched one by one afterwards.
+      var tiers = q === Q_GENUS ? [[Q_GENUS, false, false], [Q_UP, true, false], [Q_LITE, true, true], [Q_MIN, true, true]]
+                                : [[Q_UP, false, false], [Q_LITE, false, true], [Q_MIN, false, true]];
+      var chain = Promise.reject(new Error("start"));
+      tiers.forEach(function (t, k) {
+        chain = chain.catch(function (prev) {
+          if (k > 0) run.lastErr = (prev && prev.message) || run.lastErr;
+          return retry(function () { return gql(t[0], { id: id }, 90000); }, k === tiers.length - 1 ? 2 : 1).then(function (j) { return handle(j, t[1], t[2]); });
+        });
+      });
+      return chain.then(function () { meta.consec = 0; delete meta.tries[id]; clean(); return delay(150); }, function (e) {
         run.lastErr = (e && e.message) || "error";
         meta.counts.fail++; meta.consec = (meta.consec || 0) + 1;
         meta.tries[id] = (meta.tries[id] || 0) + 1;
@@ -1591,6 +1610,31 @@ window.FHFuzzy = (function () {
         clean();
         if (meta.consec >= 12) { stopFlag = true; throw new Error("VicFlora keeps refusing requests (" + run.lastErr + ")"); }
         return delay(Math.min(15000, 1500 * meta.consec));
+      });
+    }).then(function () { return saveMeta(); });
+  }
+  function profilePhase() {
+    if (stopFlag) return Promise.resolve();
+    meta.needProfile = meta.needProfile || [];
+    var seen = {}, tries = {}, since = 0, total = 0;
+    meta.needProfile = meta.needProfile.filter(function (i) { if (seen[i]) return false; seen[i] = 1; return true; });
+    total = meta.needProfile.length;
+    if (!total) return Promise.resolve();
+    var doneN = 0;
+    return pool(3, function () {
+      if (!meta.needProfile.length) return null;
+      var id = meta.needProfile.shift();
+      return gql(Q_PROF, { id: id }, 40000).then(function (j) {
+        var p = j.data && j.data.taxonConcept && j.data.taxonConcept.currentProfile && j.data.taxonConcept.currentProfile.profile;
+        if (p) return tx(["profiles"], "readwrite", function (t) { t.objectStore("profiles").put({ id: id, text: p }); });
+      }).catch(function (e) {
+        run.lastErr = (e && e.message) || "error";
+        tries[id] = (tries[id] || 0) + 1;
+        if (tries[id] < 3) meta.needProfile.push(id);   // after 3 tries that description is left out
+        return delay(1500);
+      }).then(function () {
+        doneN++; if (++since % 20 === 0) saveMeta();
+        status("Downloading descriptions (" + Math.min(doneN, total) + " of " + total + ")", Math.min(doneN, total), total);
       });
     }).then(function () { return saveMeta(); });
   }
@@ -3700,7 +3744,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-06.10";
+  const BUILD_VERSION = "2026-10-06.11";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
