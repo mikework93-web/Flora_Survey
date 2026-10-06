@@ -1398,18 +1398,43 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
   }
   var keyCache = {};
   var keyFetches = 0;
+  var keyErrors = [];
+  // KeyBase may refuse direct requests from a web page (CORS). Try, in order:
+  // the KeyBase service directly, the app's own /api/key/<id> relay (Cloudflare
+  // Pages function, see functions/api/key/[id].js), then public relays.
+  function keySources(id) {
+    var u = KEY_WS + encodeURIComponent(id);
+    return [
+      { name: "direct", url: u },
+      { name: "relay", url: "api/key/" + encodeURIComponent(id) },
+      { name: "corsproxy", url: "https://corsproxy.io/?" + encodeURIComponent(u) },
+      { name: "allorigins", url: "https://api.allorigins.win/raw?url=" + encodeURIComponent(u) }
+    ];
+  }
+  function fetchJson(src) {
+    var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var to = ctrl && setTimeout(function () { ctrl.abort(); }, 10000);
+    return fetch(src.url, { headers: { "Accept": "application/json" }, signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (j) { if (!j || !j.leads) throw new Error("not a key"); return j; })
+      .finally(function () { if (to) clearTimeout(to); });
+  }
   function getKey(id) {
     id = String(id);
     if (keyCache[id]) return keyCache[id];
     if (keyFetches >= MAX_KEY_FETCHES) return Promise.resolve(null);
     keyFetches++;
-    var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
-    var to = ctrl && setTimeout(function () { ctrl.abort(); }, 15000);
-    var p = fetch(KEY_WS + encodeURIComponent(id), { headers: { "Accept": "application/json" }, signal: ctrl ? ctrl.signal : undefined })
-      .then(function (r) { if (!r.ok) throw new Error("KeyBase HTTP " + r.status); return r.json(); })
-      .then(function (j) { return buildKey(j); })
-      .catch(function () { delete keyCache[id]; keyFetches--; return null; })
-      .then(function (k) { if (to) clearTimeout(to); return k; });
+    var srcs = keySources(id), chain = Promise.reject(new Error("start"));
+    srcs.forEach(function (src) {
+      chain = chain.catch(function () {
+        return fetchJson(src).catch(function (e) {
+          keyErrors.push(src.name + ": " + (e && e.message === "Failed to fetch" ? "blocked or offline" : (e && e.message) || "failed"));
+          throw e;
+        });
+      });
+    });
+    var p = chain.then(function (j) { return buildKey(j); })
+      .catch(function () { delete keyCache[id]; keyFetches--; return null; });
     keyCache[id] = p;
     return p;
   }
@@ -1657,7 +1682,7 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
     cands.slice(0, 8).forEach(function (c) {
       chain = chain.then(function (hit) {
         if (hit) return hit;
-        keyFetches = 0;
+        keyFetches = 0; keyErrors = [];
         return getKey(c.id).then(function (key) {
           if (!key) return null;
           anyLoaded = true;
@@ -1698,14 +1723,14 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
       h += '<div class="vk-tablewrap"><table class="vk-table" id="vkFeat"><thead><tr><th>Feature</th><th>' + esc(nA) + '</th><th>' + esc(nB) + '</th></tr></thead><tbody>' +
         rows.map(function (r) { return '<tr class="' + (r.same ? "same" : "diff") + '"><th scope="row">' + esc(r.label) + "</th>" + cell(r.a) + cell(r.b) + "</tr>"; }).join("") +
         "</tbody></table></div>";
-      h += '<p class="vk-foot">Each phrase of the VicFlora description is filed under a botanical category (habit, stems, leaves, flowers, fruit, distribution and so on). Read the full wording in VicFlora before relying on a difference.</p>';
+      h += '<p class="vk-foot">Rows are grouped by the part each VicFlora sentence starts with. Read the full wording in VicFlora before relying on a difference.</p>';
     }
 
     h += '<div class="vk-h">Where the key separates them</div>';
     if (loc.reason) {
       var links = (loc.cands || []).slice(0, 4).map(function (c) { return '<a href="' + VF + 'key/' + esc(c.id) + '" target="_blank" rel="noopener">' + esc(c.title) + "</a>"; }).join(", ");
       var msg = loc.reason === "nokey" ? "VicFlora has no identification key covering these two."
-        : loc.reason === "keyfail" ? "Could not load the key data (KeyBase did not respond). "
+        : loc.reason === "keyfail" ? "Could not load the key data from KeyBase (" + esc(keyErrors.slice(-4).join("; ")) + "). "
         : "Could not find both of these in the same VicFlora key (the key may use a different name or place them in separate keys). ";
       h += '<div class="vk-status">' + msg + (links ? "Related keys: " + links + "." : "") + "</div>";
     } else if (!loc.sp) {
@@ -2916,7 +2941,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-06.4";
+  const BUILD_VERSION = "2026-10-06.5";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
