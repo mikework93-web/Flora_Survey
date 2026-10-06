@@ -853,6 +853,16 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
 @keyframes voind{0%{margin-left:-35%}100%{margin-left:100%}}
 .vo-btns{display:flex;gap:8px;flex-wrap:wrap}
 .vo-foot{margin:14px 0 0;font-size:11.5px;color:var(--muted)}
+
+.file-hidden{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;border:0;padding:0}
+.photo-btns{display:flex;gap:8px;flex-wrap:wrap}
+.sp-edit{color:var(--ink)}
+.edit-rec{padding:14px 16px;overflow-y:auto}
+.edit-rec label{display:block;margin:10px 0 4px}
+.er-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pick-opt.picked{background:var(--ok-bg);box-shadow:inset 3px 0 0 var(--ok)}
+.pick-opt.picked .picked-tag{flex:none;font-size:10.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--ok);border:1px solid var(--ok);border-radius:3px;padding:1px 6px}
+.pick-opt.picked .cn{color:var(--ok)}
 </style>
 <!-- Aerial imagery map (for precise point placement/adjustment and polygon
      drawing — see MapModal). Loaded with no integrity/crossorigin hash: a
@@ -1227,6 +1237,53 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
 
 </script>
 <script>
+/* Forgiving name matching, shared by the species search and offline VicFlora search.
+   score(text, query): 0 = starts with the query, 1 = a word starts with it, 3 = it appears
+   inside a word, 4+ = close (one or two typos), null = no match. Lower is better. */
+window.FHFuzzy = (function () {
+  function norm(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim(); }
+  // Edit distance counting a swap of two neighbouring letters as one typo.
+  function dist(a, b) {
+    var m = a.length, n = b.length, d = [], i, j;
+    for (i = 0; i <= m; i++) { d[i] = [i]; }
+    for (j = 0; j <= n; j++) d[0][j] = j;
+    for (i = 1; i <= m; i++) for (j = 1; j <= n; j++) {
+      var c = a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + c);
+      if (i > 1 && j > 1 && a.charAt(i - 1) === b.charAt(j - 2) && a.charAt(i - 2) === b.charAt(j - 1)) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+    return d[m][n];
+  }
+  function tokenScore(words, qt) {
+    var best = null, i;
+    for (i = 0; i < words.length; i++) {
+      var w = words[i], s = null;
+      if (w.indexOf(qt) === 0) s = 1;
+      else if (w.indexOf(qt) > 0) s = 3;
+      else if (qt.length >= 4) {
+        var tol = qt.length >= 8 ? 2 : 1;
+        var d = Math.min(dist(qt, w.slice(0, qt.length)), dist(qt, w.slice(0, qt.length + 1)), dist(qt, w.slice(0, Math.max(1, qt.length - 1))), dist(qt, w));
+        if (d <= tol) s = 4 + d;
+      }
+      if (s !== null && (best === null || s < best)) best = s;
+    }
+    return best;
+  }
+  function score(text, q) {
+    var t = norm(text), qn = norm(q);
+    if (!t || !qn) return null;
+    if (t.indexOf(qn) === 0) return 0;
+    var words = t.split(" "), qs = qn.split(" "), worst = 0;
+    for (var i = 0; i < qs.length; i++) {
+      var s = tokenScore(words, qs[i]);
+      if (s === null) return null;
+      if (s > worst) worst = s;
+    }
+    return worst;
+  }
+  return { norm: norm, score: score, dist: dist };
+})();
+
 /* VicFlora offline store.
    Downloads the VicFlora classification (every taxon with its description, names and
    key links) and every identification key (from KeyBase) onto this device, so species
@@ -1333,6 +1390,23 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
       if (starts.length >= (limit || 40)) break;
     }
     return starts.concat(epi, common).slice(0, limit || 40);
+  }
+  // Scientific AND common names, tolerant of a typo or two. Used when the plain
+  // search finds little. Returns survey-shaped objects, best matches first.
+  function searchFuzzy(q, limit) {
+    var out = [];
+    for (var i = 0; i < names.length; i++) {
+      var t = names[i];
+      if (!SURVEY_RANKS[t.rank] || (t.status && t.status !== "ACCEPTED")) continue;
+      var a = window.FHFuzzy.score(t.name, q), b = t.common ? window.FHFuzzy.score(t.common, q) : null;
+      var s = a === null ? b : (b === null ? a : Math.min(a, b));
+      if (s !== null) out.push({ t: t, s: s });
+    }
+    out.sort(function (x, y) { return x.s - y.s || (x.t.name < y.t.name ? -1 : 1); });
+    return out.slice(0, limit || 40).map(function (o) { return toSurvey(o.t); });
+  }
+  function toSurvey(t) {
+    return { sci: t.name, common: t.common || "", lf: "", type: (t.em && String(t.em).toUpperCase().indexOf("NATIVE") === 0) ? "indigenous" : "invasive", ffg: t.ffg || "", epbc: t.epbc || "", status: t.status || "", source: "vicflora" };
   }
   function searchSurvey(q) {
     return searchNames(q, SURVEY_RANKS, 40).map(function (t) {
@@ -1568,7 +1642,7 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
 
   window.VFOffline = {
     init: init, ready: ready, summary: summary, openUI: openUI, onChange: function (f) { listeners.push(f); },
-    searchNames: searchNames, searchSurvey: searchSurvey, node: node, children: children, keyJson: keyJson,
+    searchNames: searchNames, searchSurvey: searchSurvey, searchFuzzy: searchFuzzy, node: node, children: children, keyJson: keyJson,
     fetchKeyRemote: fetchKeyRemote, keyErrors: function () { return keyErrors; }
   };
   init();
@@ -2206,7 +2280,7 @@ window.FHKit = (function(){
   /* species picker: type-ahead sourced from the VicFlora API (with the bundled
      FH_SPECIES list as an instant + offline fallback). */
   const noteStyle = 'style="padding:7px 12px;font-size:11px;color:var(--text-dim,#888)"';
-  function buildPicker(input, list, onPick){
+  function buildPicker(input, list, onPick, getSelected){
     let current = [];   // objects currently shown in the dropdown
     let seq = 0;        // guards against out-of-order async responses
     let timer = null;
@@ -2222,21 +2296,46 @@ window.FHKit = (function(){
       const nt = text.split(/\s+/).map(w=>w.replace(/^[^a-z]+/,""));
       return q.split(/\s+/).filter(Boolean).every(qt => nt.some(w => w.indexOf(qt) === 0));
     }
-    function localFilter(q){
+    // Best (lowest) score of scientific vs common name; null = no match even allowing typos.
+    function rank(s, q){
+      const F = window.FHFuzzy; if(!F) return matchQuery(s.sci,q)||matchQuery(s.common,q) ? 1 : null;
+      const a = F.score(s.sci, q), b = s.common ? F.score(s.common, q) : null;
+      return a===null ? b : (b===null ? a : Math.min(a,b));
+    }
+    function ranked(arr, q, maxScore){
+      return arr.map(s=>({ s, r:rank(s,q) })).filter(o=>o.r!==null && o.r<=maxScore)
+        .sort((x,y)=> x.r-y.r || bySci(x.s,y.s)).map(o=>o.s);
+    }
+    function localFilter(q, fuzzy){
       const SP = window.FH_SPECIES || [];
       q = (q||"").trim();
-      const arr = !q ? SP.slice() : SP.filter(s=>matchQuery(s.sci,q)||matchQuery(s.common,q));
-      arr.sort(bySci);
-      return arr.slice(0, q ? 80 : 50);
+      if(!q){ const arr = SP.slice(); arr.sort(bySci); return arr.slice(0, 50); }
+      let arr = ranked(SP, q, fuzzy ? 6 : 3);
+      return arr.slice(0, 80);
+    }
+    // Offline VicFlora names (scientific + common, typo tolerant), when downloaded.
+    function offlineFuzzy(q){
+      try{ return (window.VFOffline && window.VFOffline.ready()) ? window.VFOffline.searchFuzzy(q, 40) : []; }catch(e){ return []; }
+    }
+    function merge(a, b){
+      const seen = new Set(a.map(s=>(s.sci||"").toLowerCase())), out = a.slice();
+      b.forEach(s=>{ const k=(s.sci||"").toLowerCase(); if(!seen.has(k)){ seen.add(k); out.push(s); } });
+      return out;
+    }
+    function selectedSet(){
+      try{ const arr = getSelected ? getSelected() : []; return new Set((arr||[]).map(n=>String(n||"").toLowerCase())); }catch(e){ return new Set(); }
     }
     function draw(items, q, note){
       current = items || [];
       let html = note ? '<div class="pick-note" '+noteStyle+'>'+esc(note)+'</div>' : '';
+      const picked = selectedSet();
       html += current.map((s,i)=>{
         const inv = s.type==="invasive";
-        return '<div class="pick-opt" data-i="'+i+'">'
+        const isPicked = picked.has((s.sci||"").toLowerCase());
+        return '<div class="pick-opt'+(isPicked?' picked':'')+'" data-i="'+i+'">'
           + '<span class="cn">'+esc(s.common||s.sci)+'</span>'
           + '<span class="sci">'+esc(s.sci)+'</span>'
+          + (isPicked ? '<span class="picked-tag">&#10003; Added</span>' : '')
           + '<span class="badge '+(inv?"inv":"ind")+'">'+(inv?"Invasive":"Indigenous")+'</span>'
           + consBadge(s.ffg, s.epbc) + '</div>';
       }).join("");
@@ -2257,16 +2356,26 @@ window.FHKit = (function(){
         return;
       }
       const my = ++seq;
-      draw(localFilter(trimmed), q, "Searching VicFlora…");  // show local hits while we wait
+      // Instant hits first: bundled list plus any downloaded VicFlora names,
+      // matching scientific AND common names and forgiving a typo or two.
+      const instant = (n)=> merge(localFilter(trimmed, n), offlineFuzzy(trimmed));
+      draw(instant(false), q, "Searching VicFlora…");
       try{
         const results = await window.FHVicFlora.search(trimmed);
         if(my !== seq) return;                               // superseded by a newer keystroke
-        const hits = (results||[]).filter(s=>matchQuery(s.sci,trimmed)||matchQuery(s.common,trimmed)).sort(bySci);
+        let hits = ranked(results||[], trimmed, 3);
+        if(hits.length < 5 && trimmed.length >= 4){
+          // Few exact hits: add close matches (typos) from the local lists.
+          const close = merge(localFilter(trimmed, true), offlineFuzzy(trimmed));
+          const before = hits.length;
+          hits = merge(hits, close);
+          if(hits.length){ draw(hits, q, hits.length>before ? "Includes close matches" : null); return; }
+        }
         if(hits.length) draw(hits, q, null);
-        else draw(localFilter(trimmed), q, "No VicFlora matches — showing local list");
+        else draw(instant(true), q, "No exact VicFlora match: showing close matches");
       }catch(e){
         if(my !== seq) return;
-        draw(localFilter(trimmed), q, "Offline — showing local list");
+        draw(instant(true), q, "Offline: showing the saved list");
       }
     }
     function schedule(q){ clearTimeout(timer); timer = setTimeout(()=>render(q), 250); }
@@ -2589,7 +2698,7 @@ window.FHKit = (function(){
      entry in `points` (only pass rows that actually have a captured lat/lon). */
   function buildGeoPackageBytes(opts){
     const tableName = (opts && opts.tableName) || "species_points";
-    const geomCol = "geom", srsId = 4326;
+    const geomCol = "geom", srsId = 7844;   // GDA2020 geographic (was WGS 84 / 4326)
     const points = (opts && opts.points) || [];
     const identifier = (opts && opts.identifier) || tableName;
     const description = (opts && opts.description) || "";
@@ -2615,9 +2724,9 @@ window.FHKit = (function(){
     const srsRows = [
       {rowid:-1, record: gpkgEncodeRecord([t("Undefined cartesian SRS"), rid(), t("NONE"), n(-1), t("undefined"), nul()])},
       {rowid:0,  record: gpkgEncodeRecord([t("Undefined geographic SRS"), rid(), t("NONE"), n(0), t("undefined"), nul()])},
-      {rowid:4326, record: gpkgEncodeRecord([t("WGS 84"), rid(), t("EPSG"), n(4326),
-        t('GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]'),
-        t("longitude/latitude coordinates in decimal degrees on the WGS 84 spheroid")])}
+      {rowid:7844, record: gpkgEncodeRecord([t("GDA2020"), rid(), t("EPSG"), n(7844),
+        t('GEOGCS["GDA2020",DATUM["Geocentric_Datum_of_Australia_2020",SPHEROID["GRS 1980",6378137,298.257222101]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","7844"]]'),
+        t("longitude/latitude coordinates in decimal degrees on the GDA2020 datum (EPSG:7844)")])}
     ];
     const contentsRows = [
       {rowid:1, record: gpkgEncodeRecord([
@@ -2720,7 +2829,7 @@ window.FHKit = (function(){
      plus a species_count field — the data model requested for this layer. */
   function buildPolygonGeoPackageBytes(opts){
     const tableName = (opts && opts.tableName) || "species_polygons";
-    const geomCol = "geom", srsId = 4326;
+    const geomCol = "geom", srsId = 7844;   // GDA2020 geographic (was WGS 84 / 4326)
     const polys = (opts && opts.polygons) || [];
     const identifier = (opts && opts.identifier) || tableName;
     const description = (opts && opts.description) || "";
@@ -2751,9 +2860,9 @@ window.FHKit = (function(){
     const srsRows = [
       {rowid:-1, record: gpkgEncodeRecord([t("Undefined cartesian SRS"), rid(), t("NONE"), n(-1), t("undefined"), nul()])},
       {rowid:0,  record: gpkgEncodeRecord([t("Undefined geographic SRS"), rid(), t("NONE"), n(0), t("undefined"), nul()])},
-      {rowid:4326, record: gpkgEncodeRecord([t("WGS 84"), rid(), t("EPSG"), n(4326),
-        t('GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]'),
-        t("longitude/latitude coordinates in decimal degrees on the WGS 84 spheroid")])}
+      {rowid:7844, record: gpkgEncodeRecord([t("GDA2020"), rid(), t("EPSG"), n(7844),
+        t('GEOGCS["GDA2020",DATUM["Geocentric_Datum_of_Australia_2020",SPHEROID["GRS 1980",6378137,298.257222101]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","7844"]]'),
+        t("longitude/latitude coordinates in decimal degrees on the GDA2020 datum (EPSG:7844)")])}
     ];
     const contentsRows = [
       {rowid:1, record: gpkgEncodeRecord([
@@ -2770,7 +2879,7 @@ window.FHKit = (function(){
       record: gpkgEncodeRecord([
         rid(),
         { t:"blob", v: gpkgEncodePolygon([pg.vertices||[]], srsId) },
-        t(pg.id), t(site), t(surveyDate),
+        t(pg.id), t(pg.site!=null ? pg.site : site), t(pg.date!=null ? pg.date : surveyDate),
         t((pg.species||[]).join("; ")),
         n((pg.species||[]).length),
         t(pg.notes||""),
@@ -2896,18 +3005,18 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
      general-purpose zip reader. Used by the Import feature to read a
      previously-exported xlsx/GIS zip/photos zip back in. Returns a flat
      { "name": Uint8Array, ... } map, same shape buildZipBlob takes as input. */
-  function readZip(bytes){
+  function zipEntries(bytes){
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     let eocdOff = -1;
     const maxBack = Math.min(bytes.length, 65557);
     for(let i=bytes.length-22; i>=bytes.length-maxBack && i>=0; i--){
       if(view.getUint32(i, true) === 0x06054b50){ eocdOff = i; break; }
     }
-    if(eocdOff < 0) throw new Error("Not a valid zip file (no end-of-central-directory record found)");
+    if(eocdOff < 0) throw new Error("This isn't a valid .xlsx or .zip file. If it is an old .xls file, open it in Excel and Save As .xlsx first");
     const totalEntries = view.getUint16(eocdOff+10, true);
     const centralDirOffset = view.getUint32(eocdOff+16, true);
     const dec = new TextDecoder("utf-8");
-    const files = {};
+    const list = [];
     let p = centralDirOffset;
     for(let i=0;i<totalEntries;i++){
       if(view.getUint32(p, true) !== 0x02014b50) throw new Error("Corrupt zip central directory");
@@ -2918,14 +3027,108 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const commentLen = view.getUint16(p+32, true);
       const localOffset = view.getUint32(p+42, true);
       const name = dec.decode(bytes.subarray(p+46, p+46+nameLen));
-      if(method !== 0) throw new Error('"'+name+'" uses zip compression this reader doesn\'t support (expected "stored" entries only)');
       const lp = localOffset;
       if(view.getUint32(lp, true) !== 0x04034b50) throw new Error('Corrupt zip local header for "'+name+'"');
       const lNameLen = view.getUint16(lp+26, true);
       const lExtraLen = view.getUint16(lp+28, true);
       const dataStart = lp + 30 + lNameLen + lExtraLen;
-      files[name] = bytes.slice(dataStart, dataStart+compSize);
+      list.push({ name, method, data: bytes.subarray(dataStart, dataStart+compSize) });
       p += 46 + nameLen + extraLen + commentLen;
+    }
+    return list;
+  }
+  // Stored entries only (what this app writes). Kept for the sync callers.
+  function readZip(bytes){
+    const files = {};
+    zipEntries(bytes).forEach(e=>{
+      if(e.method !== 0) throw new Error('"'+e.name+'" is compressed; use the import screen to read it');
+      files[e.name] = e.data.slice();
+    });
+    return files;
+  }
+  /* Small DEFLATE decoder (RFC 1951), used when the browser has no
+     DecompressionStream. Excel and most other tools compress their files. */
+  function inflateRawJS(src){
+    const LB=[3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+    const LE=[0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+    const DB=[1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+    const DE=[0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+    let pos=0, bitBuf=0, bitCnt=0, out=new Uint8Array(Math.max(1024, src.length*4)), op=0;
+    function need(n){ if(op+n>out.length){ const o=new Uint8Array(Math.max(out.length*2, op+n)); o.set(out); out=o; } }
+    function bits(n){
+      while(bitCnt<n){ if(pos>=src.length) throw new Error("Unexpected end of compressed data"); bitBuf|=src[pos++]<<bitCnt; bitCnt+=8; }
+      const v=bitBuf&((1<<n)-1); bitBuf>>>=n; bitCnt-=n; return v;
+    }
+    function build(lengths){
+      const count=new Array(16).fill(0), offs=new Array(16).fill(0), symbols=[];
+      lengths.forEach(l=>count[l]++); count[0]=0;
+      for(let i=1;i<16;i++) offs[i]=offs[i-1]+count[i-1];
+      lengths.forEach((l,s)=>{ if(l) symbols[offs[l]++]=s; });
+      return { count, symbols };
+    }
+    function decode(h){
+      let code=0, first=0, index=0;
+      for(let len=1;len<16;len++){
+        code|=bits(1); const c=h.count[len];
+        if(code-c<first) return h.symbols[index+(code-first)];
+        index+=c; first+=c; first<<=1; code<<=1;
+      }
+      throw new Error("Bad compressed data");
+    }
+    let fixedL=null, fixedD=null;
+    let last;
+    do{
+      last=bits(1); const type=bits(2);
+      if(type===0){
+        bitBuf=0; bitCnt=0;
+        const len=src[pos]|(src[pos+1]<<8); pos+=4;
+        need(len); out.set(src.subarray(pos,pos+len),op); op+=len; pos+=len;
+      } else if(type===1 || type===2){
+        let lh, dh;
+        if(type===1){
+          if(!fixedL){ const l=[]; for(let i=0;i<144;i++)l.push(8); for(let i=144;i<256;i++)l.push(9); for(let i=256;i<280;i++)l.push(7); for(let i=280;i<288;i++)l.push(8); fixedL=build(l); fixedD=build(new Array(30).fill(5)); }
+          lh=fixedL; dh=fixedD;
+        } else {
+          const nlen=bits(5)+257, ndist=bits(5)+1, ncode=bits(4)+4;
+          const order=[16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15], lens=new Array(19).fill(0);
+          for(let i=0;i<ncode;i++) lens[order[i]]=bits(3);
+          const ch=build(lens), ll=[];
+          while(ll.length<nlen+ndist){
+            const sym=decode(ch);
+            if(sym<16) ll.push(sym);
+            else { let rep, val=0; if(sym===16){ val=ll[ll.length-1]; rep=3+bits(2); } else if(sym===17) rep=3+bits(3); else rep=11+bits(7); while(rep--) ll.push(val); }
+          }
+          lh=build(ll.slice(0,nlen)); dh=build(ll.slice(nlen));
+        }
+        for(;;){
+          const sym=decode(lh);
+          if(sym<256){ need(1); out[op++]=sym; }
+          else if(sym===256) break;
+          else {
+            const s=sym-257, len=LB[s]+bits(LE[s]), ds=decode(dh), dist=DB[ds]+bits(DE[ds]);
+            need(len); for(let i=0;i<len;i++){ out[op]=out[op-dist]; op++; }
+          }
+        }
+      } else throw new Error("Bad compressed data");
+    } while(!last);
+    return out.slice(0,op);
+  }
+  async function inflateRaw(u8){
+    if(typeof DecompressionStream !== "undefined"){
+      try{
+        const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+        return new Uint8Array(await new Response(stream).arrayBuffer());
+      }catch(e){ /* fall through to the built-in decoder */ }
+    }
+    return inflateRawJS(u8);
+  }
+  // Reads stored AND compressed entries (spreadsheets saved by Excel etc.).
+  async function readZipAsync(bytes){
+    const files = {};
+    for(const e of zipEntries(bytes)){
+      if(e.method === 0) files[e.name] = e.data.slice();
+      else if(e.method === 8) files[e.name] = await inflateRaw(e.data);
+      else throw new Error('"'+e.name+'" uses an unsupported zip compression');
     }
     return files;
   }
@@ -2946,27 +3149,41 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
      polygonsMeta carries everything the xlsx itself has for a polygon
      (id/point count/species names/notes) but NOT its shape, which only the
      GIS zip's GeoPackage carries; the Import feature merges the two. */
-  function readXLSXSurvey(bytes){
-    const zip = readZip(bytes);
-    const xmlBytes = zip["xl/worksheets/sheet1.xml"];
-    if(!xmlBytes) throw new Error("Not a Flora Survey export (missing worksheet data)");
-    const xmlText = new TextDecoder("utf-8").decode(xmlBytes);
-    const rowsByNum = new Map();
-    const rowRe = /<row r="(\d+)">([\s\S]*?)<\/row>/g;
-    let rm;
-    while((rm = rowRe.exec(xmlText))){
-      const rNum = parseInt(rm[1],10);
-      const cells = {};
-      const cellRe = /<c r="([A-Z]+)\d+"[^>]*>([\s\S]*?)<\/c>/g;
-      let cm;
-      while((cm = cellRe.exec(rm[2]))){
-        const col = cm[1], body = cm[2];
-        const isMatch = body.match(/<is><t[^>]*>([\s\S]*?)<\/t><\/is>/);
-        const vMatch = body.match(/<v>([\s\S]*?)<\/v>/);
-        if(isMatch) cells[col] = xunesc(isMatch[1]);
-        else if(vMatch) cells[col] = Number(vMatch[1]);
+  async function readXLSXSurvey(bytes){
+    const zip = await readZipAsync(bytes);
+    const dec = new TextDecoder("utf-8");
+    let sheetName = zip["xl/worksheets/sheet1.xml"] ? "xl/worksheets/sheet1.xml" : Object.keys(zip).filter(n=>/^xl\/worksheets\/sheet\d+\.xml$/.test(n)).sort()[0];
+    if(!sheetName) throw new Error("This isn't a Flora Survey spreadsheet (no worksheet found)");
+    const xmlText = dec.decode(zip[sheetName]);
+    // Shared strings (Excel and other tools store text here instead of inline).
+    const shared = [];
+    if(zip["xl/sharedStrings.xml"]){
+      const sx = dec.decode(zip["xl/sharedStrings.xml"]);
+      const siRe = /<si>([\s\S]*?)<\/si>/g; let sm;
+      while((sm = siRe.exec(sx))){
+        let t = "", tm; const tRe = /<t[^>]*>([\s\S]*?)<\/t>/g;
+        while((tm = tRe.exec(sm[1]))) t += tm[1];
+        shared.push(xunesc(t));
       }
-      rowsByNum.set(rNum, cells);
+    }
+    const rowsByNum = new Map();
+    const cellRe = /<c r="([A-Z]+)(\d+)"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
+    let cm;
+    while((cm = cellRe.exec(xmlText))){
+      const col = cm[1], rNum = parseInt(cm[2],10), attrs = cm[3]||"", body = cm[4]||"";
+      if(!rowsByNum.has(rNum)) rowsByNum.set(rNum, {});
+      const cells = rowsByNum.get(rNum);
+      const tAttr = (attrs.match(/\bt="([^"]+)"/)||[])[1];
+      const isMatch = body.match(/<is>([\s\S]*?)<\/is>/);
+      const vMatch = body.match(/<v>([\s\S]*?)<\/v>/);
+      if(isMatch){ let t="", tm2; const tRe2=/<t[^>]*>([\s\S]*?)<\/t>/g; while((tm2=tRe2.exec(isMatch[1]))) t+=tm2[1]; cells[col] = xunesc(t); }
+      else if(vMatch){
+        if(tAttr==="s") cells[col] = shared[parseInt(vMatch[1],10)];
+        else if(tAttr==="str") cells[col] = xunesc(vMatch[1]);
+        else if(tAttr==="b") cells[col] = vMatch[1]==="1";
+        else cells[col] = Number(vMatch[1]);
+      }
+      if(cells[col]===undefined) delete cells[col];
     }
     const colIdx = (letter) => { let n=0; for(let i=0;i<letter.length;i++) n = n*26 + (letter.charCodeAt(i)-64); return n-1; };
     const orderedRowNums = [...rowsByNum.keys()].sort((a,b)=>a-b);
@@ -2980,7 +3197,10 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
 
     const siteRow = rowArr(2), dateRow = rowArr(3);
     const site = siteRow[1]!=null ? String(siteRow[1]) : "";
-    const date = dateRow[1]!=null ? String(dateRow[1]) : "";
+    let date = dateRow[1]!=null ? String(dateRow[1]) : "";
+    if(typeof dateRow[1]==="number" && dateRow[1]>20000 && dateRow[1]<80000){   // Excel turned it into a date number
+      date = new Date(Date.UTC(1899,11,30) + dateRow[1]*86400000).toISOString().slice(0,10);
+    }
 
     let notesHeaderRow=null, speciesHeaderRow=null, polyHeaderRow=null;
     orderedRowNums.forEach(rn=>{
@@ -2992,11 +3212,14 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     function blockAfter(headerRow){
       if(headerRow==null) return [];
       const out = [];
+      let prev = headerRow;
       for(const rn of orderedRowNums){
         if(rn<=headerRow) continue;
+        if(rn !== prev+1) break;           // a gap (blank row left out by Excel) ends the block
         const arr = rowArr(rn);
-        if(!arr.length) break; // a blank row ends the block, same as the writer's own layout
+        if(!arr.length || arr.every(v=>v===undefined || v==="")) break; // a blank row ends the block
         out.push(arr);
+        prev = rn;
       }
       return out;
     }
@@ -3278,7 +3501,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   }
   const live = { setLiveEndpoints, authAnon, authRefresh, fsCreateDoc, fsGetDoc, fsListDocs, fsPatchDoc, fsDeleteDoc };
 
-  return { esc, today, toast, notice, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, buildGeoPackageBlob, buildGeoPackageBytes, buildPolygonGeoPackageBlob, buildPolygonGeoPackageBytes, triggerDownload, shareFiles, getLastShareDiagnostic, buildPicker, consLabel, consBadge, live, readZip, readXLSXSurvey, readPointsGeoPackage, readPolygonsGeoPackage };
+  return { readZipAsync, esc, today, toast, notice, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, buildGeoPackageBlob, buildGeoPackageBytes, buildPolygonGeoPackageBlob, buildPolygonGeoPackageBytes, triggerDownload, shareFiles, getLastShareDiagnostic, buildPicker, consLabel, consBadge, live, readZip, readXLSXSurvey, readPointsGeoPackage, readPolygonsGeoPackage };
 })();
 
 </script>
@@ -3313,7 +3536,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-06.7";
+  const BUILD_VERSION = "2026-10-06.8";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -3920,6 +4143,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const active = document.activeElement;
     const notesFocused = !!(active && active.dataset && active.dataset.fn === local.id);
     local.common = doc.common || local.common;
+    local.sci = doc.sci || local.sci;
+    local.ffg = (doc.ffg !== undefined && doc.ffg !== null) ? doc.ffg : local.ffg;
+    local.epbc = (doc.epbc !== undefined && doc.epbc !== null) ? doc.epbc : local.epbc;
     local.type = doc.type || local.type;
     local.free = !!doc.free; local.uncertain = !!doc.uncertain; local.significant = !!doc.significant;
     if(typeof doc.pointsJson === "string") local.points = decodePointsField(doc.pointsJson);
@@ -4718,6 +4944,33 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     return 2*R*Math.asin(Math.sqrt(Math.max(0,Math.min(1,s))));
   }
   const TRACK_MIN_METERS = 5;
+  // GPS quality filter shared by the path tracker and the polygon walker.
+  // The jumps seen after closing/reopening the app come from the first fixes
+  // back: stale cached positions, or cell/Wi-Fi fixes with poor accuracy. So:
+  // ignore fixes that are old or inaccurate, ignore movement smaller than the
+  // fix's own error, and treat a sudden implausible leap as a glitch unless the
+  // next fix confirms it.
+  const GPS_MAX_ACCURACY = 30;    // metres; worse fixes are skipped
+  const GPS_MAX_AGE_MS = 15000;   // older fixes are stale
+  const GPS_MAX_SPEED = 35;       // m/s (about 125 km/h); faster than this between fixes is a glitch
+  function makeFixFilter(lastPt){ return { last: lastPt ? { lat:lastPt.lat, lon:lastPt.lon, ts: lastPt.ts || Date.now() } : null, cand:null, skip:0 }; }
+  function acceptFix(f, pos, minMeters){
+    const c = pos.coords, acc = c.accuracy;
+    if(pos.timestamp && Date.now() - pos.timestamp > GPS_MAX_AGE_MS) return false;
+    if(typeof acc === "number" && acc > GPS_MAX_ACCURACY) return false;
+    if(f.skip > 0){ f.skip--; if(typeof acc !== "number" || acc > 15) return false; }   // first fixes after returning to the app
+    const pt = { lat:c.latitude, lon:c.longitude, ts: pos.timestamp || Date.now() };
+    if(!f.last){ f.last = pt; return pt; }
+    const d = trackMeters(f.last, pt);
+    if(d < Math.max(minMeters, (acc||0)*0.6)) return false;          // inside the noise
+    const dt = Math.max(1, (pt.ts - f.last.ts)/1000);
+    if(d > 50 && d/dt > GPS_MAX_SPEED){
+      if(f.cand && trackMeters(f.cand, pt) < Math.max(15, (acc||0)*2)){ f.cand = null; }   // confirmed by a second fix
+      else { f.cand = pt; return false; }
+    } else f.cand = null;
+    f.last = pt;
+    return pt;
+  }
   function currentTrack(){ return tracks.find(t=>t.id===activeTrackId) || null; }
   function isTracking(){ return !!activeTrackId; }
   function onTrackUpdate(cb){ trackListeners.push(cb); return function(){ trackListeners = trackListeners.filter(f=>f!==cb); }; }
@@ -4731,22 +4984,34 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const t = { id: makeTrackId(), points: [], startedAt: new Date().toISOString(), endedAt: null };
     tracks.push(t);
     activeTrackId = t.id;
+    trackFilter = makeFixFilter(null);
+    registerTrackWatch();
+    autosave();
+    notifyTrackUpdate();
+  }
+  let trackFilter = makeFixFilter(null);
+  function registerTrackWatch(){
+    if(trackWatchId!=null && navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(trackWatchId);
     trackWatchId = navigator.geolocation.watchPosition(
       pos=>{
         const t2 = currentTrack(); if(!t2) return;
-        const pt = { lat: pos.coords.latitude, lon: pos.coords.longitude, ts: Date.now() };
-        const last = t2.points[t2.points.length-1];
-        if(last && trackMeters(last, pt) < TRACK_MIN_METERS) return;
-        t2.points.push(pt);
+        const pt = acceptFix(trackFilter, pos, TRACK_MIN_METERS);
+        if(!pt) return;
+        t2.points.push({ lat: pt.lat, lon: pt.lon, ts: Date.now() });
         autosave();
         notifyTrackUpdate();
       },
       ()=>{ /* a transient GPS error just means no new fixes for now — tracking stays "on" */ },
-      { enableHighAccuracy:true, maximumAge:5000, timeout:20000 }
+      { enableHighAccuracy:true, maximumAge:0, timeout:20000 }
     );
-    autosave();
-    notifyTrackUpdate();
   }
+  // Phones can quietly pause the GPS watch while the app is in the background.
+  // On return, start a fresh watch and distrust its first fixes until they settle.
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden || !isTracking() || !(navigator.geolocation && navigator.geolocation.watchPosition)) return;
+    trackFilter.skip = 2; trackFilter.cand = null;
+    registerTrackWatch();
+  });
   function stopTracking(){
     if(!isTracking()) return;
     if(trackWatchId!=null && window.navigator && navigator.geolocation && navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(trackWatchId);
@@ -5002,15 +5267,15 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       catch(e){ warnings.push('Couldn\'t read "'+name+'": '+(e&&e.message||e)); continue; }
       try{
         if(lower.endsWith(".xlsx")){
-          const x = FHKit.readXLSXSurvey(buf);
+          const x = await FHKit.readXLSXSurvey(buf);
           site = x.site; date = x.date; species = x.species; siteNotes = x.siteNotes; polygonsMeta = x.polygonsMeta;
         } else if(lower.endsWith(".zip")){
-          const entries = FHKit.readZip(buf);
+          const entries = await FHKit.readZipAsync(buf);
           Object.keys(entries).forEach(entryName=> classifyImportEntry(entryName, entries[entryName], gis));
         } else if(lower.endsWith(".gpkg") || /\.(jpe?g|png|gif)$/.test(lower)){
           classifyImportEntry(name, buf, gis);
         } else {
-          warnings.push('"'+name+'" isn\'t a file this can import (expected an .xlsx, .zip, .gpkg, or a photo) — it was skipped.');
+          warnings.push('"'+name+'" isn\'t a file this can import (expected an .xlsx, .zip, .gpkg, or a photo)'+(lower.endsWith(".xls") ? ". Old .xls files can't be read: open it in Excel and Save As .xlsx" : "")+'. It was skipped.');
         }
       }catch(e){
         warnings.push('Couldn\'t read "'+name+'": '+(e&&e.message||e));
@@ -5087,7 +5352,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     input.type = "file"; input.multiple = true;
     // Phones filter the picker by file type and don't recognise .gpkg, so
     // the generic types are listed too or the GIS file can be greyed out.
-    input.accept = ".xlsx,.zip,.gpkg,image/*,application/zip,application/x-zip-compressed,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream,application/geopackage+sqlite3";
+    input.accept = ".xlsx,.xlsm,.xls,.zip,.gpkg,image/*,application/zip,application/x-zip-compressed,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream,application/geopackage+sqlite3";
     input.style.display = "none";
     document.body.appendChild(input);
     input.addEventListener("change", async ()=>{
@@ -5477,7 +5742,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // that can't be found in either place is skipped rather than failing the
   // whole export — better a report missing one photo (and a toast saying
   // so) than no export at all.
-  async function buildPhotoFiles(){
+  async function buildPhotoFiles(rowsArg){
+    const rows = rowsArg || ROWS_NOW();
     const files = {};
     let missing = 0;
     for(let ri=0; ri<rows.length; ri++){
@@ -5727,6 +5993,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
                 // Vicmap's zoomed-out tiles are grainy, so Esri shows underneath
                 // and takes over below street level.
                 under:"esri" },
+      google: { name:"Google Satellite", note:"Everywhere, often sharpest", url:"https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+                opts:{ maxZoom:21, maxNativeZoom:20, subdomains:["0","1","2","3"], attribution:"Imagery &copy; Google" } },
       topo:   { name:"Esri Topographic", note:"Terrain, tracks, contours", url:"https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
                 opts:{ maxZoom:21, maxNativeZoom:19, attribution:"&copy; Esri and contributors" } },
       osm:    { name:"OpenStreetMap", note:"Street map", url:"https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -6067,12 +6335,15 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       }
     }
     function setStatus(text, isError){
+      if(!overlay) return;
       const el = overlay.querySelector("#mmStatus");
+      if(!el) return;
       el.textContent = text;
       el.classList.toggle("error", !!isError);
       if(!isError) refreshTrackStatus();
     }
     function ensureMap(lat, lon, zoom){
+      if(!state || !overlay || !mapEl) return;   // closed (or reopened) before this timer fired
       if(map){ map.remove(); map=null; }
       // The mapping library loads from a CDN — in the field, with no signal,
       // it may never have loaded at all. Fail with a clear on-screen message
@@ -6130,6 +6401,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       }
     }
     function redrawPolygon(){
+      if(!map || !state) return;   // the map was closed while an edit event was still on its way
       if(polyLayer){ map.removeLayer(polyLayer); polyLayer=null; }
       vertexMarkers.forEach(m=>map.removeLayer(m)); vertexMarkers=[];
       if(state.vertices.length){
@@ -6176,16 +6448,22 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         // down and recreate this very marker mid-drag and abort it) —
         // cheap and keeps Leaflet's own drag handling uninterrupted.
         marker.on("drag", ()=>{
-          if(typeof marker.getLatLng !== "function") return;
+          if(!state || typeof marker.getLatLng !== "function") return;
           const ll = marker.getLatLng();
           state.vertices[index] = [ll.lat, ll.lng];
           if(polyLayer && typeof polyLayer.setLatLngs === "function") polyLayer.setLatLngs(state.vertices);
         });
         // Once the drag finishes, a full redraw resyncs every marker's
         // captured index against the (unchanged) vertex count/order.
+        // Deferred a tick: rebuilding the markers inside Leaflet's own dragend
+        // event removed the marker that was still finishing its drag, which is
+        // what made the map crash after reshaping a polygon.
         marker.on("dragend", ()=>{
-          redrawPolygon();
-          setStatus(state.vertices.length+" point"+(state.vertices.length===1?"":"s")+" — drag a corner to reshape it, or “+ Add Point” for a new one.");
+          setTimeout(()=>{
+            if(!map || !state) return;
+            redrawPolygon();
+            setStatus(state.vertices.length+" point"+(state.vertices.length===1?"":"s")+" — drag a corner to reshape it, or “+ Add Point” for a new one.");
+          }, 0);
         });
       }
       return marker;
@@ -6196,21 +6474,25 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const marker = L.marker(latlng, { draggable:true, icon, keyboard:false, zIndexOffset:900 }).addTo(map);
       let inserted = false;
       const insert = ll=>{
-        if(inserted) return; inserted = true;
+        if(inserted || !state) return; inserted = true;
         state.vertices.splice(insertAt, 0, [ll.lat, ll.lng]);
       };
       marker.on("click", ()=>{
         insert(marker.getLatLng());
-        redrawPolygon(); footForPolygonMaybe();
-        setStatus("Corner added. Drag it into place.");
+        setTimeout(()=>{
+          if(!map || !state) return;
+          redrawPolygon(); footForPolygonMaybe();
+          setStatus("Corner added. Drag it into place.");
+        }, 0);
       });
       marker.on("dragstart", ()=> insert(marker.getLatLng()));
       marker.on("drag", ()=>{
+        if(!state) return;
         const ll = marker.getLatLng();
         state.vertices[insertAt] = [ll.lat, ll.lng];
         if(polyLayer && typeof polyLayer.setLatLngs === "function") polyLayer.setLatLngs(state.vertices);
       });
-      marker.on("dragend", ()=>{ redrawPolygon(); footForPolygonMaybe(); setStatus(state.vertices.length+" corners. Drag any corner or + to reshape."); });
+      marker.on("dragend", ()=>{ setTimeout(()=>{ if(!map || !state) return; redrawPolygon(); footForPolygonMaybe(); setStatus(state.vertices.length+" corners. Drag any corner or + to reshape."); }, 0); });
       return marker;
     }
     // Refresh the footer (Undo / Finish enabled state) after the corner count changes.
@@ -6251,12 +6533,18 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       showCrosshair(false);
       footForPolygonWalk();
       setStatus("Walking the boundary — 0 points recorded yet. Walk the edge of the area; corners are added automatically.");
+      const lastV = state.vertices[state.vertices.length-1];
+      walkFilter = makeFixFilter(lastV ? { lat:lastV[0], lon:lastV[1], ts:Date.now() } : null);
+      beginWalkWatch();
+    }
+    let walkFilter = makeFixFilter(null);
+    function beginWalkWatch(){
+      if(walkWatchId!=null && navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(walkWatchId);
       walkWatchId = navigator.geolocation.watchPosition(
         pos=>{
           if(!state || !state.walking) return;
-          const pt = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-          const last = state.vertices[state.vertices.length-1];
-          if(last && trackMeters({ lat:last[0], lon:last[1] }, pt) < WALK_MIN_METERS) return;
+          const pt = acceptFix(walkFilter, pos, WALK_MIN_METERS);
+          if(!pt) return;
           state.vertices.push([pt.lat, pt.lon]);
           if(map) redrawPolygon();
           footForPolygonWalk();
@@ -6264,9 +6552,14 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
           setStatus("Walking the boundary — "+n+" point"+(n===1?"":"s")+" recorded"+(n<3?" (need at least 3)":"")+". Tap “Finish” once you're back near your starting point.");
         },
         ()=>{ /* a transient GPS error just means no new corner for now — walking stays "on" */ },
-        { enableHighAccuracy:true, maximumAge:3000, timeout:20000 }
+        { enableHighAccuracy:true, maximumAge:0, timeout:20000 }
       );
     }
+    document.addEventListener("visibilitychange", ()=>{
+      if(document.hidden || !state || !state.walking || walkWatchId==null) return;
+      walkFilter.skip = 2; walkFilter.cand = null;
+      beginWalkWatch();
+    });
     function stopWalking(){
       if(walkWatchId!=null && window.navigator && navigator.geolocation && navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(walkWatchId);
       walkWatchId = null;
@@ -6512,7 +6805,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         const cz = computeOverviewCenterZoom(coords);
         if(cz){ initial = cz.center; overviewZoom = cz.zoom; }
       }
+      const openedState = state;
       setTimeout(()=>{
+        if(state !== openedState || !overlay) return;   // closed or reopened before this ran
         if(opts.mode==="overview"){
           showCrosshair(false);
           if(initial){
@@ -6545,7 +6840,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
           ensureMap(-37.0, 144.0, 7);
           if(window.navigator && navigator.geolocation && navigator.geolocation.getCurrentPosition){
             navigator.geolocation.getCurrentPosition(
-              pos=>{ if(map) ensureMap(pos.coords.latitude, pos.coords.longitude, 19); },
+              pos=>{ if(map && state === openedState) ensureMap(pos.coords.latitude, pos.coords.longitude, 19); },
               ()=>{ /* no fix yet — stays on the wide view; the live walk watch keeps working regardless */ },
               { enableHighAccuracy:true, timeout:12000, maximumAge:60000 }
             );
@@ -6706,7 +7001,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const name = (sp.sci || sp.common || "").trim(); if(!name) return;
       if(items.some(n=>n.toLowerCase()===name.toLowerCase())){ FHKit.toast(name+" is already in this polygon"); return; }
       items.push(name); draw(); onChange(items.slice());
-    });
+    }, ()=> items);
     draw();
   }
   function renderPolygons(){
@@ -6778,6 +7073,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     up: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.4 15.4 12 10.8l4.6 4.6L18 14l-6-6-6 6z"/></svg>',
     down: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg>',
     note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>',
+    camera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM9 2 7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
     photo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/></svg>',
     ext: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.6l-9.8 9.8 1.4 1.4L19 6.4V10h2V3h-7z"/></svg>',
     trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>'
@@ -6859,11 +7156,62 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       + '<div class="row-photos">'
       + '<label class="detail-label">Photos <span class="muted" style="text-transform:none;font-weight:600">— stamped with '+FHKit.esc(r.id||"")+'</span></label>'
       + '<div class="photo-grid">'+photoThumbs+'</div>'
-      + '<input type="file" accept="image/*" multiple style="display:none" data-photo-input="'+FHKit.esc(r.id)+'">'
-      + '<button type="button" class="btn-out sp-addphoto" data-add-photo="'+FHKit.esc(r.id)+'">'+SP_ICON.photo+'Add photos</button>'
+      + '<input type="file" accept="image/*" capture="environment" class="file-hidden" tabindex="-1" data-photo-input="'+FHKit.esc(r.id)+'" data-cam="1">'
+      + '<input type="file" accept="image/*" multiple class="file-hidden" tabindex="-1" data-photo-input="'+FHKit.esc(r.id)+'">'
+      + '<div class="photo-btns"><button type="button" class="btn-out sp-addphoto" data-take-photo="'+FHKit.esc(r.id)+'">'+SP_ICON.camera+'Take photo</button>'
+      + '<button type="button" class="btn-out sp-addphoto" data-add-photo="'+FHKit.esc(r.id)+'">'+SP_ICON.photo+'Choose photos</button></div>'
       + '</div></div>';
-    const foot = '<div class="sp-foot"><button type="button" class="sp-del" data-del="'+FHKit.esc(r.id)+'">'+SP_ICON.trash+'Delete species</button></div>';
+    const foot = '<div class="sp-foot" style="justify-content:space-between">'
+      + '<button type="button" class="sp-del sp-edit" data-edit-rec="'+FHKit.esc(r.id)+'">'+SP_ICON.edit+'Edit record</button>'
+      + '<button type="button" class="sp-del" data-del="'+FHKit.esc(r.id)+'">'+SP_ICON.trash+'Delete species</button></div>';
     return '<div class="species-row full'+(r.uncertain?' uncertain':'')+'" data-row-id="'+FHKit.esc(r.id)+'">'+head+notesRow+foot+'</div>';
+  }
+  // Edit a logged species record: fix the name, origin or conservation status
+  // without deleting and re-adding it (which would lose its photos, notes and
+  // location). Search to swap in a different VicFlora species, or edit the
+  // fields by hand.
+  function openEditRecord(id){
+    const idx = rowIndexById(id); if(idx<0) return;
+    const r = rows[idx];
+    const ov = document.createElement("div"); ov.className = "fh-modal";
+    const e = FHKit.esc;
+    ov.innerHTML = '<div class="fh-modal-card"><h3>Edit record</h3><div class="edit-rec">'
+      + '<p class="muted" style="margin:0 0 10px">Record '+e(r.id||"")+'. Photos, notes and locations stay attached.</p>'
+      + '<label for="erSearch">Swap species (search VicFlora)</label>'
+      + '<div class="pick" style="position:relative;margin:0 0 12px"><input id="erSearch" type="text" placeholder="Search to replace this species" autocomplete="off"><div class="pick-list inline" id="erList"></div></div>'
+      + '<label for="erSci">Scientific name</label><input id="erSci" type="text" value="'+e(r.sci)+'" autocomplete="off">'
+      + '<label for="erCommon">Common name</label><input id="erCommon" type="text" value="'+e(r.common||"")+'" autocomplete="off">'
+      + '<label for="erType">Origin</label><select id="erType"><option value="indigenous"'+(r.type!=="invasive"?" selected":"")+'>Indigenous</option><option value="invasive"'+(r.type==="invasive"?" selected":"")+'>Invasive</option></select>'
+      + '<div class="er-two"><div><label for="erFfg">FFG</label><input id="erFfg" type="text" value="'+e(r.ffg||"")+'" autocomplete="off"></div>'
+      + '<div><label for="erEpbc">EPBC</label><input id="erEpbc" type="text" value="'+e(r.epbc||"")+'" autocomplete="off"></div></div>'
+      + '</div><div class="fh-modal-foot"><button class="ghost" data-close="1">Cancel</button><button class="btn" id="erSave">Save changes</button></div></div>';
+    document.body.appendChild(ov);
+    const $o = s=>ov.querySelector(s);
+    ov.addEventListener("click", ev=>{ if(ev.target===ov || ev.target.dataset.close) ov.remove(); });
+    FHKit.buildPicker($o("#erSearch"), $o("#erList"), sp=>{
+      $o("#erSci").value = sp.sci || ""; $o("#erCommon").value = sp.common || sp.sci || "";
+      $o("#erType").value = sp.type==="invasive" ? "invasive" : "indigenous";
+      $o("#erFfg").value = sp.ffg || ""; $o("#erEpbc").value = sp.epbc || "";
+      r.__erFree = !!sp.free;
+    }, ()=> rows.filter(x=>x!==r).map(x=>x.sci));
+    $o("#erSave").addEventListener("click", ()=>{
+      const sci = $o("#erSci").value.trim();
+      if(!sci){ FHKit.toast("Scientific name can't be empty"); return; }
+      const i = rowIndexById(id); if(i<0){ ov.remove(); return; }
+      const cur = rows[i];
+      const changedName = sci !== cur.sci;
+      cur.sci = sci;
+      cur.common = $o("#erCommon").value.trim() || sci;
+      cur.type = $o("#erType").value;
+      cur.ffg = $o("#erFfg").value.trim();
+      cur.epbc = $o("#erEpbc").value.trim();
+      if(changedName) cur.free = !!cur.__erFree;
+      delete cur.__erFree;
+      ov.remove();
+      render(); autosave();
+      liveSyncField(cur, { sci:cur.sci, common:cur.common, type:cur.type, ffg:cur.ffg, epbc:cur.epbc, free:!!cur.free });
+      FHKit.toast("Record updated");
+    });
   }
   function render(){
     applySurveyState();
@@ -6886,6 +7234,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // user whether to email/share both together or just download them.
   // Turns free text into something safe to use as a filename on any OS
   // (strips characters Windows/macOS/Linux all forbid, collapses whitespace).
+  function ROWS_NOW(){ return rows; }   // current survey's rows (buildPhotoFiles shadows `rows` with its own list)
   function fileSafe(s){
     return String(s||"").trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g," ").trim();
   }
@@ -6905,7 +7254,14 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
   }
   async function exportSurveyInner(){
-    const m = meta();
+    const parts = await buildSurveyParts({ m:meta(), rows:rows, polygons:polygons, siteNotes:siteNotes });
+    showExportChooser(parts);
+  }
+  // Builds every export file for ONE survey from the data passed in (the open
+  // survey, or a saved one for Export all). D: { m:{site,date}, rows, polygons,
+  // siteNotes, skipPhotos }.
+  async function buildSurveyParts(D){
+    const m = D.m, rows = D.rows || [], polygons = D.polygons || [], siteNotes = D.siteNotes || [];
     const sheet = [], styles = [];
     const push = (cells, style) => { sheet.push(cells); styles.push(style||null); };
 
@@ -6950,7 +7306,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     // Photos and GIS data (the point + polygon GeoPackages) now go in two
     // SEPARATE zip files rather than one combined zip — GIS software expects
     // to be pointed at a folder of spatial data, not one full of photos too.
-    const photoFiles = await buildPhotoFiles();
+    const photoFiles = D.skipPhotos ? {} : await buildPhotoFiles(rows);
     const hasPhotos = Object.keys(photoFiles).length > 0;
     const geoPoints = rows
       .filter(r=> r.significant && Array.isArray(r.points))
@@ -6999,9 +7355,67 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const photoZipBlob = hasPhotos ? FHKit.buildZipBlob(photoFiles) : null;
     const photoZipFilename = baseName+" photos.zip";
 
-    showExportChooser({
+    return {
       xlsxBlob, xlsxFilename, gisBlob, gisFilename, photoZipBlob, photoZipFilename,
-      site:m.site, date:m.date, hasPhotos, hasPoints:pointsIncluded, hasPolygons:polygonsIncluded
+      site:m.site, date:m.date, hasPhotos, hasPoints:pointsIncluded, hasPolygons:polygonsIncluded,
+      baseName, gisFiles, photoFiles, geoPoints: pointsIncluded ? geoPoints : [], polys: polygonsIncluded ? polygons : []
+    };
+  }
+
+  // ── Export all: every survey in the Saved folder (plus the open one) in a
+  // single zip. One folder per survey (Excel + GIS layers, photos optional),
+  // plus combined GeoPackages with every point and polygon from all of them.
+  async function exportAllSurveys(){
+    const folder = getFolder();
+    const items = Object.keys(folder).map(k=>({ key:k, snap:folder[k] }));
+    // The survey open on screen may have unsaved changes: use its live state.
+    if(surveyStarted){
+      const live = snapshot();
+      const i = items.findIndex(x=>x.key===live.folderKey);
+      if(i>=0) items[i] = { key:live.folderKey, snap:live }; else items.push({ key:live.folderKey, snap:live });
+    }
+    const usable = items.filter(x=> x.snap && ((x.snap.species||[]).length || (x.snap.polygons||[]).length || (x.snap.siteNotes||[]).length));
+    if(!usable.length){ FHKit.notice("Nothing to export", "There are no saved surveys yet. Save or finish a survey first, then Export all will include it.", "warn"); return; }
+    const ov = document.createElement("div"); ov.className="fh-modal";
+    ov.innerHTML = '<div class="fh-modal-card"><h3>Export all surveys</h3><div style="padding:16px 18px">'
+      + '<p class="muted" style="margin:0 0 12px">'+usable.length+' survey'+(usable.length===1?"":"s")+' will go into one zip: an Excel file and GIS layers for each, plus combined GIS layers covering all of them.</p>'
+      + '<label style="display:flex;align-items:center;gap:10px;margin:0 0 14px;text-transform:none;letter-spacing:0;font-size:13.5px;font-weight:600;color:var(--ink)"><input type="checkbox" id="expAllPhotos" style="width:auto"> Include photos (makes the file much larger)</label>'
+      + '<button type="button" class="btn" id="expAllGo" style="width:100%">Build zip</button>'
+      + '<p class="muted" id="expAllMsg" style="margin:10px 0 0"></p></div>'
+      + '<div class="fh-modal-foot"><button class="ghost" data-close="1">Close</button></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener("click", e=>{ if(e.target===ov || e.target.dataset.close) ov.remove(); });
+    ov.querySelector("#expAllGo").addEventListener("click", async ()=>{
+      const go = ov.querySelector("#expAllGo"), msg = ov.querySelector("#expAllMsg");
+      go.disabled = true;
+      const withPhotos = ov.querySelector("#expAllPhotos").checked;
+      try{
+        const files = {}, used = new Set(), allPts = [], allPolys = [];
+        let n = 0;
+        for(const it of usable){
+          n++; msg.textContent = "Building "+n+" of "+usable.length+"...";
+          const s = it.snap, sm = s.meta || {};
+          const parts = await buildSurveyParts({ m:{ site:sm.site||"", date:sm.date||"" }, rows:s.species||[], polygons:s.polygons||[], siteNotes:s.siteNotes||[], skipPhotos:!withPhotos });
+          let dir = fileSafe(parts.baseName) || ("Survey "+n), k = 2;
+          while(used.has(dir.toLowerCase())) dir = fileSafe(parts.baseName)+" ("+(k++)+")";
+          used.add(dir.toLowerCase());
+          files[dir+"/"+dir+".xlsx"] = new Uint8Array(await parts.xlsxBlob.arrayBuffer());
+          Object.keys(parts.gisFiles).forEach(f=>{ files[dir+"/GIS/"+f] = parts.gisFiles[f]; });
+          if(withPhotos) Object.keys(parts.photoFiles).forEach(f=>{ files[dir+"/photos/"+f] = parts.photoFiles[f]; });
+          parts.geoPoints.forEach(p=> allPts.push(Object.assign({}, p, { sci: p.sci })));
+          (parts.polys||[]).forEach(pg=> allPolys.push(Object.assign({}, pg, { site:sm.site||"", date:sm.date||"" })));
+        }
+        if(allPts.length){ try{ files["ALL SURVEYS/all_species_points.gpkg"] = FHKit.buildGeoPackageBytes({ tableName:"species_points", identifier:"All surveys - points", description:"Species points from every saved survey.", points:allPts }); }catch(e){} }
+        if(allPolys.length){ try{ files["ALL SURVEYS/all_species_polygons.gpkg"] = FHKit.buildPolygonGeoPackageBytes({ tableName:"species_polygons", identifier:"All surveys - polygons", description:"Species polygons from every saved survey (site and date per polygon).", polygons:allPolys }); }catch(e){} }
+        const zip = FHKit.buildZipBlob(files);
+        const name = "Flora Survey - all surveys - "+FHKit.today()+".zip";
+        msg.textContent = "Done.";
+        FHKit.triggerDownload(zip, name);
+        FHKit.toast("Exported "+usable.length+" survey"+(usable.length===1?"":"s"));
+        ov.remove();
+      }catch(e){
+        go.disabled = false; msg.textContent = "Export failed: "+(e&&e.message||e);
+      }
     });
   }
   // Lets the user pick "Email / Share" (OS share sheet — e.g. Mail, with the
@@ -7104,10 +7518,11 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       r.significant = e.target.checked;
       render(); autosave();
       liveSyncField(r, {significant:r.significant});
-      // Flagging significant used to jump straight into the map, which was
-      // jarring mid-list. Now it just reveals "Set location" (and nudges).
+      // Flagging significant opens the map straight away to set the location
+      // (it can be cancelled and set later from "Set location").
       // Unchecking hides the points line; anything captured is kept.
-      if(r.significant && !(r.points && r.points.length)) FHKit.toast("Tap Set location to pin where it is");
+      // Opens the map straight away so the spot can be set (or adjusted).
+      if(r.significant && !(r.points && r.points.length)) setTimeout(()=>{ const i = rowIndexById(sg); if(i>=0) captureLocation(i); }, 150);
     }
     else if(pi!=null && pi!==""){
       const idx = rowIndexById(pi); if(idx<0) return;
@@ -7168,7 +7583,11 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       return;
     }
     const addP = e.target.closest("[data-add-photo]");
-    if(addP){ const id = addP.dataset.addPhoto; const input = $("tbody").querySelector('input[data-photo-input="'+CSS.escape(id)+'"]'); if(input) input.click(); return; }
+    if(addP){ const id = addP.dataset.addPhoto; const input = $("tbody").querySelector('input[data-photo-input="'+CSS.escape(id)+'"]:not([data-cam])'); if(input) input.click(); return; }
+    const camP = e.target.closest("[data-take-photo]");
+    if(camP){ const id = camP.dataset.takePhoto; const input = $("tbody").querySelector('input[data-photo-input="'+CSS.escape(id)+'"][data-cam]'); if(input) input.click(); return; }
+    const editRec = e.target.closest("[data-edit-rec]");
+    if(editRec){ openEditRecord(editRec.dataset.editRec); return; }
     const delP = e.target.dataset.delPhoto;
     if(delP){
       const sep = delP.indexOf("|");
@@ -7454,6 +7873,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     +     menuItem("fhVicKey", "vickey", "VicKey")
     +     menuItem("fhOffline", "cloud", "Offline VicFlora")
     +     menuItem("fhExport", "export", "Export")
+    +     menuItem("fhExportAll", "export", "Export all")
     +     menuItem("fhSave", "save", "Save")
     +     menuItem("fhTheme", "moon", "Dark mode")
     +     menuItem("fhCheckUpdate", "refresh", "Check for updates")
@@ -7502,6 +7922,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   bar.querySelector("#fhOffline").onclick = menuAct(()=> window.VFOffline && window.VFOffline.openUI());
   bar.querySelector("#fhSave").onclick   = menuAct(saveToFolder);
   bar.querySelector("#fhExport").onclick = menuAct(exportSurvey);
+  bar.querySelector("#fhExportAll").onclick = menuAct(exportAllSurveys);
   // Dark / light toggle. The head script already applied the saved choice (or
   // the phone's setting); tapping here saves an explicit choice.
   const fhTheme = bar.querySelector("#fhTheme");
@@ -7525,7 +7946,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     // "updated" needs no toast — showUpdateBanner() puts up its own.
   });
 
-  FHKit.buildPicker($("pick"), $("pickList"), add);
+  FHKit.buildPicker($("pick"), $("pickList"), add, ()=> rows.map(r=>r.sci));
   $("startSurveyBtn").addEventListener("click", startSurvey);
   $("homeList").addEventListener("click", e=>{
     if(e.target.closest("[data-home-all]")){ homeShowAll = true; renderHome(); return; }

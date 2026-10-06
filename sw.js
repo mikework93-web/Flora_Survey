@@ -4,14 +4,14 @@
    - Images, Leaflet and map tiles are saved as they are used.
    - Data calls (Firebase team sync, VicFlora, KeyBase) are never touched here.
    Bump CACHE when the list of saved files changes. */
-const CACHE = "keystone-shell-v1";
+const CACHE = "keystone-shell-v2";
 const TILES = "keystone-tiles-v1";
 const MAX_TILES = 3000;
 const LEAFLET = "https://unpkg.com/leaflet@1.9.4/dist/";
 const SHELL = ["index.html", "logo.png", "favicon-16.png", "favicon-32.png", "apple-touch-icon.png", "draggy-sm.png"];
 const CDN = [LEAFLET + "leaflet.css", LEAFLET + "leaflet.js", LEAFLET + "images/layers.png", LEAFLET + "images/layers-2x.png",
   LEAFLET + "images/marker-icon.png", LEAFLET + "images/marker-icon-2x.png", LEAFLET + "images/marker-shadow.png"];
-const TILE_HOSTS = ["tile.openstreetmap.org", "arcgisonline.com", "maps.vic.gov.au", "basemaps.cartocdn.com", "opentopomap.org"];
+const TILE_HOSTS = ["tile.openstreetmap.org", "arcgisonline.com", "maps.vic.gov.au", "basemaps.cartocdn.com", "opentopomap.org", "mt0.google.com", "mt1.google.com", "mt2.google.com", "mt3.google.com"];
 const PAGE_KEY = new URL("index.html", self.registration.scope).href;
 
 self.addEventListener("install", (e) => {

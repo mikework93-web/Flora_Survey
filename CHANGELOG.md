@@ -2,6 +2,18 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## Field fixes and features (2026-10-06)
+- **Map crash fixed:** reshaping a polygon (dragging or adding a corner) rebuilt the corner handles in the middle of the drag, and a timer could fire after the map had closed. Both are now safe.
+- **Camera:** each species now has separate **Take photo** (opens the camera) and **Choose photos** (gallery) buttons. The hidden file inputs no longer use display:none, which some Android versions ignored.
+- **Polygon and point exports are now GDA2020** (EPSG:7844) instead of WGS 84. Coordinates are not shifted; GPS positions are used as recorded (GDA2020 and WGS 84 differ by well under a metre at current dates, within normal phone GPS error).
+- **Google Satellite** added to the map layers.
+- **Significant** now opens the map straight away to set the location. Cancel it to set the location later.
+- **GPS tracking and boundary walking are steadier:** poor or stale fixes are ignored, movement smaller than the GPS error is ignored, sudden leaps need a second fix to confirm, and the GPS restarts cleanly when you return to the app.
+- **Search:** species already in the survey (or polygon) are highlighted green with an Added tag. Search now forgives a typo or two, matches common names as well as botanical names, and also uses the offline VicFlora data when downloaded.
+- **Import and merge fixed:** spreadsheets saved or edited in Excel (compressed, shared strings) now import. Old .xls files give a clear message to Save As .xlsx.
+- **Export all** (Menu): one zip with every saved survey (Excel + GIS layers each, photos optional) plus combined GeoPackages of all points and polygons.
+- **Edit record:** each species card has Edit record to fix the name, common name, origin, FFG and EPBC, or swap in another VicFlora species, keeping photos, notes and locations. Changes sync to Team Sync.
+
 ## Works offline (new)
 - **The app now opens and runs with no signal.** A service worker (`sw.js`, next to `index.html`) saves the app, its images, the map library and the map tiles you have looked at. The page is still fetched fresh first when there is signal, so updates keep arriving.
 - **Syncs when signal returns:** the app says when you go offline and come back, then sends queued Team Sync changes, pulls the team's, and checks for a new version. Entries are always saved on the phone first.
