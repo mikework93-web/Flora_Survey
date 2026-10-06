@@ -28,7 +28,7 @@ Propose big structural moves before doing them.
 - **No em dashes in text you write** (Lani's standing rule). Some of Mike's existing prose still has them; cleaning those up is a nice-to-have, not done yet.
 - **Keep human judgement** — don't auto-decide native/invasive or auto-ID species.
 - Test by serving locally (`npx serve -l <port>` in the repo) and driving it in a browser; check the console is clean; then push.
-- **There is no service worker** (deliberately removed). A block near the end of the script actively unregisters any SW + clears `keystone-*` caches, so don't re-add one without a reason.
+- **Service worker `sw.js` (re-added 2026-10-06, replaces the earlier "no SW" decision).** Page = network first with 6s timeout then saved copy (so BUILD_VERSION checks still see new versions); images/css/js stale-while-revalidate; Leaflet (unpkg) cache first; map tiles cache first (max 3000, `keystone-tiles-v1`); Firebase, VicFlora, KeyBase and `/api/` are never intercepted. Bump `CACHE` in sw.js if the saved file list changes. An `online` handler flushes the live queue, pulls the team's species and checks for updates.
 
 ## Key functions / where things live
 - `MapModal` (~3900): `open`, `build`, `footForPoint/Polygon/Overview`, `renderOverviewLayers`, `returnToOverview`, `showSpeciesSheet`, `confirmCurrentLocation`. The sheet + scrim sit at card level so the sheet fully hides and the scrim covers the footer.
@@ -58,6 +58,12 @@ Propose big structural moves before doing them.
 - Uses `FHVicFlora.query(query, vars, timeoutMs)` (new export) for GraphQL. Keys are fetched from KeyBase JSON at `https://data.rbg.vic.gov.au/keybase-ws/ws/key_get/<keyId>` (VicFlora key ids match). Leads have parent_id, lead_id, lead_text, item; couplet numbers are assigned in order down the key. Split = first lead where the two routes differ.
 - Descriptions are one prose string (`currentProfile.profile`); `parseProfile` groups sentences by their first word (Culms, Leaves, Fruit...).
 - If KeyBase blocks browser requests (CORS) the key section shows a fallback message with links; descriptions still work.
+
+## Offline VicFlora
+- `VFOffline` (own script block before VicKey). IndexedDB `fh_vicflora_offline`: stores taxa (light record with parent, rank, names, keys), profiles (description text), keys (KeyBase JSON), meta (resume state).
+- Download walks the classification top down with GraphQL `children` (genus requests include species and infraspecific children), then fetches each key from KeyBase (direct, `/api/key/<id>` relay, public relays). Resumable via meta.queue / meta.seenKeys.
+- When finished, `FHVicFlora.search` and VicKey read from it first and fall back to online. Photos are never stored.
+- Untested against the full live dataset (the build sandbox cannot reach VicFlora). The service worker saves the app page on first visit, so open the app once online before going into the field.
 
 ## Done so far
 See `CHANGELOG.md` for the plain-English list. Technically: pulled the trial service worker; renamed to index.html; fixed the finish-polygon jank (auto-focus keyboard squash, stuck sheet, stacked footer, duplicate hint); clear ✕ exit; removed the redundant confirm tick; required a name before logging; recoloured the update banner to a bottom bar + added the Menu check; fixed the mobile join-code line; squared all corners; whitened field/empty/summary boxes; darkened Start/Join; distinct "Adjust shape" button; renamed Checklist → Recorded species; shortened the search placeholder + help text; menu Back-button guard; extracted base64 images to PNGs.

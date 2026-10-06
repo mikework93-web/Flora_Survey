@@ -2,6 +2,17 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## Works offline (new)
+- **The app now opens and runs with no signal.** A service worker (`sw.js`, next to `index.html`) saves the app, its images, the map library and the map tiles you have looked at. The page is still fetched fresh first when there is signal, so updates keep arriving.
+- **Syncs when signal returns:** the app says when you go offline and come back, then sends queued Team Sync changes, pulls the team's, and checks for a new version. Entries are always saved on the phone first.
+- Offline VicFlora data older than a month prompts you to update it when you are back online.
+- Map tiles only work offline for areas you have already viewed.
+
+## Offline VicFlora (new)
+- **Menu > Offline VicFlora** downloads VicFlora onto the device: every taxon's name, common name, status and description, plus every identification key. No photos.
+- Once finished, the survey species search, VicKey descriptions and VicKey key splits all work with no signal. Without the download everything works online as before.
+- The download is resumable, shows progress, and can be updated or removed from the same screen.
+
 ## VicKey (new)
 - **New VicKey tool** in the Menu and as a tile on the home screen. It compares two species, two genera or two families using VicFlora.
 - **Species:** search a species, then pick another from the same genus. Shows their VicFlora descriptions side by side (leaves, culms, fruit and so on) and the step in the genus key where they separate.
