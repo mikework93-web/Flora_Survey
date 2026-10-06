@@ -7,6 +7,7 @@ Changes made to this copy of the app (started from your `Flora_Survey`). Plain-E
 - **Species:** search a species, then pick another from the same genus. Shows their VicFlora descriptions side by side (leaves, culms, fruit and so on) and the step in the genus key where they separate.
 - **Genus:** search a genus, then pick another from the same family. Shows the step in the family's genus key where they split.
 - **Family:** search two families. Shows their descriptions side by side and the step in the families key where they split.
+- **VicKey close button fixed:** the header now sits below the phone's status bar and notch, so the X is always reachable.
 - **Feature table now sorted by botanical category** (habit and size, stems and culms, bark, leaves, ligules and sheaths, hairs, inflorescence, flowers, fruit and seeds, flowering time, distribution, similar species). Each phrase is filed by the plant part it describes, not by its first word.
 - **Key split fix:** VicKey now picks the right key by rank (genus key for species, family key for genera) and shows the exact step where two taxa part ways, for example Allocasuarina paludosa vs A. paradoxa at Step 4, branchlet ribs with or without a median groove. If a taxon is keyed in more than one place it shows the earliest separating step.
 - Descriptions come from VicFlora. Keys come from KeyBase, the key engine behind VicFlora. Needs a connection, and nothing is saved.
