@@ -2,6 +2,13 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## VicKey (new)
+- **New VicKey tool** in the Menu and as a tile on the home screen. It compares two species, two genera or two families using VicFlora.
+- **Species:** search a species, then pick another from the same genus. Shows their VicFlora descriptions side by side (leaves, culms, fruit and so on) and the step in the genus key where they separate.
+- **Genus:** search a genus, then pick another from the same family. Shows the step in the family's genus key where they split.
+- **Family:** search two families. Shows their descriptions side by side and the step in the families key where they split.
+- Descriptions come from VicFlora. Keys come from KeyBase, the key engine behind VicFlora. Needs a connection, and nothing is saved.
+
 ## Map
 - **Fixed the page squashing after finishing a polygon** — the species box no longer grabs focus and pops the keyboard.
 - **Fixed the species panel getting stuck** at the bottom of the map when dismissed.

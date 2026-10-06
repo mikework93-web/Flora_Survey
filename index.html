@@ -791,6 +791,57 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
   padding-right:max(14px, env(safe-area-inset-right, 0px))}
 .map-rail{right:max(10px, env(safe-area-inset-right, 0px))}
 .map-layer-menu{right:calc(max(10px, env(safe-area-inset-right, 0px)) + 58px)}
+/* ---- VicKey: VicFlora comparison tool ---- */
+.vk-overlay{position:fixed;inset:0;z-index:9000;background:var(--page);color:var(--ink);display:flex;flex-direction:column;font-family:var(--sans)}
+.vk-head{flex:none;display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--charcoal-deep);color:var(--gold-light)}
+.vk-head b{flex:1;font-size:16px;letter-spacing:.4px}
+.vk-head small{display:block;font-size:11.5px;font-weight:400;color:#cfcdc4;letter-spacing:0}
+.vk-x{flex:none;width:40px;height:40px;border:1px solid rgba(255,255,255,.3);border-radius:3px;background:transparent;color:#fff;font-size:20px;line-height:1;cursor:pointer}
+.vk-tabs{flex:none;display:flex;background:var(--cream);border-bottom:1px solid var(--border)}
+.vk-tab{flex:1;min-height:46px;border:0;border-bottom:3px solid transparent;background:transparent;color:var(--muted);font:700 14px var(--sans);cursor:pointer}
+.vk-tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--gold-dark);background:var(--card)}
+.vk-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 12px 40px;max-width:980px;width:100%;margin:0 auto}
+.vk-intro{margin:0 0 12px;font-size:13px;color:var(--muted);line-height:1.45}
+.vk-pick{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+@media(max-width:560px){.vk-pick{grid-template-columns:1fr}}
+.vk-col{position:relative;min-width:0}
+.vk-col label{display:block;margin:0 0 4px}
+.vk-col select{min-height:40px}
+.vk-list{display:none;position:absolute;left:0;right:0;top:calc(100% + 2px);z-index:5;background:var(--field);border:1px solid var(--border);border-radius:3px;max-height:260px;overflow-y:auto;box-shadow:var(--shadow)}
+.vk-list.show{display:block}
+.vk-opt{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line-soft);background:var(--field);color:var(--ink);padding:9px 12px;font:14px var(--sans);cursor:pointer;min-height:44px}
+.vk-opt i{font-style:italic}
+.vk-opt small{display:block;color:var(--muted);font-size:11.5px}
+.vk-note{padding:9px 12px;font-size:12.5px;color:var(--muted)}
+.vk-chosen{margin:6px 0 0;font-size:12.5px;color:var(--muted)}
+.vk-chosen b{font-style:italic;color:var(--ink)}
+.vk-status{margin:18px 0;padding:14px;border:1px solid var(--border);border-radius:3px;background:var(--cream);font-size:13.5px;color:var(--ink)}
+.vk-status.err{border-color:var(--red-line);background:var(--red-bg)}
+.vk-h{margin:22px 0 8px;font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--gold-dark)}
+.vk-vs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0 4px}
+.vk-vs a{display:block;padding:10px 12px;border:1px solid var(--border);border-top:3px solid var(--gold-dark);border-radius:3px;background:var(--card);color:var(--ink);font-style:italic;font-weight:700;font-size:15px;text-decoration:none;overflow-wrap:anywhere}
+.vk-vs a small{display:block;font-style:normal;font-weight:400;font-size:11.5px;color:var(--muted)}
+.vk-tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:3px;background:var(--field)}
+.vk-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px;line-height:1.45}
+.vk-table th,.vk-table td{padding:8px 10px;border-bottom:1px solid var(--line-soft);vertical-align:top;text-align:left;overflow-wrap:anywhere}
+.vk-table thead th{background:var(--charcoal);color:var(--gold-light);font-size:12px;font-style:italic;position:sticky;top:0}
+.vk-table thead th:first-child{font-style:normal}
+.vk-table tbody th{width:22%;font-size:11.5px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);background:var(--row-alt)}
+.vk-table tr.same td{color:var(--muted)}
+.vk-table tr.diff td{color:var(--ink)}
+.vk-table td.none{color:var(--muted);font-style:italic}
+.vk-split th.stepcell{width:22%}
+.vk-stepno{display:inline-block;margin-right:6px;padding:1px 7px;border-radius:3px;background:var(--gold-dark);color:var(--on-gold);font-weight:800;font-size:12px}
+.vk-keyline{margin:0 0 8px;font-size:13px}
+.vk-keyline a{color:var(--gold-dark);font-weight:700}
+.vk-tog{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:13px;color:var(--ink);text-transform:none;letter-spacing:0;font-weight:600}
+.vk-tog input{width:auto}
+.vk-path{margin:10px 0 0;border:1px solid var(--border);border-radius:3px;background:var(--field)}
+.vk-path summary{padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer;color:var(--ink)}
+.vk-path ol{margin:0;padding:0 12px 10px 12px;list-style:none;font-size:13px;line-height:1.45}
+.vk-path li{padding:6px 0;border-top:1px solid var(--line-soft)}
+.vk-foot{margin:22px 0 0;font-size:11.5px;color:var(--muted)}
+.vk-foot a{color:var(--gold-dark)}
 </style>
 <!-- Aerial imagery map (for precise point placement/adjustment and polygon
      drawing — see MapModal). Loaded with no integrity/crossorigin hash: a
@@ -822,6 +873,7 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
       <button type="button" class="home-import" id="homeImport">Import an exported survey</button>
     </div>
     <button type="button" class="home-tile" id="homeJoin"><svg class="ht-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.3 0-7 1.2-7 3.5V19h14v-2.5C15 14.2 10.3 13 8 13zm8 0c-.3 0-.6 0-1 .1 1.2.8 2 2 2 3.4V19h6v-2.5c0-2.3-4.7-3.5-7-3.5z"/></svg><span class="ht-txt"><b>Join a team survey</b><small>Use the code a teammate shares</small></span><svg class="ht-go" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z"/></svg></button>
+    <button type="button" class="home-tile" id="homeVicKey"><svg class="ht-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.01 14H2v2h7.01v3L13 15l-3.99-4v3zm5.98-1v-3H22V8h-7.01V5L11 9l3.99 4z"/></svg><span class="ht-txt"><b>VicKey</b><small>Compare species, genera or families in VicFlora</small></span><svg class="ht-go" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z"/></svg></button>
     <button type="button" class="home-tile" id="homeHow" aria-expanded="false"><svg class="ht-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg><span class="ht-txt"><b>How it works</b><small>Four steps, start to finish</small></span><svg class="ht-go ht-toggle" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></button>
     <div class="home-panel" id="homeHowPanel" hidden>
       <ol class="how-steps">
@@ -1083,10 +1135,10 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
 
   // Same GET-then-POST-with-timeout shape as gql() above, but for an
   // arbitrary query + variables rather than the fixed autocomplete QUERY.
-  function gqlAny(method, query, variables) {
+  function gqlAny(method, query, variables, timeoutMs) {
     var url, opts;
     var controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
-    var timeoutId = controller && setTimeout(function () { controller.abort(); }, GQL_TIMEOUT_MS);
+    var timeoutId = controller && setTimeout(function () { controller.abort(); }, timeoutMs || GQL_TIMEOUT_MS);
     if (method === "GET") {
       url = ENDPOINT + "?query=" + encodeURIComponent(query) +
             "&variables=" + encodeURIComponent(JSON.stringify(variables));
@@ -1109,10 +1161,10 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
     }).finally(function () { if (timeoutId) clearTimeout(timeoutId); });
   }
 
-  function gqlAnyWithFallback(query, variables) {
-    return gqlAny("GET", query, variables).catch(function (err) {
+  function gqlAnyWithFallback(query, variables, timeoutMs) {
+    return gqlAny("GET", query, variables, timeoutMs).catch(function (err) {
       if (err && err.name === "AbortError") throw err;
-      return gqlAny("POST", query, variables);
+      return gqlAny("POST", query, variables, timeoutMs);
     });
   }
 
@@ -1155,7 +1207,478 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
       .catch(function () { return null; }); // network error/timeout — caller falls back
   }
 
-  window.FHVicFlora = { search: search, endpoint: ENDPOINT, lookupGenusKeyUrl: lookupGenusKeyUrl };
+  window.FHVicFlora = { search: search, endpoint: ENDPOINT, lookupGenusKeyUrl: lookupGenusKeyUrl, query: gqlAnyWithFallback };
+})();
+
+</script>
+<script>
+/* VicKey: compare two species, genera or families using VicFlora.
+   - Names, classification and descriptions come from the VicFlora GraphQL API.
+   - Identification keys come from KeyBase (the key engine behind VicFlora), which
+     returns each key as JSON: a list of leads (couplet halves) and the items they end at.
+   - Nothing here is saved or sent anywhere. It is read only. */
+(function () {
+  "use strict";
+  var KEY_WS = "https://data.rbg.vic.gov.au/keybase-ws/ws/key_get/";
+  var VF = "https://vicflora.rbg.vic.gov.au/flora/";
+  var MAX_KEY_FETCHES = 16;
+
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+
+  /* ---------- pure helpers (tested in node) ---------- */
+
+  // Light inline markup: keep italics, drop everything else.
+  function cleanText(s) {
+    s = String(s || "");
+    s = s.replace(/<\/?(i|em)>/gi, "*").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "");
+    s = s.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+    return s.replace(/\s+/g, " ").trim();
+  }
+  function inline(s) {
+    return esc(s).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\*([^*]+)\*/g, "<i>$1</i>").replace(/_([^_]+)_/g, "<i>$1</i>");
+  }
+
+  var LABELS = {
+    leaf: "Leaves", leaves: "Leaves", "leaf-blades": "Leaves", phyllodes: "Leaves", phyllode: "Leaves", fronds: "Fronds", frond: "Fronds",
+    culm: "Culms", culms: "Culms", stem: "Stems", stems: "Stems", branches: "Branches", branchlets: "Branchlets", twigs: "Branchlets",
+    inflorescence: "Inflorescence", inflorescences: "Inflorescence", spikelet: "Spikelets", spikelets: "Spikelets", spikes: "Spikes", spike: "Spikes",
+    flower: "Flowers", flowers: "Flowers", perianth: "Perianth", sepals: "Sepals", petals: "Petals", corolla: "Corolla", calyx: "Calyx",
+    stamens: "Stamens", anthers: "Anthers", style: "Style", styles: "Style", ovary: "Ovary", stigma: "Stigma",
+    fruit: "Fruit", fruits: "Fruit", utricles: "Fruit", utricle: "Fruit", nut: "Fruit", nuts: "Fruit", achenes: "Fruit", achene: "Fruit", capsule: "Fruit", capsules: "Fruit",
+    seeds: "Seeds", seed: "Seeds", ligule: "Ligule", ligules: "Ligule", sheath: "Sheaths", sheaths: "Sheaths", hairs: "Hairs", indumentum: "Hairs",
+    bracts: "Bracts", bract: "Bracts", glumes: "Glumes", lemma: "Lemma", lemmas: "Lemma", palea: "Palea", cones: "Cones", scales: "Scales",
+    rhizome: "Rhizome", roots: "Roots", bulb: "Bulb", tuber: "Tubers", tubers: "Tubers", habit: "Habit", herb: "Habit", herbs: "Habit",
+    shrub: "Habit", shrubs: "Habit", tree: "Habit", trees: "Habit", subshrub: "Habit", climber: "Habit", climbers: "Habit",
+    bark: "Bark", stipules: "Stipules", petiole: "Petiole", petioles: "Petiole", tepals: "Tepals", staminodes: "Staminodes", pappus: "Pappus", receptacle: "Receptacle",
+    florets: "Florets", floret: "Florets", fertile: "Fertile parts", sori: "Sori", sorus: "Sori", spores: "Spores", indusium: "Indusium"
+  };
+  function labelFor(word) {
+    var w = word.toLowerCase().replace(/[^a-z-]/g, "");
+    if (LABELS[w]) return LABELS[w];
+    return w ? w.charAt(0).toUpperCase() + w.slice(1) : "Other";
+  }
+
+  // VicFlora descriptions are prose: "Culms erect, ... Leaves ... Inflorescence ...".
+  // Split into sentences and group them under the organ word each one starts with.
+  function parseProfile(text) {
+    var t = cleanText(text);
+    var out = { order: [], map: {} };
+    if (!t) return out;
+    var parts = t.replace(/\.\s+(?=[A-Z][a-z])/g, ".\u0001").split("\u0001");
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i].trim();
+      if (!p) continue;
+      var m = p.match(/^\*?([A-Za-z-]+)/);
+      var label = m ? labelFor(m[1]) : "Other";
+      if (/^(Easily|Similar|Distinguished|Close|Often confused|Related)/.test(p)) label = "Compare with";
+      if (i === 0 && label === "Other") label = "General";
+      if (!out.map[label]) { out.map[label] = []; out.order.push(label); }
+      out.map[label].push(p);
+    }
+    return out;
+  }
+  function sameText(a, b) {
+    var n = function (x) { return (x || []).join(" ").toLowerCase().replace(/[^a-z0-9]/g, ""); };
+    return n(a) === n(b);
+  }
+  function featureRows(pa, pb) {
+    var labels = pa.order.slice();
+    pb.order.forEach(function (l) { if (labels.indexOf(l) < 0) labels.push(l); });
+    return labels.map(function (l) {
+      var a = pa.map[l] || null, b = pb.map[l] || null;
+      return { label: l, a: a, b: b, same: !!(a && b && sameText(a, b)) };
+    });
+  }
+
+  // KeyBase key JSON -> lookup tables. Couplets are numbered in the order they
+  // are met going down the key, which matches the numbering on the printed key.
+  function buildKey(json) {
+    var byParent = {}, items = {}, leadsById = {};
+    (json.leads || []).forEach(function (l) {
+      (byParent[l.parent_id] = byParent[l.parent_id] || []).push(l);
+      leadsById[l.lead_id] = l;
+    });
+    (json.items || []).forEach(function (it) { items[it.item_id] = it; });
+    var number = {}, n = 0;
+    (function walk(node) {
+      var kids = byParent[node];
+      if (!kids) return;
+      number[node] = ++n;
+      kids.forEach(function (k) { walk(k.lead_id); });
+    })(json.first_step && json.first_step.root_node_id);
+    return { id: String(json.key_id), title: json.key_title || "Key", root: json.first_step && json.first_step.root_node_id, byParent: byParent, items: items, number: number };
+  }
+
+  function itemMatches(item, taxon) {
+    if (!item || !taxon) return false;
+    if (taxon.id && item.url && String(item.url).toLowerCase().indexOf(String(taxon.id).toLowerCase()) >= 0) return true;
+    var a = String(item.item_name || "").toLowerCase().trim(), b = String(taxon.name || "").toLowerCase().trim();
+    return !!a && a === b;
+  }
+
+  // Find the route from the top of a key to a taxon, following sub-keys (to_key)
+  // when an item hands over to another key. getKey(id) resolves to a built key or null.
+  function findPath(key, taxon, getKey, depth) {
+    depth = depth || 0;
+    var found = null;
+    function walk(node, trail) {
+      var kids = key.byParent[node] || [];
+      var chain = Promise.resolve(null);
+      kids.forEach(function (lead) {
+        chain = chain.then(function (res) {
+          if (res) return res;
+          var step = { keyId: key.id, keyTitle: key.title, no: key.number[node], leadId: lead.lead_id, text: lead.lead_text };
+          var t = trail.concat([step]);
+          if (lead.item) {
+            var item = key.items[lead.item];
+            if (itemMatches(item, taxon)) return t;
+            if (item && item.to_key && depth < 4) {
+              return getKey(item.to_key).then(function (sub) {
+                if (!sub) return null;
+                return findPath(sub, taxon, getKey, depth + 1).then(function (p) { return p ? t.concat(p) : null; });
+              });
+            }
+            return null;
+          }
+          return walk(lead.lead_id, t);
+        });
+      });
+      return chain;
+    }
+    return walk(key.root, []);
+  }
+
+  // First point where two routes through the same key part ways.
+  function splitPoint(pa, pb) {
+    var i = 0;
+    while (i < pa.length && i < pb.length && pa[i].leadId === pb[i].leadId) i++;
+    if (i >= pa.length || i >= pb.length) return null;
+    return { index: i, a: pa[i], b: pb[i], shared: pa.slice(0, i) };
+  }
+
+  /* ---------- network ---------- */
+  function gql(query, vars) {
+    if (!window.FHVicFlora || !window.FHVicFlora.query) return Promise.reject(new Error("VicFlora client missing"));
+    return window.FHVicFlora.query(query, vars, 15000);
+  }
+  var keyCache = {};
+  var keyFetches = 0;
+  function getKey(id) {
+    id = String(id);
+    if (keyCache[id]) return keyCache[id];
+    if (keyFetches >= MAX_KEY_FETCHES) return Promise.resolve(null);
+    keyFetches++;
+    var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var to = ctrl && setTimeout(function () { ctrl.abort(); }, 15000);
+    var p = fetch(KEY_WS + encodeURIComponent(id), { headers: { "Accept": "application/json" }, signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { if (!r.ok) throw new Error("KeyBase HTTP " + r.status); return r.json(); })
+      .then(function (j) { return buildKey(j); })
+      .catch(function () { delete keyCache[id]; keyFetches--; return null; })
+      .then(function (k) { if (to) clearTimeout(to); return k; });
+    keyCache[id] = p;
+    return p;
+  }
+
+  var Q_AUTO = "query($q:String!){taxonConceptAutocomplete(q:$q){id taxonRank taxonomicStatus taxonName{fullName} preferredVernacularName{name}}}";
+  var Q_NODE = "query($id:ID!){taxonConcept(id:$id){id taxonRank taxonomicStatus taxonName{fullName} " +
+    "higherClassification{id taxonRank taxonName{fullName} identificationKeys{id title}} " +
+    "identificationKeys{id title} currentProfile{profile}}}";
+  var Q_KIDS = "query($id:ID!){taxonConcept(id:$id){children{id taxonRank taxonomicStatus taxonName{fullName}}}}";
+
+  function nm(t) { return (t && t.taxonName && t.taxonName.fullName) || ""; }
+  function norm(t) { return { id: t.id, name: nm(t), rank: t.taxonRank, status: t.taxonomicStatus }; }
+
+  function search(q, ranks) {
+    return gql(Q_AUTO, { q: q }).then(function (j) {
+      var arr = (j.data && j.data.taxonConceptAutocomplete) || [], out = [], seen = {};
+      arr.forEach(function (t) {
+        if (ranks.indexOf(t.taxonRank) < 0) return;
+        if (t.taxonomicStatus && t.taxonomicStatus !== "ACCEPTED") return;
+        var n = nm(t);
+        if (!n || seen[n]) return;
+        seen[n] = 1;
+        out.push({ id: t.id, name: n, rank: t.taxonRank, common: (t.preferredVernacularName && t.preferredVernacularName.name) || "" });
+      });
+      return out;
+    });
+  }
+  function node(id) {
+    return gql(Q_NODE, { id: id }).then(function (j) {
+      var t = j.data && j.data.taxonConcept;
+      if (!t) throw new Error("not found");
+      return t;
+    });
+  }
+  // Accepted children of one rank, looking through any in-between levels (e.g. sections).
+  function childrenOfRank(id, rank) {
+    var out = [], pending = 0;
+    function level(pid, d) {
+      return gql(Q_KIDS, { id: pid }).then(function (j) {
+        var kids = (j.data && j.data.taxonConcept && j.data.taxonConcept.children) || [];
+        var next = [];
+        kids.forEach(function (k) {
+          if (k.taxonomicStatus && k.taxonomicStatus !== "ACCEPTED") return;
+          if (k.taxonRank === rank) out.push(norm(k));
+          else if (d < 2 && ["SECTION", "SUBGENUS", "SERIES"].indexOf(k.taxonRank) >= 0) next.push(k.id);
+        });
+        return Promise.all(next.map(function (c) { return level(c, d + 1); }));
+      });
+    }
+    return level(id, 0).then(function () {
+      out.sort(function (a, b) { return a.name.localeCompare(b.name); });
+      return out;
+    });
+  }
+  function ancestorOfRank(t, rank) {
+    var h = t.higherClassification || [];
+    for (var i = h.length - 1; i >= 0; i--) if (h[i].taxonRank === rank) return h[i];
+    return null;
+  }
+
+  /* ---------- UI ---------- */
+  var MODES = {
+    species: { tab: "Species", rank: "SPECIES", one: "Species", intro: "Pick a species, then another species from the same genus. You get their VicFlora descriptions side by side and the step in the genus key where they separate.", ph: "Search species, e.g. Carex appressa", child: "SPECIES", up: "GENUS", second: "Compare with (same genus)" },
+    genus: { tab: "Genus", rank: "GENUS", one: "Genus", intro: "Pick a genus, then another genus from the same family. You get the family key step where they separate.", ph: "Search genus, e.g. Carex", child: "GENUS", up: "FAMILY", second: "Compare with (same family)" },
+    family: { tab: "Family", rank: "FAMILY", one: "Family", intro: "Pick two families. You get their VicFlora descriptions side by side and the step in the families key where they separate.", ph: "Search family, e.g. Cyperaceae", child: null, up: null, second: "Compare with (any family)" }
+  };
+
+  var root = null, guard = false, mode = "species", S = null, runId = 0;
+
+  function resetState() { S = { a: null, b: null, tA: null, opts: null }; }
+
+  function open() {
+    if (root) return;
+    resetState(); mode = "species";
+    root = document.createElement("div");
+    root.className = "vk-overlay";
+    root.setAttribute("role", "dialog");
+    root.setAttribute("aria-label", "VicKey");
+    root.innerHTML =
+      '<div class="vk-head"><b>VicKey<small>Compare species, genera and families using VicFlora</small></b><button type="button" class="vk-x" aria-label="Close VicKey">&#10005;</button></div>' +
+      '<div class="vk-tabs" role="tablist">' + Object.keys(MODES).map(function (m) { return '<button type="button" class="vk-tab" role="tab" data-mode="' + m + '">' + MODES[m].tab + '</button>'; }).join("") + '</div>' +
+      '<div class="vk-body" id="vkBody"></div>';
+    document.body.appendChild(root);
+    document.body.style.overflow = "hidden";
+    try { history.pushState({ vickey: true }, ""); guard = true; } catch (e) { guard = false; }
+    root.querySelector(".vk-x").onclick = close;
+    root.querySelector(".vk-tabs").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-mode]");
+      if (b) { mode = b.dataset.mode; resetState(); render(); }
+    });
+    render();
+  }
+  function teardown() {
+    if (!root) return;
+    runId++;
+    root.remove(); root = null;
+    document.body.style.overflow = "";
+  }
+  function close() {
+    if (!root) return;
+    teardown();
+    if (guard) { guard = false; try { history.back(); } catch (e) { } }
+  }
+  window.addEventListener("popstate", function () { if (root) { guard = false; teardown(); } });
+
+  function $b() { return root && root.querySelector("#vkBody"); }
+
+  // A small type-ahead bound to VicFlora search.
+  function typeahead(input, list, ranks, onPick) {
+    var timer = null, seq = 0;
+    function hide() { list.classList.remove("show"); }
+    input.addEventListener("input", function () {
+      clearTimeout(timer);
+      var q = input.value.trim();
+      if (q.length < 3) { hide(); return; }
+      var mine = ++seq;
+      list.innerHTML = '<div class="vk-note">Searching VicFlora...</div>'; list.classList.add("show");
+      timer = setTimeout(function () {
+        search(q, ranks).then(function (res) {
+          if (mine !== seq || !root) return;
+          if (!res.length) { list.innerHTML = '<div class="vk-note">No accepted match. Check the spelling.</div>'; return; }
+          list.innerHTML = res.slice(0, 40).map(function (r, i) {
+            return '<button type="button" class="vk-opt" data-i="' + i + '"><i>' + esc(r.name) + '</i>' + (r.common ? '<small>' + esc(r.common) + '</small>' : '') + '</button>';
+          }).join("");
+          list._res = res;
+        }).catch(function () {
+          if (mine !== seq || !root) return;
+          list.innerHTML = '<div class="vk-note">Could not reach VicFlora. Check your connection and try again.</div>';
+        });
+      }, 280);
+    });
+    list.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-i]");
+      if (!b || !list._res) return;
+      var r = list._res[+b.dataset.i];
+      input.value = r.name; hide(); onPick(r);
+    });
+    document.addEventListener("click", function (e) { if (root && !input.parentNode.contains(e.target)) hide(); });
+  }
+
+  function render() {
+    var M = MODES[mode], body = $b();
+    root.querySelectorAll(".vk-tab").forEach(function (t) { t.setAttribute("aria-selected", t.dataset.mode === mode ? "true" : "false"); });
+    body.innerHTML =
+      '<p class="vk-intro">' + esc(M.intro) + '</p>' +
+      '<div class="vk-pick">' +
+      '<div class="vk-col"><label for="vkA">' + M.one + '</label><input id="vkA" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="' + esc(M.ph) + '"><div class="vk-list" id="vkListA"></div></div>' +
+      '<div class="vk-col"><label for="vkB">' + esc(M.second) + '</label>' +
+      (mode === "family"
+        ? '<input id="vkB" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search family" disabled><div class="vk-list" id="vkListB"></div>'
+        : '<select id="vkB" disabled><option>Pick the first one</option></select>') +
+      '</div></div>' +
+      '<div id="vkOut"></div>';
+    typeahead(body.querySelector("#vkA"), body.querySelector("#vkListA"), [M.rank], pickA);
+    if (mode === "family") typeahead(body.querySelector("#vkB"), body.querySelector("#vkListB"), ["FAMILY"], pickB);
+    else body.querySelector("#vkB").addEventListener("change", function (e) {
+      var i = e.target.value;
+      if (i === "") return;
+      pickB(S.opts[+i]);
+    });
+  }
+
+  function status(html, err) { var o = $b().querySelector("#vkOut"); o.innerHTML = '<div class="vk-status' + (err ? ' err' : '') + '">' + html + '</div>'; }
+
+  function pickA(r) {
+    var M = MODES[mode], my = ++runId;
+    S.a = r; S.b = null; S.tA = null; S.opts = null;
+    var bEl = $b().querySelector("#vkB");
+    $b().querySelector("#vkOut").innerHTML = "";
+    if (mode === "family") { bEl.disabled = false; bEl.value = ""; bEl.focus(); return; }
+    bEl.disabled = true; bEl.innerHTML = "<option>Loading " + (mode === "species" ? "species in this genus" : "genera in this family") + "...</option>";
+    node(r.id).then(function (t) {
+      if (my !== runId) return;
+      S.tA = t;
+      var up = ancestorOfRank(t, M.up);
+      if (!up) throw new Error("noparent");
+      S.up = up;
+      return childrenOfRank(up.id, M.child).then(function (kids) {
+        if (my !== runId) return;
+        kids = kids.filter(function (k) { return k.id !== r.id && k.name !== r.name; });
+        S.opts = kids;
+        if (!kids.length) { bEl.innerHTML = "<option>None found</option>"; status("No other " + (mode === "species" ? "species" : "genera") + " found in <i>" + esc(up.taxonName.fullName) + "</i>.", false); return; }
+        bEl.innerHTML = '<option value="">Select (' + kids.length + ' in ' + esc(up.taxonName.fullName) + ')</option>' +
+          kids.map(function (k, i) { return '<option value="' + i + '">' + esc(k.name) + '</option>'; }).join("");
+        bEl.disabled = false;
+      });
+    }).catch(function () {
+      if (my !== runId) return;
+      bEl.innerHTML = "<option>Unavailable</option>";
+      status("Could not load the " + (mode === "species" ? "genus" : "family") + " from VicFlora. Check your connection and try picking again.", true);
+    });
+  }
+
+  function pickB(r) {
+    S.b = r;
+    compare();
+  }
+
+  function compare() {
+    var my = ++runId, M = MODES[mode];
+    status("Loading both descriptions and the key from VicFlora...");
+    var pA = S.tA && S.tA.id === S.a.id ? Promise.resolve(S.tA) : node(S.a.id);
+    Promise.all([pA, node(S.b.id)]).then(function (res) {
+      if (my !== runId) return;
+      var tA = res[0], tB = res[1];
+      S.tA = tA;
+      return locate(tA, tB).then(function (loc) {
+        if (my !== runId) return;
+        show(tA, tB, loc);
+      });
+    }).catch(function () {
+      if (my !== runId) return;
+      status("Could not load that comparison from VicFlora. Check your connection and try again.", true);
+    });
+  }
+
+  // Candidate keys, nearest first: for species the genus key, for genera the family
+  // key, for families the keys higher up the classification.
+  function candidateKeys(tA, tB) {
+    var list = [], seen = {};
+    function add(arr) { (arr || []).forEach(function (k) { if (!seen[k.id]) { seen[k.id] = 1; list.push(k); } }); }
+    var h = tA.higherClassification || [];
+    for (var i = h.length - 1; i >= 0; i--) add(h[i].identificationKeys);
+    var h2 = tB.higherClassification || [];
+    for (var j = h2.length - 1; j >= 0; j--) add(h2[j].identificationKeys);
+    return list;
+  }
+  function locate(tA, tB) {
+    var A = { id: tA.id, name: nm(tA) }, B = { id: tB.id, name: nm(tB) };
+    var cands = candidateKeys(tA, tB);
+    if (!cands.length) return Promise.resolve({ reason: "nokey", cands: cands });
+    var chain = Promise.resolve(null), anyLoaded = false;
+    cands.slice(0, 8).forEach(function (c) {
+      chain = chain.then(function (hit) {
+        if (hit) return hit;
+        return getKey(c.id).then(function (key) {
+          if (!key) return null;
+          anyLoaded = true;
+          return Promise.all([findPath(key, A, getKey), findPath(key, B, getKey)]).then(function (ps) {
+            if (ps[0] && ps[1]) return { key: key, pa: ps[0], pb: ps[1], cand: c };
+            return null;
+          });
+        });
+      });
+    });
+    return chain.then(function (hit) {
+      if (hit) { hit.sp = splitPoint(hit.pa, hit.pb); return hit; }
+      return { reason: anyLoaded ? "notinkey" : "keyfail", cands: cands };
+    });
+  }
+
+  function cell(arr) {
+    if (!arr) return '<td class="none">Not described</td>';
+    return "<td>" + arr.map(inline).join(" ") + "</td>";
+  }
+  function stepList(path, from, to) {
+    return path.slice(from, to).map(function (s) { return '<li><span class="vk-stepno">Step ' + (s.no || "?") + '</span>' + inline(s.text) + "</li>"; }).join("");
+  }
+
+  function show(tA, tB, loc) {
+    var out = $b().querySelector("#vkOut"), nA = nm(tA), nB = nm(tB);
+    var pa = parseProfile(tA.currentProfile && tA.currentProfile.profile), pb = parseProfile(tB.currentProfile && tB.currentProfile.profile);
+    var rows = featureRows(pa, pb);
+    var h = '<div class="vk-vs"><a href="' + VF + 'taxon/' + esc(tA.id) + '" target="_blank" rel="noopener">' + esc(nA) + '<small>Open in VicFlora</small></a>' +
+      '<a href="' + VF + 'taxon/' + esc(tB.id) + '" target="_blank" rel="noopener">' + esc(nB) + '<small>Open in VicFlora</small></a></div>';
+
+    h += '<div class="vk-h">Features side by side</div>';
+    if (!rows.length) {
+      h += '<div class="vk-status">VicFlora has no written description for either of these.</div>';
+    } else {
+      h += '<label class="vk-tog"><input type="checkbox" id="vkDiffOnly"> Hide rows that read the same</label>';
+      h += '<div class="vk-tablewrap"><table class="vk-table" id="vkFeat"><thead><tr><th>Feature</th><th>' + esc(nA) + '</th><th>' + esc(nB) + '</th></tr></thead><tbody>' +
+        rows.map(function (r) { return '<tr class="' + (r.same ? "same" : "diff") + '"><th scope="row">' + esc(r.label) + "</th>" + cell(r.a) + cell(r.b) + "</tr>"; }).join("") +
+        "</tbody></table></div>";
+      h += '<p class="vk-foot">Rows are grouped by the part each VicFlora sentence starts with. Read the full wording in VicFlora before relying on a difference.</p>';
+    }
+
+    h += '<div class="vk-h">Where the key separates them</div>';
+    if (loc.reason) {
+      var links = (loc.cands || []).slice(0, 4).map(function (c) { return '<a href="' + VF + 'key/' + esc(c.id) + '" target="_blank" rel="noopener">' + esc(c.title) + "</a>"; }).join(", ");
+      var msg = loc.reason === "nokey" ? "VicFlora has no identification key covering these two."
+        : loc.reason === "keyfail" ? "Could not load the key data (KeyBase did not respond). "
+        : "These two are not both in a single VicFlora key, so there is no shared split to show. ";
+      h += '<div class="vk-status">' + msg + (links ? "Related keys: " + links + "." : "") + "</div>";
+    } else if (!loc.sp) {
+      h += '<div class="vk-status">Both end at the same place in <a href="' + VF + 'key/' + esc(loc.key.id) + '" target="_blank" rel="noopener">' + esc(loc.key.title) + "</a>, so the key does not separate them.</div>";
+    } else {
+      var sp = loc.sp;
+      h += '<p class="vk-keyline"><a href="' + VF + "key/" + esc(sp.a.keyId) + '" target="_blank" rel="noopener">' + esc(sp.a.keyTitle) + '</a> &middot; they part ways at <b>Step ' + (sp.a.no || "?") + "</b></p>";
+      h += '<div class="vk-tablewrap"><table class="vk-table vk-split"><thead><tr><th>Step</th><th>' + esc(nA) + '</th><th>' + esc(nB) + '</th></tr></thead><tbody>' +
+        '<tr class="diff"><th class="stepcell" scope="row"><span class="vk-stepno">Step ' + (sp.a.no || "?") + "</span></th><td>" + inline(sp.a.text) + "</td><td>" + inline(sp.b.text) + "</td></tr></tbody></table></div>";
+      if (sp.shared.length) h += '<details class="vk-path"><summary>Steps they share before this (' + sp.shared.length + ")</summary><ol>" + stepList(loc.pa, 0).split("</li>").slice(0, sp.shared.length).join("</li>") + "</li></ol></details>";
+      if (loc.pa.length > sp.index + 1) h += '<details class="vk-path"><summary>Rest of the route to ' + esc(nA) + "</summary><ol>" + stepList(loc.pa, sp.index + 1) + "</ol></details>";
+      if (loc.pb.length > sp.index + 1) h += '<details class="vk-path"><summary>Rest of the route to ' + esc(nB) + "</summary><ol>" + stepList(loc.pb, sp.index + 1) + "</ol></details>";
+    }
+    h += '<p class="vk-foot">Descriptions and keys: VicFlora, Royal Botanic Gardens Victoria. Keys are served by KeyBase.</p>';
+    out.innerHTML = h;
+    var tog = out.querySelector("#vkDiffOnly");
+    if (tog) tog.addEventListener("change", function () {
+      out.querySelectorAll("#vkFeat tbody tr.same").forEach(function (tr) { tr.hidden = tog.checked; });
+    });
+  }
+
+  window.VicKey = { open: open, close: close, _t: { cleanText: cleanText, parseProfile: parseProfile, featureRows: featureRows, buildKey: buildKey, findPath: findPath, splitPoint: splitPoint, itemMatches: itemMatches } };
 })();
 
 </script>
@@ -2343,7 +2866,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-09-29.1";
+  const BUILD_VERSION = "2026-10-06.1";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -6466,6 +6989,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     save: "M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z",
     moon: "M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z",
     sun: "M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM2 13h2a1 1 0 0 0 0-2H2a1 1 0 0 0 0 2zm18 0h2a1 1 0 0 0 0-2h-2a1 1 0 0 0 0 2zM11 2v2a1 1 0 0 0 2 0V2a1 1 0 0 0-2 0zm0 18v2a1 1 0 0 0 2 0v-2a1 1 0 0 0-2 0zM5.99 4.58a1 1 0 0 0-1.41 1.41l1.06 1.06a1 1 0 0 0 1.41-1.41L5.99 4.58zm12.37 12.37a1 1 0 0 0-1.41 1.41l1.06 1.06a1 1 0 0 0 1.41-1.41l-1.06-1.06zm1.06-10.96a1 1 0 0 0-1.41-1.41l-1.06 1.06a1 1 0 0 0 1.41 1.41l1.06-1.06zM7.05 18.36a1 1 0 0 0-1.41-1.41l-1.06 1.06a1 1 0 0 0 1.41 1.41l1.06-1.06z",
+    vickey: "M9.01 14H2v2h7.01v3L13 15l-3.99-4v3zm5.98-1v-3H22V8h-7.01V5L11 9l3.99 4z",
     refresh: "M17.65 6.35A7.96 7.96 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
   };
   function menuIcon(name){ return '<span class="mi-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+MENU_ICONS[name]+'"/></svg></span>'; }
@@ -6479,6 +7003,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     +     menuItem("fhNew", "new", "New survey")
     +     menuItem("fhLoad", "folder", "Saved folder")
     +     menuItem("fhMap", "map", "Map")
+    +     menuItem("fhVicKey", "vickey", "VicKey")
     +     menuItem("fhExport", "export", "Export")
     +     menuItem("fhSave", "save", "Save")
     +     menuItem("fhTheme", "moon", "Dark mode")
@@ -6524,6 +7049,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   bar.querySelector("#fhNew").onclick    = menuAct(newSurvey);
   bar.querySelector("#fhLoad").onclick   = menuAct(loadFromFolder);
   bar.querySelector("#fhMap").onclick    = menuAct(openSurveyMapView);
+  bar.querySelector("#fhVicKey").onclick = menuAct(()=> window.VicKey && window.VicKey.open());
   bar.querySelector("#fhSave").onclick   = menuAct(saveToFolder);
   bar.querySelector("#fhExport").onclick = menuAct(exportSurvey);
   // Dark / light toggle. The head script already applied the saved choice (or
@@ -6576,6 +7102,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     setTimeout(()=>{ const c = $("liveCard"); if(c) c.scrollIntoView({ behavior:"smooth", block:"start" }); try{ $("liveJoinCode").focus(); }catch(e){} }, 350);
   });
   $("homeOpen").addEventListener("click", ()=>{ renderHome(); toggleHomePanel($("homeOpen"), "homeOpenPanel"); });
+  $("homeVicKey").addEventListener("click", ()=> window.VicKey && window.VicKey.open());
   $("homeHow").addEventListener("click", ()=> toggleHomePanel($("homeHow"), "homeHowPanel"));
   $("homeBack").addEventListener("click", ()=> setStarting(false));
   $("finishSurveyBtn").addEventListener("click", finishSurvey);

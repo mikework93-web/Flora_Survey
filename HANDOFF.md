@@ -53,6 +53,12 @@ Propose big structural moves before doing them.
 - Menu options run through `menuAct(fn)`: it closes the menu and waits for its history back-step (popstate) BEFORE running fn. Any new menu item must use it, or a modal that pushes history (MapModal) gets closed instantly.
 - `showUpdateBanner()` / `checkForUpdate()` (~1885): the update bar + check. `.toast` / `FHKit.toast` (~205 / ~750): the general toast.
 
+## VicKey
+- Own `<script>` block after the FHVicFlora client; exposes `window.VicKey.open()`. Menu item `#fhVicKey` (via `menuAct`) and home tile `#homeVicKey`.
+- Uses `FHVicFlora.query(query, vars, timeoutMs)` (new export) for GraphQL. Keys are fetched from KeyBase JSON at `https://data.rbg.vic.gov.au/keybase-ws/ws/key_get/<keyId>` (VicFlora key ids match). Leads have parent_id, lead_id, lead_text, item; couplet numbers are assigned in order down the key. Split = first lead where the two routes differ.
+- Descriptions are one prose string (`currentProfile.profile`); `parseProfile` groups sentences by their first word (Culms, Leaves, Fruit...).
+- If KeyBase blocks browser requests (CORS) the key section shows a fallback message with links; descriptions still work.
+
 ## Done so far
 See `CHANGELOG.md` for the plain-English list. Technically: pulled the trial service worker; renamed to index.html; fixed the finish-polygon jank (auto-focus keyboard squash, stuck sheet, stacked footer, duplicate hint); clear ✕ exit; removed the redundant confirm tick; required a name before logging; recoloured the update banner to a bottom bar + added the Menu check; fixed the mobile join-code line; squared all corners; whitened field/empty/summary boxes; darkened Start/Join; distinct "Adjust shape" button; renamed Checklist → Recorded species; shortened the search placeholder + help text; menu Back-button guard; extracted base64 images to PNGs.
 
