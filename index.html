@@ -2685,12 +2685,49 @@ window.FHKit = (function(){
     for(let i=0;i<cellBuffers.length;i++) page.set(cellBuffers[i], cellOffsets[i]);
     return page;
   }
+  /* GDA2020 / MGA zone 55 (EPSG:7855): transverse Mercator on GRS80, central
+     meridian 147E, k0 0.9996, FE 500000, FN 10000000. Krueger series (sub-mm).
+     GDA2020 and WGS84 lat/lon are treated as identical (sub-metre, same as before). */
+  const MGA = (function(){
+    const a=6378137, f=1/298.257222101, k0=0.9996, FE=500000, FN=10000000, lon0=147*Math.PI/180;
+    const n=f/(2-f), A=a/(1+n)*(1+n*n/4+n**4/64);
+    const al=[n/2-2*n*n/3+5*n**3/16, 13*n*n/48-3*n**3/5, 61*n**3/240];
+    const be=[n/2-2*n*n/3+37*n**3/96, n*n/48+n**3/15, 17*n**3/480];
+    const e=Math.sqrt(f*(2-f));
+    function forward(lat, lon){
+      const phi=lat*Math.PI/180, lam=lon*Math.PI/180-lon0;
+      const t=Math.sinh(Math.atanh(Math.sin(phi))-e*Math.atanh(e*Math.sin(phi)));
+      const xi=Math.atan2(t, Math.cos(lam)), eta=Math.atanh(Math.sin(lam)/Math.sqrt(1+t*t));
+      let X=xi, Y=eta;
+      for(let j=1;j<=3;j++){ X+=al[j-1]*Math.sin(2*j*xi)*Math.cosh(2*j*eta); Y+=al[j-1]*Math.cos(2*j*xi)*Math.sinh(2*j*eta); }
+      return [FE+k0*A*Y, FN+k0*A*X];
+    }
+    function inverse(E, N){
+      const xi=(N-FN)/(k0*A), eta=(E-FE)/(k0*A);
+      let X=xi, Y=eta;
+      for(let j=1;j<=3;j++){ X-=be[j-1]*Math.sin(2*j*xi)*Math.cosh(2*j*eta); Y-=be[j-1]*Math.cos(2*j*xi)*Math.sinh(2*j*eta); }
+      const chi=Math.asin(Math.sin(X)/Math.cosh(Y));
+      let phi=chi;
+      for(let i=0;i<6;i++) phi=Math.asin(Math.tanh(Math.atanh(Math.sin(chi))+e*Math.atanh(e*Math.sin(phi))));
+      const lam=Math.atan2(Math.sinh(Y), Math.cos(X));
+      return [phi*180/Math.PI, (lam+lon0)*180/Math.PI];
+    }
+    return { forward, inverse };
+  })();
+  const EXPORT_SRS = 7855;
+  function xyForSrs(lat, lon, srsId){ return srsId===7855 ? MGA.forward(lat,lon) : [lon, lat]; }
+  function gpkgSrsRow(t, n, rid){
+    return {rowid:7855, record: gpkgEncodeRecord([t("GDA2020 / MGA zone 55"), rid(), t("EPSG"), n(7855),
+      t('PROJCS["GDA2020 / MGA zone 55",GEOGCS["GDA2020",DATUM["GDA2020",SPHEROID["GRS 1980",6378137,298.257222101]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",147],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",10000000],UNIT["metre",1],AUTHORITY["EPSG","7855"]]'),
+      t("GDA2020 / MGA zone 55 (EPSG:7855), eastings/northings in metres")])};
+  }
   function gpkgEncodePoint(lon, lat, srsId){
     const flags = new Uint8Array([0x01]); // little-endian, no envelope, not empty, standard
     const srs = new Uint8Array(4); new DataView(srs.buffer).setInt32(0, srsId, true);
     const wkbType = new Uint8Array(4); new DataView(wkbType.buffer).setUint32(0, 1, true); // 1 = Point
-    const x = new Uint8Array(8); new DataView(x.buffer).setFloat64(0, lon, true);
-    const y = new Uint8Array(8); new DataView(y.buffer).setFloat64(0, lat, true);
+    const xy = xyForSrs(lat, lon, srsId);
+    const x = new Uint8Array(8); new DataView(x.buffer).setFloat64(0, xy[0], true);
+    const y = new Uint8Array(8); new DataView(y.buffer).setFloat64(0, xy[1], true);
     return u8concat([new Uint8Array([0x47,0x50,0]), flags, srs, new Uint8Array([1]), wkbType, x, y]);
   }
   /* opts: { tableName, identifier, description, points:[{id,sci,common,lat,lon}] }
@@ -2698,7 +2735,7 @@ window.FHKit = (function(){
      entry in `points` (only pass rows that actually have a captured lat/lon). */
   function buildGeoPackageBytes(opts){
     const tableName = (opts && opts.tableName) || "species_points";
-    const geomCol = "geom", srsId = 7844;   // GDA2020 geographic (was WGS 84 / 4326)
+    const geomCol = "geom", srsId = EXPORT_SRS;   // GDA2020 / MGA zone 55
     const points = (opts && opts.points) || [];
     const identifier = (opts && opts.identifier) || tableName;
     const description = (opts && opts.description) || "";
@@ -2706,8 +2743,9 @@ window.FHKit = (function(){
 
     let minX=null,minY=null,maxX=null,maxY=null;
     points.forEach(p=>{
-      if(minX===null||p.lon<minX) minX=p.lon; if(maxX===null||p.lon>maxX) maxX=p.lon;
-      if(minY===null||p.lat<minY) minY=p.lat; if(maxY===null||p.lat>maxY) maxY=p.lat;
+      const xy = xyForSrs(p.lat, p.lon, srsId), px=xy[0], py=xy[1];
+      if(minX===null||px<minX) minX=px; if(maxX===null||px>maxX) maxX=px;
+      if(minY===null||py<minY) minY=py; if(maxY===null||py>maxY) maxY=py;
     });
 
     const t=(s)=>({t:"text",v:s}), n=(v)=>({t:"int",v:v}), rl=(v)=>({t:"real",v:v}), rid=()=>({t:"rowid"}), nul=()=>({t:"null"});
@@ -2724,9 +2762,7 @@ window.FHKit = (function(){
     const srsRows = [
       {rowid:-1, record: gpkgEncodeRecord([t("Undefined cartesian SRS"), rid(), t("NONE"), n(-1), t("undefined"), nul()])},
       {rowid:0,  record: gpkgEncodeRecord([t("Undefined geographic SRS"), rid(), t("NONE"), n(0), t("undefined"), nul()])},
-      {rowid:7844, record: gpkgEncodeRecord([t("GDA2020"), rid(), t("EPSG"), n(7844),
-        t('GEOGCS["GDA2020",DATUM["Geocentric_Datum_of_Australia_2020",SPHEROID["GRS 1980",6378137,298.257222101]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","7844"]]'),
-        t("longitude/latitude coordinates in decimal degrees on the GDA2020 datum (EPSG:7844)")])}
+      gpkgSrsRow(t, n, rid)
     ];
     const contentsRows = [
       {rowid:1, record: gpkgEncodeRecord([
@@ -2812,8 +2848,9 @@ window.FHKit = (function(){
         ? ring.concat([ring[0]]) : ring;
       const numPoints = new Uint8Array(4); new DataView(numPoints.buffer).setUint32(0, closed.length, true);
       const coordParts = closed.map(pt=>{
-        const x = new Uint8Array(8); new DataView(x.buffer).setFloat64(0, pt[1], true); // x = longitude
-        const y = new Uint8Array(8); new DataView(y.buffer).setFloat64(0, pt[0], true); // y = latitude
+        const xy = xyForSrs(pt[0], pt[1], srsId);
+        const x = new Uint8Array(8); new DataView(x.buffer).setFloat64(0, xy[0], true); // easting (or lon)
+        const y = new Uint8Array(8); new DataView(y.buffer).setFloat64(0, xy[1], true); // northing (or lat)
         return u8concat([x,y]);
       });
       return u8concat([numPoints, ...coordParts]);
@@ -2829,7 +2866,7 @@ window.FHKit = (function(){
      plus a species_count field — the data model requested for this layer. */
   function buildPolygonGeoPackageBytes(opts){
     const tableName = (opts && opts.tableName) || "species_polygons";
-    const geomCol = "geom", srsId = 7844;   // GDA2020 geographic (was WGS 84 / 4326)
+    const geomCol = "geom", srsId = EXPORT_SRS;   // GDA2020 / MGA zone 55
     const polys = (opts && opts.polygons) || [];
     const identifier = (opts && opts.identifier) || tableName;
     const description = (opts && opts.description) || "";
@@ -2840,7 +2877,7 @@ window.FHKit = (function(){
     let minX=null,minY=null,maxX=null,maxY=null;
     polys.forEach(pg=>{
       (pg.vertices||[]).forEach(pt=>{
-        const lon=pt[1], lat=pt[0];
+        const xy = xyForSrs(pt[0], pt[1], srsId), lon=xy[0], lat=xy[1];
         if(minX===null||lon<minX) minX=lon; if(maxX===null||lon>maxX) maxX=lon;
         if(minY===null||lat<minY) minY=lat; if(maxY===null||lat>maxY) maxY=lat;
       });
@@ -2860,9 +2897,7 @@ window.FHKit = (function(){
     const srsRows = [
       {rowid:-1, record: gpkgEncodeRecord([t("Undefined cartesian SRS"), rid(), t("NONE"), n(-1), t("undefined"), nul()])},
       {rowid:0,  record: gpkgEncodeRecord([t("Undefined geographic SRS"), rid(), t("NONE"), n(0), t("undefined"), nul()])},
-      {rowid:7844, record: gpkgEncodeRecord([t("GDA2020"), rid(), t("EPSG"), n(7844),
-        t('GEOGCS["GDA2020",DATUM["Geocentric_Datum_of_Australia_2020",SPHEROID["GRS 1980",6378137,298.257222101]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","7844"]]'),
-        t("longitude/latitude coordinates in decimal degrees on the GDA2020 datum (EPSG:7844)")])}
+      gpkgSrsRow(t, n, rid)
     ];
     const contentsRows = [
       {rowid:1, record: gpkgEncodeRecord([
@@ -3338,20 +3373,23 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   }
   function gpkgDecodePointGeom(blob){
     const dv = new DataView(blob.buffer, blob.byteOffset, blob.byteLength);
-    return { lon: dv.getFloat64(13, true), lat: dv.getFloat64(21, true) };
+    const x = dv.getFloat64(13, true), y = dv.getFloat64(21, true);
+    if(dv.getInt32(4, true)===7855){ const ll = MGA.inverse(x, y); return { lon: ll[1], lat: ll[0] }; }
+    return { lon: x, lat: y };
   }
   function gpkgDecodePolygonGeom(blob){
     const dv = new DataView(blob.buffer, blob.byteOffset, blob.byteLength);
     let p = 13; // magic(3)+flags(1)+srs(4)+wkb byte-order(1)+wkb type(4)
+    const proj = dv.getInt32(4, true)===7855;
     const numRings = dv.getUint32(p, true); p += 4;
     const rings = [];
     for(let r=0;r<numRings;r++){
       const numPoints = dv.getUint32(p, true); p += 4;
       const ring = [];
       for(let i=0;i<numPoints;i++){
-        const lon = dv.getFloat64(p, true); p += 8;
-        const lat = dv.getFloat64(p, true); p += 8;
-        ring.push([lat, lon]);
+        const x = dv.getFloat64(p, true); p += 8;
+        const y = dv.getFloat64(p, true); p += 8;
+        if(proj){ const ll = MGA.inverse(x, y); ring.push([ll[0], ll[1]]); } else ring.push([y, x]);
       }
       rings.push(ring);
     }
@@ -3536,7 +3574,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-06.8";
+  const BUILD_VERSION = "2026-10-06.9";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive

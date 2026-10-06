@@ -5,7 +5,7 @@ Changes made to this copy of the app (started from your `Flora_Survey`). Plain-E
 ## Field fixes and features (2026-10-06)
 - **Map crash fixed:** reshaping a polygon (dragging or adding a corner) rebuilt the corner handles in the middle of the drag, and a timer could fire after the map had closed. Both are now safe.
 - **Camera:** each species now has separate **Take photo** (opens the camera) and **Choose photos** (gallery) buttons. The hidden file inputs no longer use display:none, which some Android versions ignored.
-- **Polygon and point exports are now GDA2020** (EPSG:7844) instead of WGS 84. Coordinates are not shifted; GPS positions are used as recorded (GDA2020 and WGS 84 differ by well under a metre at current dates, within normal phone GPS error).
+- **Polygon and point GeoPackage exports are now GDA2020 / MGA zone 55 (EPSG:7855)**: projected eastings/northings in metres, not WGS 84 lat/lon. Zone 55 is used for the whole state, including areas west of 144°E that are normally zone 54 (valid, with slightly larger scale distortion). GDA2020 and WGS 84 GPS positions are treated as identical (well under a metre apart). Import reads both the new projected files and older lat/lon files.
 - **Google Satellite** added to the map layers.
 - **Significant** now opens the map straight away to set the location. Cancel it to set the location later.
 - **GPS tracking and boundary walking are steadier:** poor or stale fixes are ignored, movement smaller than the GPS error is ignored, sudden leaps need a second fix to confirm, and the GPS restarts cleanly when you return to the app.
