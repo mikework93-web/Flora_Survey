@@ -1221,7 +1221,7 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
   "use strict";
   var KEY_WS = "https://data.rbg.vic.gov.au/keybase-ws/ws/key_get/";
   var VF = "https://vicflora.rbg.vic.gov.au/flora/";
-  var MAX_KEY_FETCHES = 16;
+  var MAX_KEY_FETCHES = 40;
 
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
 
@@ -1316,36 +1316,55 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
     return !!a && a === b;
   }
 
-  // Find the route from the top of a key to a taxon, following sub-keys (to_key)
-  // when an item hands over to another key. getKey(id) resolves to a built key or null.
-  function findPath(key, taxon, getKey, depth) {
+  // Find every route from the top of a key to a taxon (a taxon can be keyed at
+  // more than one place). When expand is true, items that hand over to another
+  // key (to_key) are followed too. getKey(id) resolves to a built key or null.
+  function findPaths(key, taxon, getKey, expand, depth) {
     depth = depth || 0;
-    var found = null;
+    var found = [];
     function walk(node, trail) {
       var kids = key.byParent[node] || [];
-      var chain = Promise.resolve(null);
+      var chain = Promise.resolve();
       kids.forEach(function (lead) {
-        chain = chain.then(function (res) {
-          if (res) return res;
+        chain = chain.then(function () {
+          if (found.length >= 6) return;
           var step = { keyId: key.id, keyTitle: key.title, no: key.number[node], leadId: lead.lead_id, text: lead.lead_text };
           var t = trail.concat([step]);
           if (lead.item) {
             var item = key.items[lead.item];
-            if (itemMatches(item, taxon)) return t;
-            if (item && item.to_key && depth < 4) {
+            if (itemMatches(item, taxon)) { found.push(t); return; }
+            if (expand && item && item.to_key && depth < 4) {
               return getKey(item.to_key).then(function (sub) {
-                if (!sub) return null;
-                return findPath(sub, taxon, getKey, depth + 1).then(function (p) { return p ? t.concat(p) : null; });
+                if (!sub) return;
+                return findPaths(sub, taxon, getKey, expand, depth + 1).then(function (ps) {
+                  ps.forEach(function (p) { found.push(t.concat(p)); });
+                });
               });
             }
-            return null;
+            return;
           }
           return walk(lead.lead_id, t);
         });
       });
       return chain;
     }
-    return walk(key.root, []);
+    return walk(key.root, []).then(function () { return found; });
+  }
+  function findPath(key, taxon, getKey, depth) {
+    return findPaths(key, taxon, getKey, false, depth).then(function (ps) { return ps[0] || null; });
+  }
+
+  // Of all route pairs, take the one that separates earliest (the first step at
+  // which the key forces the two apart).
+  function bestSplit(psA, psB) {
+    var best = null;
+    psA.forEach(function (pa) {
+      psB.forEach(function (pb) {
+        var sp = splitPoint(pa, pb);
+        if (sp && (!best || sp.index < best.sp.index)) best = { pa: pa, pb: pb, sp: sp };
+      });
+    });
+    return best;
   }
 
   // First point where two routes through the same key part ways.
@@ -1591,37 +1610,51 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
     });
   }
 
-  // Candidate keys, nearest first: for species the genus key, for genera the family
-  // key, for families the keys higher up the classification.
-  function candidateKeys(tA, tB) {
+  // Candidate keys, nearest first. Ancestors are ordered by rank (not by the order
+  // the API lists them). Species: the genus key. Genera: the family key. Families:
+  // keys on higher groups, following hand-overs to sub-keys.
+  var RANKS = ["LIFE","KINGDOM","SUBKINGDOM","PHYLUM","SUBPHYLUM","CLASS","SUBCLASS","SUPERORDER","ORDER","SUBORDER","FAMILY","GENUS","SECTION","SPECIES"];
+  function candidateKeys(tA, tB, own) {
+    var all = (tA.higherClassification || []).concat(tB.higherClassification || []);
+    var wantRank = { species: ["GENUS"], genus: ["FAMILY"], family: null }[mode];
+    all = all.filter(function (a) {
+      var i = RANKS.indexOf(a.taxonRank);
+      if (wantRank) return wantRank.indexOf(a.taxonRank) >= 0;
+      return i >= 0 && i < RANKS.indexOf("FAMILY");
+    });
+    all.sort(function (x, y) { return RANKS.indexOf(y.taxonRank) - RANKS.indexOf(x.taxonRank); });
     var list = [], seen = {};
-    function add(arr) { (arr || []).forEach(function (k) { if (!seen[k.id]) { seen[k.id] = 1; list.push(k); } }); }
-    var h = tA.higherClassification || [];
-    for (var i = h.length - 1; i >= 0; i--) add(h[i].identificationKeys);
-    var h2 = tB.higherClassification || [];
-    for (var j = h2.length - 1; j >= 0; j--) add(h2[j].identificationKeys);
+    all.forEach(function (a) { (a.identificationKeys || []).forEach(function (k) { if (!seen[k.id]) { seen[k.id] = 1; list.push(k); } }); });
     return list;
   }
   function locate(tA, tB) {
     var A = { id: tA.id, name: nm(tA) }, B = { id: tB.id, name: nm(tB) };
     var cands = candidateKeys(tA, tB);
+    var pre = (cands.length || mode === "family" || !S.up) ? Promise.resolve(cands)
+      : node(S.up.id).then(function (t) { return t.identificationKeys || []; }).catch(function () { return []; });
+    return pre.then(function (c2) { return locate2(A, B, c2); });
+  }
+  function locate2(A, B, cands) {
     if (!cands.length) return Promise.resolve({ reason: "nokey", cands: cands });
+    var expand = mode === "family";
     var chain = Promise.resolve(null), anyLoaded = false;
     cands.slice(0, 8).forEach(function (c) {
       chain = chain.then(function (hit) {
         if (hit) return hit;
+        keyFetches = 0;
         return getKey(c.id).then(function (key) {
           if (!key) return null;
           anyLoaded = true;
-          return Promise.all([findPath(key, A, getKey), findPath(key, B, getKey)]).then(function (ps) {
-            if (ps[0] && ps[1]) return { key: key, pa: ps[0], pb: ps[1], cand: c };
-            return null;
+          return Promise.all([findPaths(key, A, getKey, expand), findPaths(key, B, getKey, expand)]).then(function (ps) {
+            if (!ps[0].length || !ps[1].length) return null;
+            var best = bestSplit(ps[0], ps[1]);
+            return { key: key, pa: (best ? best.pa : ps[0][0]), pb: (best ? best.pb : ps[1][0]), sp: best ? best.sp : null, cand: c, multi: ps[0].length > 1 || ps[1].length > 1 };
           });
         });
       });
     });
     return chain.then(function (hit) {
-      if (hit) { hit.sp = splitPoint(hit.pa, hit.pb); return hit; }
+      if (hit) return hit;
       return { reason: anyLoaded ? "notinkey" : "keyfail", cands: cands };
     });
   }
@@ -1657,7 +1690,7 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
       var links = (loc.cands || []).slice(0, 4).map(function (c) { return '<a href="' + VF + 'key/' + esc(c.id) + '" target="_blank" rel="noopener">' + esc(c.title) + "</a>"; }).join(", ");
       var msg = loc.reason === "nokey" ? "VicFlora has no identification key covering these two."
         : loc.reason === "keyfail" ? "Could not load the key data (KeyBase did not respond). "
-        : "These two are not both in a single VicFlora key, so there is no shared split to show. ";
+        : "Could not find both of these in the same VicFlora key (the key may use a different name or place them in separate keys). ";
       h += '<div class="vk-status">' + msg + (links ? "Related keys: " + links + "." : "") + "</div>";
     } else if (!loc.sp) {
       h += '<div class="vk-status">Both end at the same place in <a href="' + VF + 'key/' + esc(loc.key.id) + '" target="_blank" rel="noopener">' + esc(loc.key.title) + "</a>, so the key does not separate them.</div>";
@@ -1670,6 +1703,7 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
       if (loc.pa.length > sp.index + 1) h += '<details class="vk-path"><summary>Rest of the route to ' + esc(nA) + "</summary><ol>" + stepList(loc.pa, sp.index + 1) + "</ol></details>";
       if (loc.pb.length > sp.index + 1) h += '<details class="vk-path"><summary>Rest of the route to ' + esc(nB) + "</summary><ol>" + stepList(loc.pb, sp.index + 1) + "</ol></details>";
     }
+    if (!loc.reason && loc.sp && loc.multi) h += '<p class="vk-foot">One of these is keyed in more than one place. This shows the earliest step that separates them.</p>';
     h += '<p class="vk-foot">Descriptions and keys: VicFlora, Royal Botanic Gardens Victoria. Keys are served by KeyBase.</p>';
     out.innerHTML = h;
     var tog = out.querySelector("#vkDiffOnly");
@@ -1678,7 +1712,7 @@ window.FH_SPECIES = [{"sci":"Acacia brownii","common":"Heath Wattle","lf":"SS","
     });
   }
 
-  window.VicKey = { open: open, close: close, _t: { cleanText: cleanText, parseProfile: parseProfile, featureRows: featureRows, buildKey: buildKey, findPath: findPath, splitPoint: splitPoint, itemMatches: itemMatches } };
+  window.VicKey = { open: open, close: close, _t: { cleanText: cleanText, parseProfile: parseProfile, featureRows: featureRows, buildKey: buildKey, findPath: findPath, findPaths: findPaths, bestSplit: bestSplit, splitPoint: splitPoint, itemMatches: itemMatches } };
 })();
 
 </script>
@@ -2866,7 +2900,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-06.1";
+  const BUILD_VERSION = "2026-10-06.2";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
