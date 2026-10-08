@@ -2,6 +2,15 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## VicKey: crop to a Local Government Area (2026-10-08, v.12)
+- **Step 1** at the top of all three tabs: pick a Local Government Area (type its name, or **Use my location**). The species recorded there come from VicFlora's own LGA filter, the same one VicFlora search uses.
+- **Comparison (Species):** the species search only suggests species recorded in that LGA.
+- **Species Key:** leads with no species recorded in the LGA are greyed out and tagged "not in <LGA>", with a count at the top. Nothing is removed, so couplet numbering stays the same.
+- **MultiAccess Key:** species outside the LGA are dropped from the candidates, and the header shows "x of y taxa recorded there".
+- Tick **Include species from outside this LGA** to switch the crop off without clearing it. The choice stays when you change tabs and next time you open VicKey.
+- The list for each LGA is saved on the device for 30 days, so repeat use needs no connection. If VicFlora can't be reached or refuses the query, you get a message and all species are shown.
+- Not tested against live VicFlora (only mock data). Please check one LGA on site, including a name that is a prefix of another (Yarra and Yarra Ranges).
+
 ## VicKey glossary: tap a bold term (2026-10-08, v.11)
 - Botanical terms in VicKey (descriptions in Comparison, key steps in Species Key) now show **bold with a dotted underline**. Tap one to open a pop-up with its definition and, where there is one, a diagram with the term highlighted (leaf shapes, apices, bases, margins, arrangement, compound leaves, inflorescences, ovary position, flower, leaf parts, daisy head, grass leaf, spikelet, eucalypt bud, wattle, orchid).
 - Terms inside a definition are tappable too; the arrow goes back.

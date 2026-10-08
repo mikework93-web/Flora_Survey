@@ -838,6 +838,14 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
 .vkg-row b{display:block;font-size:15px}
 .vkg-row span{display:block;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vkg-none{padding:20px;color:var(--muted)}
+/* ---- VicKey: LGA crop ---- */
+.vk-lga{border:1px solid var(--border);border-radius:var(--radius);background:var(--row-alt);padding:10px 12px;margin-bottom:12px;max-width:560px}
+.vk-lgah{font-size:14px;margin-bottom:6px}.vk-lgah b{color:var(--gold-dark)}.vk-lgah small{color:var(--muted)}
+.vk-lgarow{display:flex;gap:8px;align-items:flex-start}.vk-lgarow .vk-col{flex:1;position:relative}
+.vk-lgachip{display:flex;align-items:center;gap:10px}.vk-lgachip span{font-weight:700;background:var(--gold);color:var(--on-gold,#fff);padding:4px 10px;border-radius:14px}
+.vk-lgast{font-size:13px;color:var(--muted);margin-top:6px}.vk-lgast.err{color:var(--red)}
+.vk-lgacount{font-size:13px;color:var(--muted);margin:6px 0}
+.vk-out{opacity:.38}.vk-outtag{color:var(--red);font-weight:600}
 /* ---- VicKey: VicFlora comparison tool ---- */
 .vk-overlay{position:fixed;top:0;left:0;right:0;bottom:0;height:100vh;height:100dvh;z-index:9000;background:var(--page);color:var(--ink);display:flex;flex-direction:column;font-family:var(--sans)}
 .vk-head{flex:none;display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) 10px max(12px, env(safe-area-inset-left, 0px));background:var(--charcoal-deep);color:var(--gold-light)}
@@ -2542,10 +2550,12 @@ window.FHFuzzy = (function () {
       timer = setTimeout(function () {
         search(q, ranks).then(function (res) {
           if (mine !== seq || !root) return;
-          if (!res.length) { list.innerHTML = '<div class="vk-note">No accepted match. Check the spelling.</div>'; return; }
+          var hid = 0;
+          if (lgaOn() && ranks.indexOf("SPECIES") >= 0) { var kept = res.filter(function (r) { return inLga(r.name); }); hid = res.length - kept.length; res = kept; }
+          if (!res.length) { list.innerHTML = hid ? '<div class="vk-note">' + hid + " matching species, none recorded in " + esc(LGA.name) + ". Tick &ldquo;Include species from outside this LGA&rdquo; in Step 1 to see them.</div>" : '<div class="vk-note">No accepted match. Check the spelling.</div>'; return; }
           list.innerHTML = res.slice(0, 40).map(function (r, i) {
             return '<button type="button" class="vk-opt" data-i="' + i + '"><i>' + esc(r.name) + '</i>' + (r.common ? '<small>' + esc(r.common) + '</small>' : '') + '</button>';
-          }).join("");
+          }).join("") + (hid ? '<div class="vk-note">' + hid + " more hidden (not recorded in " + esc(LGA.name) + ").</div>" : "");
           list._res = res;
         }).catch(function () {
           if (mine !== seq || !root) return;
@@ -2562,13 +2572,173 @@ window.FHFuzzy = (function () {
     document.addEventListener("click", function (e) { if (root && !input.parentNode.contains(e.target)) hide(); });
   }
 
+  /* ---------- Step 1 in every tab: crop species to a Local Government Area ----------
+     Uses VicFlora's own search index (the same LGA filter as VicFlora search). */
+  var LGA = { name: "", set: null, sp: null, count: 0, loading: false, error: "", showAll: false };
+  var LGAC = {};
+  try { LGA.name = localStorage.getItem("vk_lga") || ""; } catch (e) { }
+  var Q_LGA_NAME = "query($n:String!){localGovernmentAreasByName(name:$n){properties{name id}}}";
+  var Q_LGA_PT = "query($lat:Float!,$lng:Float!){localGovernmentAreasByPoint(latitude:$lat,longitude:$lng){properties{name id}}}";
+  var Q_LGA_SP = "query($i:SearchInput){search(input:$i){docs{id taxonRank scientificName}}}";
+  function lnorm(s) { return String(s || "").replace(/<[^>]+>/g, "").toLowerCase().replace(/\s+/g, " ").trim(); }
+  function binom(n) { var w = n.split(" "); return (w[1] === "x" || w[1] === "×") ? w.slice(0, 3).join(" ") : w.slice(0, 2).join(" "); }
+  function lgaOn() { return !!(LGA.name && LGA.set && !LGA.showAll); }
+  function inLga(name) {
+    if (!lgaOn()) return true;
+    var n = lnorm(name);
+    if (!n || n.indexOf(" ") < 0) return true;        // genus-level or blank: never hide
+    return LGA.set.has(n) || LGA.sp.has(binom(n));
+  }
+  function setLga(names) {
+    LGA.set = new Set(); LGA.sp = new Set();
+    names.forEach(function (x) { var n = lnorm(x); if (n) { LGA.set.add(n); LGA.sp.add(binom(n)); } });
+    LGA.count = LGA.sp.size;
+  }
+  function lgaCacheGet(name) {
+    try { var o = JSON.parse(localStorage.getItem("vk_lgac_" + name) || "null"); if (o && o.n && Date.now() - o.t < 30 * 864e5) return o.n; } catch (e) { }
+    return null;
+  }
+  function lgaCachePut(name, names) { try { localStorage.setItem("vk_lgac_" + name, JSON.stringify({ t: Date.now(), n: names })); } catch (e) { } }
+  function fetchLgaSpecies(name) {
+    var rows = 500, page = 1, q = "*:*", alt = false, all = [], seen = {};
+    function next() {
+      var vars = { i: { q: q, fq: ['local_government_area:"' + name.replace(/"/g, "") + '"'], rows: rows, page: page } };
+      return longGql(Q_LGA_SP, vars).then(function (j) {
+        if (j && j.errors && j.errors.length && !(j.data && j.data.search)) throw new Error(j.errors[0].message || "VicFlora refused the search");
+        var docs = (j && j.data && j.data.search && j.data.search.docs) || [], fresh = 0;
+        docs.forEach(function (d) {
+          var key = d.id || d.scientificName; if (seen[key]) return; seen[key] = 1; fresh++;
+          var r = String(d.taxonRank || "").toLowerCase();
+          if (/species|variety|form|hybrid/.test(r) && d.scientificName) all.push(d.scientificName);
+        });
+        if (!fresh) {
+          if (page === 1 && !alt) { alt = true; q = "*"; return next(); }
+          return all;
+        }
+        if (++page > 40) return all;
+        return next();
+      });
+    }
+    return next();
+  }
+  function lgaLoad() {
+    var name = LGA.name; LGA.set = null; LGA.sp = null; LGA.error = "";
+    if (!name) return Promise.resolve();
+    var c = LGAC[name] || lgaCacheGet(name);
+    if (c) { LGAC[name] = c; setLga(c); lgaChanged(); return Promise.resolve(); }
+    LGA.loading = true; paintLga();
+    return fetchLgaSpecies(name).then(function (names) {
+      if (LGA.name !== name) return;
+      if (!names.length) throw new Error("VicFlora returned no species for " + name);
+      LGAC[name] = names; lgaCachePut(name, names); setLga(names);
+    }).catch(function (e) {
+      if (LGA.name !== name) return;
+      LGA.error = (e && e.message) || "Could not reach VicFlora"; LGA.set = null; LGA.sp = null;
+    }).then(function () { if (LGA.name === name) { LGA.loading = false; lgaChanged(); } });
+  }
+  function lgaPick(name) {
+    LGA.name = name; LGA.showAll = false;
+    try { localStorage.setItem("vk_lga", name); } catch (e) { }
+    return lgaLoad();
+  }
+  function lgaClear() {
+    LGA.name = ""; LGA.set = null; LGA.sp = null; LGA.error = ""; LGA.loading = false;
+    try { localStorage.removeItem("vk_lga"); } catch (e) { }
+    lgaChanged();
+  }
+  function lgaChanged() {
+    if (!root) return;
+    paintLga();
+    var M = MODES[mode];
+    if (M.keyMode && K.key && $b().querySelector("#vkOut .vk-keybody")) showKeyView();
+    else if (M.multiMode && MA && MA.allTaxa && $b().querySelector("#vkOut .vk-mhead")) showMulti();
+  }
+  function lgaEffect() { return MODES[mode].keyMode ? "Species outside it are greyed out in the key." : MODES[mode].multiMode ? "Species outside it are removed from the candidates." : "Species outside it are left out of the species search."; }
+  function paintLga() {
+    var el = root && root.querySelector("#vkLga"); if (!el) return;
+    var h = '<div class="vk-lgah"><b>Step 1</b> Crop to a Local Government Area <small>(optional)</small></div>';
+    if (LGA.name) {
+      h += '<div class="vk-lgachip"><span>' + esc(LGA.name) + '</span><button type="button" class="vk-sub" data-lga="clear">Clear</button></div>';
+      if (LGA.loading) h += '<div class="vk-lgast">Loading the species recorded in ' + esc(LGA.name) + '...</div>';
+      else if (LGA.error) h += '<div class="vk-lgast err">Could not load ' + esc(LGA.name) + ' (' + esc(LGA.error) + '). All species are shown. <button type="button" class="vk-sub" data-lga="retry">Try again</button></div>';
+      else if (LGA.set) h += '<div class="vk-lgast"><b>' + LGA.count + '</b> species recorded in ' + esc(LGA.name) + '. ' + esc(lgaEffect()) +
+        '<label class="vk-tog"><input type="checkbox" id="vkLgaAll"' + (LGA.showAll ? " checked" : "") + '> Include species from outside this LGA</label></div>';
+    } else {
+      h += '<div class="vk-lgarow"><div class="vk-col"><input id="vkLgaIn" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type an LGA, e.g. Yarra Ranges"><div class="vk-list" id="vkLgaList"></div></div>' +
+        '<button type="button" class="vk-sub" data-lga="here">Use my location</button></div><div class="vk-lgast" id="vkLgaMsg"></div>';
+    }
+    el.innerHTML = h;
+    var inp = el.querySelector("#vkLgaIn"), list = el.querySelector("#vkLgaList"), msg = el.querySelector("#vkLgaMsg");
+    if (inp) {
+      var timer = null, seq = 0;
+      inp.addEventListener("input", function () {
+        clearTimeout(timer);
+        var q = inp.value.trim(); if (q.length < 2) { list.classList.remove("show"); return; }
+        var mine = ++seq;
+        timer = setTimeout(function () {
+          gql(Q_LGA_NAME, { n: q }).then(function (j) {
+            if (mine !== seq || !root) return;
+            var arr = (j.data && j.data.localGovernmentAreasByName) || [];
+            list._res = arr.map(function (f) { return f.properties && f.properties.name; }).filter(Boolean);
+            list.innerHTML = list._res.length ? list._res.map(function (n, i) { return '<button type="button" class="vk-opt" data-i="' + i + '">' + esc(n) + "</button>"; }).join("") : '<div class="vk-note">No LGA matches.</div>';
+            list.classList.add("show");
+          }).catch(function () { if (mine === seq && root) { list.innerHTML = '<div class="vk-note">Could not reach VicFlora.</div>'; list.classList.add("show"); } });
+        }, 250);
+      });
+      list.addEventListener("click", function (e) { var b = e.target.closest("[data-i]"); if (b && list._res) { lgaPick(list._res[+b.dataset.i]); paintLga(); } });
+    }
+    el.onclick = function (e) {
+      var b = e.target.closest("[data-lga]"); if (!b) return;
+      var a = b.dataset.lga;
+      if (a === "clear") lgaClear();
+      else if (a === "retry") lgaLoad();
+      else if (a === "here") {
+        if (!navigator.geolocation) { if (msg) msg.textContent = "This device can't give a location."; return; }
+        if (msg) msg.textContent = "Finding your location...";
+        navigator.geolocation.getCurrentPosition(function (pos) {
+          gql(Q_LGA_PT, { lat: pos.coords.latitude, lng: pos.coords.longitude }).then(function (j) {
+            var f = j.data && j.data.localGovernmentAreasByPoint && j.data.localGovernmentAreasByPoint[0];
+            var n = f && f.properties && f.properties.name;
+            if (n) { lgaPick(n); paintLga(); } else if (msg) msg.textContent = "That location is not in a Victorian LGA.";
+          }).catch(function () { if (msg) msg.textContent = "Could not reach VicFlora."; });
+        }, function () { if (msg) msg.textContent = "Location was not available. Type the LGA instead."; }, { timeout: 15000, maximumAge: 60000 });
+      }
+    };
+    var all = el.querySelector("#vkLgaAll");
+    if (all) all.onchange = function () { LGA.showAll = all.checked; lgaChanged(); };
+  }
+  function mountLga() {
+    var b = $b(); if (!b) return;
+    var el = document.createElement("div"); el.className = "vk-lga"; el.id = "vkLga";
+    b.insertBefore(el, b.firstChild);
+    paintLga();
+    if (LGA.name && !LGA.set && !LGA.loading && !LGA.error) lgaLoad();
+  }
+  // True if any species below this key lead is recorded in the chosen LGA.
+  function leadIn(key, l) {
+    if (!lgaOn()) return true;
+    if (!key._lr || key._lrSig !== LGA.name) { key._lr = {}; key._lrSig = LGA.name; }
+    var id = l.lead_id; if (id in key._lr) return key._lr[id];
+    var r;
+    if (l.item) { var it = key.items[l.item] || {}; r = it.to_key ? true : inLga(it.item_name || ""); }
+    else { var kids = key.byParent[id] || []; r = !kids.length || kids.some(function (k) { return leadIn(key, k); }); }
+    return (key._lr[id] = r);
+  }
+  function keyLgaNote(key) {
+    if (!lgaOn()) return "";
+    var tot = 0, ok = 0;
+    Object.keys(key.items).forEach(function (k) { var n = lnorm(key.items[k].item_name); if (n.indexOf(" ") > 0 && !key.items[k].to_key) { tot++; if (inLga(n)) ok++; } });
+    return tot ? '<p class="vk-lgacount"><b>' + ok + "</b> of " + tot + " species in this key are recorded in " + esc(LGA.name) + ". The rest are greyed out.</p>" : "";
+  }
+
   // "View photos": iNaturalist observations of that name that have photos (species, genus or family).
   function inatUrl(name) { return "https://www.inaturalist.org/observations?photos=true&taxon_name=" + encodeURIComponent(String(name || "").replace(/<[^>]+>/g, "").trim()); }
   function photoBtn(name, label) {
     if (!name) return "";
     return '<a class="vk-photos" href="' + inatUrl(name) + '" target="_blank" rel="noopener">&#128247; ' + (label || "View photos") + ' <i>' + esc(name) + '</i> on iNaturalist</a>';
   }
-  function render() {
+  function render() { renderTab(); mountLga(); }
+  function renderTab() {
     var M = MODES[mode], body = $b();
     root.querySelectorAll(".vk-tab").forEach(function (t) { t.setAttribute("aria-selected", t.dataset.mode === tabOf(mode) ? "true" : "false"); });
     if (M.keyMode) { renderKeyMode(); return; }
@@ -2619,14 +2789,16 @@ window.FHFuzzy = (function () {
       var no = key.number[n];
       return '<div class="vk-cp" data-no="' + no + '"><div class="vk-cph"><b>' + no + '</b>' + (from[n] ? ' <small>(from ' + from[n] + ")</small>" : "") + "</div>" +
         (key.byParent[n] || []).map(function (l, i) {
-          return '<div class="vk-lead"><span class="vk-lab">' + no + letter(i) + "</span>" + inline(cleanText(l.lead_text)) + leadEnd(key, l, true) + "</div>";
+          var inR = leadIn(key, l);
+          return '<div class="vk-lead' + (inR ? "" : " vk-out") + '"><span class="vk-lab">' + no + letter(i) + "</span>" + inline(cleanText(l.lead_text)) + leadEnd(key, l, true) + (inR ? "" : ' <small class="vk-outtag">not in ' + esc(LGA.name) + "</small>") + "</div>";
         }).join("") + "</div>";
     }).join("");
   }
   function indentHtml(key, node) {
     var no = key.number[node];
     return (key.byParent[node] || []).map(function (l, i) {
-      var h = '<div class="vk-il"><div class="vk-irow"><span class="vk-lab">' + no + letter(i) + "</span>" + inline(cleanText(l.lead_text)) + leadEnd(key, l, false) + "</div>";
+      var inR = leadIn(key, l);
+      var h = '<div class="vk-il' + (inR ? "" : " vk-out") + '"><div class="vk-irow"><span class="vk-lab">' + no + letter(i) + "</span>" + inline(cleanText(l.lead_text)) + leadEnd(key, l, false) + (inR ? "" : ' <small class="vk-outtag">not in ' + esc(LGA.name) + "</small>") + "</div>";
       if (!l.item && key.byParent[l.lead_id]) h += '<div class="vk-ind">' + indentHtml(key, l.lead_id) + "</div>";
       return h + "</div>";
     }).join("");
@@ -2667,6 +2839,7 @@ window.FHFuzzy = (function () {
     if (K.keys.length > 1) h += '<label class="vk-keysel">Key <select id="vkKeySel">' + K.keys.map(function (k) { return '<option value="' + esc(k.id) + '"' + (String(k.id) === key.id ? " selected" : "") + ">" + esc(k.title) + "</option>"; }).join("") + "</select></label>";
     h += '<div class="vk-vw">' + (K.stack.length ? '<button type="button" class="vk-sub" id="vkKeyBack">&larr; Back</button>' : "") +
       '<button type="button" data-view="bracket" aria-pressed="' + (K.view === "bracket") + '">Bracketed</button><button type="button" data-view="indent" aria-pressed="' + (K.view === "indent") + '">Indented</button></div>';
+    h += keyLgaNote(key);
     h += '<div class="vk-keybody ' + (K.view === "indent" ? "ind" : "brk") + '">' + (K.view === "indent" ? indentHtml(key, key.root) : bracketHtml(key)) + "</div>";
     if (K.genus && K.genus.name) h += '<div class="vk-photorow">' + photoBtn(K.genus.name) + '</div>';
     h += '<p class="vk-foot">Key: VicFlora / KeyBase, Royal Botanic Gardens Victoria.</p>';
@@ -3015,7 +3188,7 @@ window.FHFuzzy = (function () {
       });
     }, Promise.resolve()).then(function () {
       if (my !== runId) return;
-      MA.taxa = all;
+      MA.allTaxa = all; MA.taxa = all;
       showMulti();
     }).catch(function (e) {
       if (my !== runId || (e && e.message === "stale")) return;
@@ -3049,13 +3222,15 @@ window.FHFuzzy = (function () {
     return parts.length ? "<ul class=\"vk-ev\">" + parts.join("") + "</ul>" : "<p class=\"vk-foot\">Nothing could be read from this description.</p>";
   }
   function showMulti() {
+    if (MA.allTaxa) MA.taxa = MA.allTaxa.filter(function (t) { return inLga(t.name); });
     var out = $b().querySelector("#vkOut"), body = $b(), top = body.scrollTop, keys = Object.keys(MA.entries);
     var results = MA.taxa.map(function (t) { return { t: t, e: maEval(t, null) }; });
     var rem = results.filter(function (r) { return r.e.ok; });
     rem.sort(function (a, b) { return a.e.unknown - b.e.unknown || a.t.name.localeCompare(b.t.name); });
     var h = '<div class="vk-mhead"><span><b>' + rem.length + "</b> of " + MA.taxa.length + " taxa possible</span>" +
       '<span class="vk-mbtns">' + (keys.length ? '<button type="button" class="vk-sub" data-reset="1">Clear all</button>' : "") + "</span></div>" +
-      '<div class="vo-bar"><i style="width:' + Math.round(100 * rem.length / Math.max(1, MA.taxa.length)) + '%"></i></div>';
+      '<div class="vo-bar"><i style="width:' + Math.round(100 * rem.length / Math.max(1, MA.taxa.length)) + '%"></i></div>' +
+      (lgaOn() ? '<p class="vk-lgacount">Cropped to <b>' + esc(LGA.name) + "</b>: " + MA.taxa.length + " of " + MA.allTaxa.length + " taxa are recorded there.</p>" : "");
     h += '<div class="vk-set"><label>Measurement tolerance <select id="vkTol">' + [0, 0.1, 0.2, 0.3].map(function (x) { return '<option value="' + x + '"' + (x === MA.tol ? " selected" : "") + ">&plusmn;" + Math.round(x * 100) + "%</option>"; }).join("") + '</select></label>' +
       '<label class="vk-tog"><input type="checkbox" id="vkUnk"' + (MA.keepUnknown ? " checked" : "") + "> Keep taxa with no data for a feature you entered</label></div>";
     h += '<div class="vk-h">Taxa still possible</div>';
@@ -4733,7 +4908,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-08.11";
+  const BUILD_VERSION = "2026-10-08.12";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
