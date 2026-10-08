@@ -2,6 +2,12 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## Team Sync: changed records only (2026-10-08)
+- **Much lighter on the Firebase free quota (fixes the "RESOURCE_EXHAUSTED" error).** Team Sync used to re-download every species and polygon in the survey on each check, so reads grew with survey size x devices x time. It now asks the server only for records changed since the last check (with a 15-minute overlap to tolerate clock differences), so a quiet survey costs about zero reads.
+- A complete download still happens when you join or rejoin, when you tap **Sync now**, and every 2 hours, because deletions can only be seen in a complete list. A record deleted by a teammate can therefore take up to 2 hours (or a Sync now) to disappear on your device.
+- The background check runs every 10 minutes (was 20 min listing everything), and returning to the app only re-checks if the last sync was more than 3 minutes ago.
+- If your Firestore rules refuse queries, the app falls back to the full download automatically.
+
 ## Field fixes and features (2026-10-06)
 - **Map crash fixed:** reshaping a polygon (dragging or adding a corner) rebuilt the corner handles in the middle of the drag, and a timer could fire after the map had closed. Both are now safe.
 - **Camera:** each species now has separate **Take photo** (opens the camera) and **Choose photos** (gallery) buttons. The hidden file inputs no longer use display:none, which some Android versions ignored.

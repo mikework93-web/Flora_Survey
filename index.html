@@ -4086,6 +4086,19 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     } while(pageToken);
     return out;
   }
+  // Only the documents whose "updatedAt" stamp is at or after `sinceIso` (ISO strings sort in time order).
+  // Billed per document returned, so a poll costs a handful of reads instead of the whole survey.
+  async function fsQueryChanged(projectId, idToken, parentPath, collectionId, sinceIso){
+    const url = fsBase(projectId)+"/"+parentPath+":runQuery";
+    const body = await fsFetch(url, { method:"POST", headers:{"Content-Type":"application/json","Authorization":"Bearer "+idToken},
+      body: JSON.stringify({ structuredQuery:{
+        from:[{ collectionId }],
+        where:{ fieldFilter:{ field:{ fieldPath:"updatedAt" }, op:"GREATER_THAN_OR_EQUAL", value:{ stringValue: sinceIso } } },
+        orderBy:[{ field:{ fieldPath:"updatedAt" }, direction:"ASCENDING" }]
+      } }) });
+    if(!Array.isArray(body)) throw new Error("Unexpected query response");
+    return body.filter(r=>r && r.document).map(r=>fsDocToObject(r.document));
+  }
   async function fsPatchDoc(projectId, idToken, docPath, obj){
     const fieldNames = Object.keys(obj||{});
     const mask = fieldNames.map(f=>"updateMask.fieldPaths="+encodeURIComponent(f)).join("&");
@@ -4098,7 +4111,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     try{ await fsFetch(url, { method:"DELETE", headers:{"Authorization":"Bearer "+idToken} }); }
     catch(e){ if(e.status!=="NOT_FOUND") throw e; }
   }
-  const live = { setLiveEndpoints, authAnon, authRefresh, fsCreateDoc, fsGetDoc, fsListDocs, fsPatchDoc, fsDeleteDoc };
+  const live = { setLiveEndpoints, authAnon, authRefresh, fsCreateDoc, fsGetDoc, fsListDocs, fsQueryChanged, fsPatchDoc, fsDeleteDoc };
 
   return { readZipAsync, esc, today, toast, notice, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, buildGeoPackageBlob, buildGeoPackageBytes, buildPolygonGeoPackageBlob, buildPolygonGeoPackageBytes, triggerDownload, shareFiles, getLastShareDiagnostic, buildPicker, consLabel, consBadge, live, readZip, readXLSXSurvey, readPointsGeoPackage, readPolygonsGeoPackage };
 })();
@@ -4135,7 +4148,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-08.2";
+  const BUILD_VERSION = "2026-10-08.3";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -4241,7 +4254,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // (e.g. a retried request after a flaky connection). ──
   function freshLiveState(){
     return { active:false, status:"idle", code:null, idToken:null, refreshToken:null, tokenExpiresAt:0,
-      consecutiveFailures:0, lastSyncOk:0, lastDroppedCode:null, lastErrorCode:null, remoteCount:null, versionMismatch:null };
+      consecutiveFailures:0, lastSyncOk:0, lastDroppedCode:null, lastErrorCode:null, remoteCount:null, versionMismatch:null,
+      sp:{ at:0, full:0 }, pg:{ at:0, full:0 }, remoteIds:new Set() };
   }
   let live = freshLiveState();
   let pollTimer = null;
@@ -4874,24 +4888,50 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   }
   // Same "two consecutive polls must agree it's missing" grace period as
   // pullRemoteSpecies() — see its own comment for the full reasoning.
-  async function pullRemotePolygons(){
-    const remoteDocs = await FHKit.live.fsListDocs(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/polygons");
+  async function pullRemotePolygons(forceFull){
+    const r = await fetchRemoteDocs("polygons", live.pg, forceFull);
+    const remoteDocs = r.docs;
     remoteDocs.forEach(doc=>{
       const local = polygons.find(p=>p.id===doc._id);
       if(local){ applyRemoteToPolygon(local, doc); }
       else { polygons.push(mergeRemotePolygonIntoLocal(doc)); }
     });
-    const remoteIds = new Set(remoteDocs.map(d=>d._id));
-    const stillMissing = new Set();
-    polygons = polygons.filter(p=>{
-      if(!isSyncedPolygonToCurrentSession(p) || remoteIds.has(p.id) || recentlyCreatedPolygons.has(p.id)){ return true; }
-      if(pendingRemovalPolygons.has(p.id)){ return false; }
-      stillMissing.add(p.id);
-      return true;
-    });
-    pendingRemovalPolygons.clear();
-    stillMissing.forEach(id=> pendingRemovalPolygons.add(id));
+    if(r.full){   // removal can only be judged against a COMPLETE listing
+      const remoteIds = new Set(remoteDocs.map(d=>d._id));
+      const stillMissing = new Set();
+      polygons = polygons.filter(p=>{
+        if(!isSyncedPolygonToCurrentSession(p) || remoteIds.has(p.id) || recentlyCreatedPolygons.has(p.id)){ return true; }
+        if(pendingRemovalPolygons.has(p.id)){ return false; }
+        stillMissing.add(p.id);
+        return true;
+      });
+      pendingRemovalPolygons.clear();
+      stillMissing.forEach(id=> pendingRemovalPolygons.add(id));
+    }
+    live.pg.at = r.startedAt; if(r.full) live.pg.full = r.startedAt;
     renderPolygons();
+  }
+  // Changed-records-only sync. Every poll used to download EVERY record in the survey, and
+  // each downloaded record counts as one Firestore read against the project's daily free quota
+  // (50,000), multiplied by every phone and every return to the app. Now a poll asks only for
+  // records stamped updatedAt since the last poll (minus a safety overlap for phone clocks that
+  // disagree), which is usually a handful. A deleted record cannot show up in a "changed" list,
+  // so a COMPLETE listing is still taken on join/rejoin, on "Sync now", and every
+  // LIVE_FULL_PULL_MS, which is what lets a teammate's deletion reach this phone.
+  async function fetchRemoteDocs(coll, st, forceFull){
+    const now = Date.now();
+    let full = !!forceFull || !st.at || !st.full || (now - st.full) > LIVE_FULL_PULL_MS;
+    let docs = null;
+    if(!full){
+      try{
+        docs = await FHKit.live.fsQueryChanged(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code, coll, new Date(st.at - LIVE_PULL_OVERLAP_MS).toISOString());
+      }catch(e){
+        if(e && (e.status === "RESOURCE_EXHAUSTED" || e.network)) throw e;
+        docs = null;   // the query was refused for some other reason: fall back to the complete listing
+      }
+    }
+    if(!docs){ docs = await FHKit.live.fsListDocs(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/"+coll); full = true; }
+    return { docs, full, startedAt: now };
   }
 
   // Pulls the full shared species list and reconciles it into `rows`: adds
@@ -4903,49 +4943,47 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // here, even if it's not in the remote list yet — that's what lets a
   // reconnect (or a switch to a different session) "combine" both sides
   // instead of one replacing the other (see reconcileWithRemote()).
-  async function pullRemoteSpecies(){
-    const remoteDocs = await FHKit.live.fsListDocs(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species");
+  async function pullRemoteSpecies(forceFull){
+    const r = await fetchRemoteDocs("species", live.sp, forceFull === true);
+    const remoteDocs = r.docs;
     let mostRecent = null;
     remoteDocs.forEach(doc=>{
-      const local = rows.find(r=>r.id===doc._id);
+      const local = rows.find(x=>x.id===doc._id);
       if(local){ applyRemoteToRow(local, doc); }
       else { rows.push(mergeRemoteSpeciesIntoRow(doc)); }
       if(!mostRecent || (doc._updateTime||"") > (mostRecent._updateTime||"")) mostRecent = doc;
     });
-    const remoteIds = new Set(remoteDocs.map(d=>d._id));
-    // A previously-synced row missing from THIS listing isn't removed
-    // immediately — a single incomplete/flaky fsListDocs() response would
-    // otherwise be enough to wipe out a record a teammate can still see.
-    // It's only dropped once a SECOND consecutive poll also fails to find
-    // it; any poll where it reappears clears the mark. That trades a one-
-    // poll (≈20 min, or immediate on manual rejoin) delay in reflecting a
-    // genuine teammate deletion for a hard guarantee against ever losing a
-    // record to a momentary server hiccup.
-    const stillMissing = new Set();
-    rows = rows.filter(r=>{
-      if(!isSyncedToCurrentSession(r) || remoteIds.has(r.id) || recentlyCreated.has(r.id)){ return true; }
-      if(pendingRemoval.has(r.id)){ return false; } // missed twice in a row — actually gone
-      stillMissing.add(r.id);
-      return true;
-    });
-    pendingRemoval.clear();
-    stillMissing.forEach(id=> pendingRemoval.add(id));
-    const pinned = mostRecent && rows.find(r=>r.id===mostRecent._id);
-    sortRows(pinned ? pinned.id : null);
-    // The whole team's shared count, shown on the Team Sync card — lets
-    // everyone eyeball whether their device roughly matches what the server
-    // has, catching a device that's silently fallen behind (or never fully
-    // reconnected after a drop) WHILE still in the field, instead of only
-    // discovering a mismatch after the fact at export time.
-    live.remoteCount = remoteDocs.length;
+    if(r.full){
+      const remoteIds = new Set(remoteDocs.map(d=>d._id));
+      live.remoteIds = remoteIds;
+      // A previously-synced row missing from THIS complete listing isn't removed
+      // immediately: a single incomplete/flaky response would otherwise be enough
+      // to wipe out a record a teammate can still see. It's only dropped once a
+      // SECOND complete listing also fails to find it.
+      const stillMissing = new Set();
+      rows = rows.filter(x=>{
+        if(!isSyncedToCurrentSession(x) || remoteIds.has(x.id) || recentlyCreated.has(x.id)){ return true; }
+        if(pendingRemoval.has(x.id)){ return false; } // missed twice in a row, so actually gone
+        stillMissing.add(x.id);
+        return true;
+      });
+      pendingRemoval.clear();
+      stillMissing.forEach(id=> pendingRemoval.add(id));
+    } else {
+      remoteDocs.forEach(d=> live.remoteIds.add(d._id));
+    }
+    if(r.full || mostRecent){
+      const pinned = mostRecent && rows.find(x=>x.id===mostRecent._id);
+      sortRows(pinned ? pinned.id : null);
+    }
+    // The whole team's shared count, shown on the Team Sync card, so everyone can
+    // check their device roughly matches what the server has.
+    live.remoteCount = live.remoteIds.size;
+    live.sp.at = r.startedAt; if(r.full) live.sp.full = r.startedAt;
     await syncTeamPresence();
-    // Polygons are pulled from here (the tail of the species pull) rather
-    // than from each of pullRemoteSpecies()'s own call sites individually —
-    // see the big comment on the polygon sync engine above. A failure here
-    // (e.g. a transient error listing the polygons collection) is swallowed
-    // rather than allowed to fail the species pull that already succeeded —
-    // the next poll tries again.
-    try{ await pullRemotePolygons(); }catch(e){}
+    // Polygons are pulled from here (the tail of the species pull) so every call site that
+    // pulls species also pulls polygons. A failure here is swallowed: the next poll retries.
+    try{ await pullRemotePolygons(forceFull === true); }catch(e){}
     renderLiveUI();
     render(); autosave();
   }
@@ -4987,7 +5025,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // device onto a different/new session safe rather than orphaning: every
   // row not yet confirmed synced to THAT session gets offered up again.
   async function reconcileWithRemote(){
-    await pullRemoteSpecies();   // this also pulls polygons at its own tail — see pullRemotePolygons()
+    await pullRemoteSpecies(true);   // a COMPLETE pull on join/rejoin/reconnect; also pulls polygons at its own tail
     const unsynced = rows.filter(r=>!isSyncedToCurrentSession(r));
     for(const r of unsynced){
       try{ await liveCreateSpeciesForRow(r); }
@@ -5005,7 +5043,15 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // other's finds, and keeps a survey well clear of that quota even left
   // running for a full day. See the visibilitychange listener below for the
   // other lever: not polling at all while the tab is backgrounded.
-  const LIVE_POLL_MS = 20*60*1000;
+  const LIVE_POLL_MS = 10*60*1000;
+  // A complete listing (needed to notice teammates' deletions) is only taken this often during
+  // normal polling; everything in between asks for changed records only. See fetchRemoteDocs().
+  const LIVE_FULL_PULL_MS = 2*60*60*1000;
+  // Records are stamped with the writing phone's clock, so look back this far before the last
+  // poll to catch phones whose clocks run a little slow.
+  const LIVE_PULL_OVERLAP_MS = 15*60*1000;
+  // Coming back to the app triggers a catch-up pull, but not if one just happened.
+  const LIVE_RESUME_MIN_MS = 3*60*1000;
   // Give up (show the sticky "disconnected — tap Rejoin" banner) after
   // roughly two missed scheduled syncs in a row, rather than a fixed wall-
   // clock time — that scales sensibly whatever LIVE_POLL_MS is set to.
@@ -5049,7 +5095,10 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   document.addEventListener("visibilitychange", ()=>{
     if(!live.active) return;
     if(document.hidden){ stopPolling(); }
-    else { startPolling(); pullRemoteSpecies().catch(()=>{}); }
+    else {
+      startPolling();
+      if(Date.now() - (live.lastSyncOk||0) > LIVE_RESUME_MIN_MS) pullRemoteSpecies().catch(()=>{});
+    }
   });
   // Catches any local species that was never even ATTEMPTED — e.g. logged
   // before Team Sync was started/joined for this survey, added in the brief
@@ -5210,7 +5259,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     if(!live.active){ FHKit.toast("Not connected to a live survey"); return; }
     try{
       await ensureAuth();
-      await pullRemoteSpecies();
+      await pullRemoteSpecies(true);   // "Sync now" always takes a complete listing (this is what picks up teammates' deletions)
       queueUnsyncedRows();
       await flushLiveQueue();
       await pullRemoteSpecies();   // pull once more so the toast reflects what just got pushed
