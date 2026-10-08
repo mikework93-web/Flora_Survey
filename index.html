@@ -980,6 +980,27 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
 .pick-opt.picked{background:var(--ok-bg);box-shadow:inset 3px 0 0 var(--ok)}
 .pick-opt.picked .picked-tag{flex:none;font-size:10.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--ok);border:1px solid var(--ok);border-radius:3px;padding:1px 6px}
 .pick-opt.picked .cn{color:var(--ok)}
+.pick-row{display:flex;gap:8px;align-items:stretch}
+.pick-row .ifield{flex:1;min-width:0}
+.pid-btn{flex:0 0 auto;width:44px;border:1px solid var(--border);background:var(--field);border-radius:3px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;color:var(--charcoal)}
+.pid-btn:hover{background:var(--cream)}
+.pid-btn svg{width:22px;height:22px;fill:currentColor}
+.pid-btn.busy{opacity:.5;pointer-events:none}
+.pid-card{max-width:460px}
+.pid-body{overflow-y:auto;padding:6px}
+.pid-prev{display:block;max-height:140px;margin:8px auto;border-radius:3px}
+.pid-opt{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer}
+.pid-opt:hover{background:var(--cream)}
+.pid-opt .nm{flex:1;min-width:0}
+.pid-opt .nm b{display:block;font-size:13px}
+.pid-opt .nm i{display:block;font-size:12px;color:var(--muted)}
+.pid-opt .nm .tag{font-size:10.5px;color:var(--muted)}
+.pid-score{width:54px;text-align:right;font-size:12px;font-weight:700;color:var(--charcoal)}
+.pid-bar{height:4px;background:var(--line-soft);border-radius:2px;margin-top:3px;overflow:hidden}
+.pid-bar span{display:block;height:100%;background:var(--gold)}
+.pid-note{padding:8px 12px;font-size:11.5px;color:var(--muted)}
+.pid-chk{display:flex;gap:6px;align-items:center;padding:8px 12px;font-size:12.5px}
 </style>
 <!-- Aerial imagery map (for precise point placement/adjustment and polygon
      drawing — see MapModal). Loaded with no integrity/crossorigin hash: a
@@ -1074,7 +1095,7 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
   <div class="card survey-only">
     <h2>Add species</h2>
     <div class="pick">
-      <div class="ifield"><svg class="fi" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 9.5 16a6.5 6.5 0 0 0 4.2-1.6l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg><input id="pick" type="text" placeholder="Search species" autocomplete="off"></div>
+      <div class="pick-row"><div class="ifield"><svg class="fi" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 9.5 16a6.5 6.5 0 0 0 4.2-1.6l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg><input id="pick" type="text" placeholder="Search species" autocomplete="off"></div><button type="button" class="pid-btn" id="pidBtn" title="Identify a plant from a photo" aria-label="Identify plant from photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9zm3 14.5A4.5 4.5 0 1 1 12 8.5a4.5 4.5 0 0 1 0 9zm0-2a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/></svg></button><input type="file" id="pidFile" accept="image/*" capture="environment" hidden></div>
       <div class="pick-list" id="pickList"></div>
     </div>
     <p class="muted" style="margin:8px 0 0">Search a species and tap it to record it below. Names not in the reference list are added as free text, tagged invasive, and highlighted red on export (change the origin in the table if needed). Tick <b>Uncertain</b> on any record you're not fully confident of (same red highlight).</p>
@@ -4923,7 +4944,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-09.13";
+  const BUILD_VERSION = "2026-10-09.14";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -8533,7 +8554,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     rows.push(row);
     sortRows(row.id);   // newest species to the top, everything else alphabetical
     render(); autosave();
-    if(opts.quiet) return;   // added on behalf of a polygon: no GPS prompt, no scrolling
+    if(opts.quiet) return row;   // added on behalf of a polygon: no GPS prompt, no scrolling
     if(auto) captureLocation(rows.indexOf(row));
     else {
       // Bring the new row into view so you can see where it landed.
@@ -8542,6 +8563,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       document.body.classList.remove("picking");
       if(el) setTimeout(()=>scrollUnderBar(el, 60), 60);
     }
+    return row;
   }
   // Opens the aerial map to capture a NEW GPS point for one species record
   // (a species can have more than one location — e.g. several individuals/
@@ -9592,6 +9614,141 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     else if(result === "error") FHKit.toast("Couldn't check right now — no connection?");
     // "updated" needs no toast — showUpdateBanner() puts up its own.
   });
+
+  // ---- Photo plant ID (Pl@ntNet) ------------------------------------------
+  // Sends a downscaled photo to Pl@ntNet and lists the likely species. Picking
+  // one adds it through the normal add() path (optionally attaching the photo).
+  // The API key is entered once and kept on this device. Pl@ntNet's free tier
+  // is non-commercial and rate-limited — see my.plantnet.org for licensing.
+  (function plantId(){
+    const KEY_LS = "fh_plantnet_key";
+    const PROJECT = "weurope";   // closest to southern Australian flora; "all" also works
+    const btn = $("pidBtn"), file = $("pidFile");
+    if(!btn || !file) return;
+    const getKey = ()=>{ try{ return window.PLANTNET_API_KEY || localStorage.getItem(KEY_LS) || ""; }catch(e){ return window.PLANTNET_API_KEY||""; } };
+    const setKey = k=>{ try{ localStorage.setItem(KEY_LS, k); }catch(e){} };
+    function askKey(){
+      return new Promise(res=>{
+        const ov = document.createElement("div"); ov.className="fh-modal";
+        ov.innerHTML = '<div class="fh-modal-card"><h3>Plant ID key</h3><div style="padding:14px 18px">'
+          + '<p style="margin:0 0 10px;font-size:13px">Photo ID uses Pl@ntNet. Get a free API key at <b>my.plantnet.org</b> and paste it here. It is stored on this device only.</p>'
+          + '<input id="pidKey" type="text" autocomplete="off" placeholder="Pl@ntNet API key"></div>'
+          + '<div class="fh-modal-foot"><button class="ghost" data-close="1">Cancel</button> <button class="btn" id="pidKeyOk">Save</button></div></div>';
+        document.body.appendChild(ov);
+        const done = v=>{ ov.remove(); res(v); };
+        ov.addEventListener("click", e=>{
+          if(e.target===ov || e.target.dataset.close) return done("");
+          if(e.target.id==="pidKeyOk"){ const v = $("pidKey").value.trim(); if(v) setKey(v); done(v); }
+        });
+        setTimeout(()=>{ try{ $("pidKey").focus(); }catch(e){} }, 50);
+      });
+    }
+    function downscale(f, max){
+      return new Promise((res, rej)=>{
+        const url = URL.createObjectURL(f), img = new Image();
+        img.onload = ()=>{
+          const sc = Math.min(1, max/Math.max(img.naturalWidth, img.naturalHeight));
+          const c = document.createElement("canvas");
+          c.width = Math.round(img.naturalWidth*sc); c.height = Math.round(img.naturalHeight*sc);
+          c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(url);
+          c.toBlob(b=> b ? res(b) : rej(new Error("Couldn't read photo")), "image/jpeg", 0.85);
+        };
+        img.onerror = ()=>{ URL.revokeObjectURL(url); rej(new Error("Couldn't read photo")); };
+        img.src = url;
+      });
+    }
+    async function identify(blob, key){
+      const fd = new FormData();
+      fd.append("images", blob, "plant.jpg");
+      fd.append("organs", "auto");
+      const u = "https://my-api.plantnet.org/v2/identify/"+PROJECT+"?include-related-images=false&nb-results=8&lang=en&api-key="+encodeURIComponent(key);
+      let r;
+      try{ r = await fetch(u, { method:"POST", body:fd }); }
+      catch(e){ const er = new Error("No connection — photo ID needs internet."); er.network = true; throw er; }
+      if(r.status===401 || r.status===403){ const er = new Error("Pl@ntNet rejected the API key."); er.badKey = true; throw er; }
+      if(r.status===404){ throw new Error("No match found in this photo."); }
+      if(r.status===429){ throw new Error("Pl@ntNet daily limit reached. Try again tomorrow."); }
+      if(!r.ok) throw new Error("Pl@ntNet error ("+r.status+").");
+      const j = await r.json();
+      return (j.results||[]).map(x=>({
+        score: x.score||0,
+        sci: (x.species && (x.species.scientificNameWithoutAuthor || x.species.scientificName)) || "",
+        commons: (x.species && x.species.commonNames) || []
+      })).filter(x=>x.sci);
+    }
+    // Map a Pl@ntNet name onto the survey's own reference data.
+    async function toSpecies(c){
+      const want = c.sci.toLowerCase();
+      const list = window.FH_SPECIES || [];
+      let m = list.find(s=> (s.sci||"").toLowerCase()===want);
+      if(m) return { sp:m, known:true };
+      try{
+        if(window.FHVicFlora && FHVicFlora.search){
+          const rs = await FHVicFlora.search(c.sci);
+          const hit = (rs||[]).find(s=> (s.sci||"").toLowerCase()===want);
+          if(hit) return { sp:hit, known:true };
+        }
+      }catch(e){}
+      // Genus-only fallback never invents a status — add as free text, flagged red on export.
+      return { sp:{ sci:c.sci, common:c.commons[0]||c.sci, type:"indigenous", free:true }, known:false };
+    }
+    function showResults(blob, cands){
+      const url = URL.createObjectURL(blob);
+      const ov = document.createElement("div"); ov.className="fh-modal";
+      const items = cands.map((c,i)=>{
+        const pc = Math.round(c.score*100);
+        return '<div class="pid-opt" data-i="'+i+'"><div class="nm"><b>'+FHKit.esc(c.commons[0]||c.sci)+'</b><i>'+FHKit.esc(c.sci)+'</i></div>'
+          + '<div class="pid-score">'+pc+'%<div class="pid-bar"><span style="width:'+Math.min(100,pc)+'%"></span></div></div></div>';
+      }).join("");
+      ov.innerHTML = '<div class="fh-modal-card pid-card"><h3>Possible matches</h3><div class="pid-body">'
+        + '<img class="pid-prev" src="'+url+'" alt="">'
+        + (items || '<div class="pid-note">No species suggested.</div>')
+        + '<div class="pid-note">Tap a match to add it to the list. Suggestions are a guide — confirm in the field, especially for grasses and look-alikes. Matches not in the reference list are added as free text.</div>'
+        + '<label class="pid-chk"><input type="checkbox" id="pidAttach" checked> Attach this photo to the record</label>'
+        + '</div><div class="fh-modal-foot"><button class="ghost" data-close="1">Cancel</button></div></div>';
+      document.body.appendChild(ov);
+      const close = ()=>{ URL.revokeObjectURL(url); ov.remove(); };
+      ov.addEventListener("click", async e=>{
+        if(e.target===ov || e.target.dataset.close){ close(); return; }
+        const o = e.target.closest(".pid-opt"); if(!o) return;
+        const c = cands[+o.dataset.i];
+        const attach = $("pidAttach").checked;
+        close();
+        const { sp, known } = await toSpecies(c);
+        const row = await add(sp);
+        if(!row) return;
+        if(!known) FHKit.toast("Not in reference list — added as free text");
+        if(attach){
+          const idx = rowIndexById(row.id);
+          if(idx>=0){
+            const f = new File([blob], "plantid.jpg", { type:"image/jpeg" });
+            try{ await addPhotosToRow(idx, [f]); }catch(err){ FHKit.toast("Added, but the photo couldn't be attached"); }
+          }
+        }
+      });
+    }
+    async function run(f, key){
+      btn.classList.add("busy");
+      FHKit.toast("Identifying…");
+      try{
+        const blob = await downscale(f, 1280);
+        const cands = await identify(blob, key);
+        showResults(blob, cands);
+      }catch(e){
+        if(e.badKey){ try{ localStorage.removeItem(KEY_LS); }catch(x){} }
+        FHKit.notice("Plant ID", String(e && e.message || e), "error");
+      }finally{ btn.classList.remove("busy"); }
+    }
+    btn.addEventListener("click", async ()=>{
+      let key = getKey();
+      if(!key){ key = await askKey(); if(!key) return; }
+      file.value = "";
+      file.onchange = ()=>{ const f = file.files && file.files[0]; if(f) run(f, key); };
+      file.click();
+    });
+    btn.addEventListener("contextmenu", async e=>{ e.preventDefault(); const k = await askKey(); if(k) FHKit.toast("Key saved"); });
+  })();
 
   FHKit.buildPicker($("pick"), $("pickList"), add, ()=> rows.map(r=>r.sci));
   $("startSurveyBtn").addEventListener("click", startSurvey);
