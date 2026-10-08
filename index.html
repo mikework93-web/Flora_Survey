@@ -4296,7 +4296,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-08.7";
+  const BUILD_VERSION = "2026-10-08.8";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -4648,7 +4648,11 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     applyAuth(auth);
   }
   function persistLiveSession(){
-    try{ localStorage.setItem(LIVE_KEY, JSON.stringify({ code: live.code, refreshToken: live.refreshToken })); }catch(e){}
+    // The pull bookkeeping rides along so that reopening the app can carry on from where this
+    // phone left off WITHOUT downloading the survey again (see tryAutoRejoinLive).
+    let pull = null;
+    try{ if(live.sp && live.sp.at) pull = { sp:live.sp, pg:live.pg, ids:Array.from(live.remoteIds||[]), count:live.remoteCount }; }catch(e){}
+    try{ localStorage.setItem(LIVE_KEY, JSON.stringify({ code: live.code, refreshToken: live.refreshToken, pull: pull })); }catch(e){}
   }
   function loadLiveQueue(){ try{ return JSON.parse(localStorage.getItem(LIVE_QUEUE_KEY))||[]; }catch(e){ return []; } }
   function saveLiveQueue(q){ try{ localStorage.setItem(LIVE_QUEUE_KEY, JSON.stringify(q)); }catch(e){} }
@@ -5135,6 +5139,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     try{ await pullRemotePolygons(forceFull === true); }catch(e){}
     renderLiveUI();
     render(); autosave();
+    persistLiveSession();
   }
   // Team Sync's "a teammate is on a different app version" warning is
   // sourced from a small per-device presence doc (surveys/{code}/devices/
@@ -5195,17 +5200,17 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // other's finds, and keeps a survey well clear of that quota even left
   // running for a full day. See the visibilitychange listener below for the
   // other lever: not polling at all while the tab is backgrounded.
-  const LIVE_POLL_MS = 10*60*1000;   // slow clock: reconnect retry, give-up and "teammate gone quiet" thresholds
+  const LIVE_POLL_MS = 20*60*1000;   // the sync interval; also scales the reconnect retry, give-up and "teammate gone quiet" thresholds
   // How often a phone asks the server what changed. Cheap now that only changed records are
   // downloaded (a quiet check is ~2 reads), so teammates' species and polygons show up within a minute.
-  const LIVE_SYNC_MS = 60*1000;
+  const LIVE_SYNC_MS = LIVE_POLL_MS;
   const LIVE_PRESENCE_MS = 5*60*1000;   // presence heartbeat + devices listing, throttled to save reads/writes
   // A complete listing (needed to notice teammates' deletions) is only taken this often during
   // normal polling; everything in between asks for changed records only. See fetchRemoteDocs().
   const LIVE_FULL_PULL_MS = 2*60*60*1000;
   // Records are stamped with the writing phone's clock, so look back this far before the last
   // poll to catch phones whose clocks run a little slow.
-  const LIVE_PULL_OVERLAP_MS = 15*60*1000;
+  const LIVE_PULL_OVERLAP_MS = 5*60*1000;
   // Coming back to the app triggers a catch-up pull, but not if one just happened.
   const LIVE_RESUME_MIN_MS = 30*1000;
   // Give up (show the sticky "disconnected — tap Rejoin" banner) after
@@ -5252,8 +5257,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     if(!live.active) return;
     if(document.hidden){ stopPolling(); }
     else {
+      // No catch-up pull on return: reopening the app must not cost reads. The next scheduled
+      // check (every 20 minutes) or "Sync now" brings in what teammates added.
       startPolling();
-      if(Date.now() - (live.lastSyncOk||0) > LIVE_RESUME_MIN_MS) pullRemoteSpecies().catch(()=>{});
     }
   });
   // Catches any local species that was never even ATTEMPTED — e.g. logged
@@ -5676,7 +5682,21 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const survey = await FHKit.live.fsGetDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+saved.code);
       if(!survey){ noticeLiveDropped(saved.code); return; } // that code no longer exists
       live.code = saved.code; live.active = true;
-      await reconcileWithRemote();
+      if(saved.pull && saved.pull.sp && saved.pull.sp.at){
+        // Reopened: carry on from where this phone left off instead of downloading the survey again.
+        // Rows already on this phone were synced last time (anything still waiting is in the offline
+        // queue), so they are re-tagged as synced rather than re-checked against the server.
+        live.sp = saved.pull.sp; live.pg = saved.pull.pg || { at:0, full:0 };
+        live.remoteIds = new Set(saved.pull.ids || []); live.remoteCount = saved.pull.count;
+        const pending = { species:new Set(), polygons:new Set() };
+        loadLiveQueue().forEach(op=>{ if(op.op==="create") pending[(op.collection||"species")==="polygons" ? "polygons" : "species"].add(op.id); });
+        const seen = "1970-01-01T00:00:01.000Z";   // epoch: never makes a later remote change look "older than local"
+        rows.forEach(r=>{ if(!pending.species.has(r.id)){ r._liveUpdatedAt = r._liveUpdatedAt || seen; r._liveCode = live.code; } });
+        polygons.forEach(pg=>{ if(!pending.polygons.has(pg.id)){ pg._liveUpdatedAt = pg._liveUpdatedAt || seen; pg._liveCode = live.code; } });
+        flushLiveQueue().catch(()=>{});
+      } else {
+        await reconcileWithRemote();
+      }
       persistLiveSession();
       setLiveStatus("connected");
       startPolling();
@@ -9160,7 +9180,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   window.addEventListener("online", ()=>{
     FHKit.toast("Back online. Syncing...");
     try{
-      if(live.active){ flushLiveQueue().then(()=>pullRemoteSpecies()).catch(()=>{}); }
+      if(live.active){ flushLiveQueue().catch(()=>{}); }
       else if(live.lastDroppedCode){ attemptReconnect(true); }
     }catch(e){}
     checkForUpdate(true).catch(()=>{});

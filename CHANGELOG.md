@@ -2,6 +2,12 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## Team Sync: 20-minute checks, nothing downloaded on reopen (2026-10-08, v.8)
+- **Checks every 20 minutes** (changed records only), replacing the 1-minute check from v.4. Tap **Sync now** to check immediately (that does a full download, so deletions by teammates come through).
+- **Reopening the app costs no reads.** The app no longer checks when you switch back to it or when signal returns. After a reload it picks up where it left off using the position saved on the phone, so the only thing it asks the server for is the survey's own record (1 read). Species and polygons already on the phone are trusted as synced; anything still waiting to upload stays in the offline queue and is sent as usual.
+- The look-back overlap for slow phone clocks is now 5 minutes (was 15), so each check re-reads fewer records.
+- A complete download still happens on join, Rejoin, Sync now and every 2 hours of a running session.
+
 ## Sp. Comp: compare any two species (2026-10-08, v.7)
 - **Second species is now typed in, and can be in any genus.** Type the first species, then type the second. Same genus: the genus key step where they separate, as before. Different genera of one family: the descriptions side by side plus the family key step where the two genera separate (columns show the genera, with the route to each). Different families: the app looks for a higher-level key and says so if VicFlora has none covering both. The note above the result says which kind of comparison it is.
 
