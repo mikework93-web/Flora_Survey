@@ -2,6 +2,11 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## VicKey: LGA crop fix (2026-10-09, v.13)
+- Fixed "VicFlora returned no species for <LGA>". The app was guessing how VicFlora stores LGA names. It now asks VicFlora's index for its exact filter for the chosen LGA (the one VicFlora search itself uses) and then lists the species with that.
+- If it still fails, the message now says why, for example the LGA isn't in the index, the filter matched nothing, or the records weren't species. Please send me that text if you see it.
+- Still not tested against live VicFlora (mock data only).
+
 ## VicKey: crop to a Local Government Area (2026-10-08, v.12)
 - **Step 1** at the top of all three tabs: pick a Local Government Area (type its name, or **Use my location**). The species recorded there come from VicFlora's own LGA filter, the same one VicFlora search uses.
 - **Comparison (Species):** the species search only suggests species recorded in that LGA.

@@ -2599,27 +2599,42 @@ window.FHFuzzy = (function () {
     return null;
   }
   function lgaCachePut(name, names) { try { localStorage.setItem("vk_lgac_" + name, JSON.stringify({ t: Date.now(), n: names })); } catch (e) { } }
+  var Q_LGA_FACET = "query($f:FieldFacetInput!){facetField(input:$f){fieldName facets{value count fq}}}";
+  function lgaBase(v) { return lnorm(v).replace(/\s*\([^)]*\)\s*$/, "").replace(/^(city|shire|rural city|borough) of /, "").replace(/ (city|shire|rural city|borough)$/, "").trim(); }
+  // Ask the VicFlora index for the exact filter text it uses for this LGA (same as VicFlora search).
+  function lgaFilter(name) {
+    return longGql(Q_LGA_FACET, { f: { field: "local_government_area", limit: 1000 } }).then(function (j) {
+      var fld = j && j.data && j.data.facetField, fs = (fld && fld.facets) || [];
+      if (!fs.length) throw new Error((j && j.errors && j.errors[0] && j.errors[0].message) || "VicFlora gave no list of LGAs");
+      var want = lgaBase(name), hit = null;
+      fs.forEach(function (f) { if (!hit && lnorm(f.value) === lnorm(name)) hit = f; });
+      if (!hit) fs.forEach(function (f) { if (!hit && lgaBase(f.value) === want) hit = f; });
+      if (!hit) throw new Error('"' + name + '" is not in the VicFlora index (it lists e.g. ' + fs.slice(0, 3).map(function (f) { return f.value; }).join(", ") + ")");
+      return hit.fq || ('local_government_area:"' + String(hit.value).replace(/"/g, "") + '"');
+    });
+  }
   function fetchLgaSpecies(name) {
-    var rows = 500, page = 1, q = "*:*", alt = false, all = [], seen = {};
+    var rows = 500, page = 1, all = [], seen = {}, fq = null, ranks = {};
     function next() {
-      var vars = { i: { q: q, fq: ['local_government_area:"' + name.replace(/"/g, "") + '"'], rows: rows, page: page } };
+      var vars = { i: { q: "*", fq: [fq], rows: rows, page: page } };
       return longGql(Q_LGA_SP, vars).then(function (j) {
         if (j && j.errors && j.errors.length && !(j.data && j.data.search)) throw new Error(j.errors[0].message || "VicFlora refused the search");
         var docs = (j && j.data && j.data.search && j.data.search.docs) || [], fresh = 0;
         docs.forEach(function (d) {
           var key = d.id || d.scientificName; if (seen[key]) return; seen[key] = 1; fresh++;
-          var r = String(d.taxonRank || "").toLowerCase();
+          var r = String(d.taxonRank || "").toLowerCase(); ranks[r] = 1;
           if (/species|variety|form|hybrid/.test(r) && d.scientificName) all.push(d.scientificName);
         });
         if (!fresh) {
-          if (page === 1 && !alt) { alt = true; q = "*"; return next(); }
+          if (page === 1) throw new Error("the VicFlora filter [" + fq + "] matched no records");
+          if (!all.length) throw new Error("records found but none of species rank (ranks seen: " + Object.keys(ranks).join(", ") + ")");
           return all;
         }
         if (++page > 40) return all;
         return next();
       });
     }
-    return next();
+    return lgaFilter(name).then(function (f) { fq = f; return next(); });
   }
   function lgaLoad() {
     var name = LGA.name; LGA.set = null; LGA.sp = null; LGA.error = "";
@@ -4908,7 +4923,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-08.12";
+  const BUILD_VERSION = "2026-10-09.13";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
