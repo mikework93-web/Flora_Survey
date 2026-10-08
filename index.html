@@ -859,6 +859,27 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
 .vk-taxon a{color:inherit}
 .vk-ind{margin-left:10px;padding-left:10px;border-left:2px solid var(--line-soft)}
 .vk-il{padding-top:2px}
+.vk-set{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:8px 0;font-size:13px}
+.vk-set select{min-height:36px}
+.vk-txlist{margin:0 0 6px}
+.vk-tx{border:1px solid var(--border);border-radius:3px;background:var(--field);margin:0 0 4px}
+.vk-tx summary{padding:10px 12px;font-size:14px;cursor:pointer;min-height:24px}
+.vk-unk{color:var(--muted);font-size:11.5px;margin-left:4px}
+.vk-ev{margin:0;padding:0 12px 6px 28px;font-size:12.5px;line-height:1.5}
+.vk-tx .vk-foot{margin:0;padding:0 12px 10px}
+.vk-grp{border:1px solid var(--border);border-radius:3px;margin:0 0 8px;background:var(--card)}
+.vk-grp>summary{padding:12px;font-weight:800;font-size:14px;cursor:pointer}
+.vk-grp>summary small{font-weight:400;color:var(--muted)}
+.vk-grp .vk-ch{margin:0 8px 8px}
+.vk-numrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.vk-numrow input{width:110px;min-height:44px;padding:0 10px;border:1px solid var(--border);border-radius:3px;background:var(--field);color:var(--ink);font:16px var(--sans)}
+.vk-numrow small{color:var(--muted);font-size:11.5px}
+.vk-sc-row{display:flex;flex-wrap:wrap;gap:6px}
+.vk-sc{padding:8px 11px;min-height:40px;border:1px solid var(--border);border-radius:20px;background:var(--card);color:var(--ink);font:13.5px var(--sans);cursor:pointer}
+.vk-sc[aria-pressed="true"]{background:var(--gold-dark);color:var(--on-gold);border-color:var(--gold-dark)}
+.vk-sc:disabled{opacity:.4;cursor:default}
+.vk-sc .vk-n{float:none;margin-left:5px}
+.vk-mhead{position:sticky;top:0;z-index:4;background:var(--bg,var(--cream));padding:8px 0 2px;box-shadow:0 -16px 0 var(--bg,var(--cream))}
 .vk-chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
 .vk-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 4px 2px 10px;border:1px solid var(--border);border-radius:14px;background:var(--field);font-size:13.5px}
 .vk-chip button{border:0;background:transparent;color:var(--muted);min-width:32px;min-height:32px;font-size:13px;cursor:pointer}
@@ -2229,137 +2250,325 @@ window.FHFuzzy = (function () {
   }
 
 
-  /* ---------- Multi-access key ----------
-     Built from the published VicFlora dichotomous keys (KeyBase). Every couplet of a key
-     becomes a character; each of its statements keeps the set of taxa beneath it. Pick any
-     statements, in any order: choosing one rules out only the taxa that sit under the
-     other statements of that same couplet. Nothing here is guessed from descriptions. */
-  function genusKeyId(name) {
-    return search(name, ["GENUS"]).then(function (hits) {
-      var h = hits.filter(function (x) { return x.name.toLowerCase() === name.toLowerCase(); })[0] || hits[0];
-      if (!h) return null;
-      return node(h.id).then(function (t) {
-        var ks = (t && t.identificationKeys) || [];
-        var pick = ks.filter(function (k) { return /species/i.test(k.title || ""); })[0] || ks[0];
-        return pick ? pick.id : null;
+  /* ---------- Multi-access key: enter measurements and features of a specimen ----------
+     No published VicFlora or KeyBase multi-access key exists for Austrostipa or Rytidosperma
+     (VicFlora's multi-access keys cover Acacia, eucalypts, Asteraceae, Cyperaceae and others),
+     so this one is built from the VicFlora species descriptions. Measurements (mm, cm) and
+     features are pulled out of each description, organ by organ. Anything a description does
+     not state is left blank for that taxon ("no data"), never guessed. Open any taxon to see
+     exactly what was read from its description. */
+  var MA_Q_SPP = "query($id:ID!){taxonConcept(id:$id){children{id taxonRank taxonomicStatus taxonName{fullName} establishmentMeans currentProfile{profile}}}}";
+  var MA_Q_SPL = "query($id:ID!){taxonConcept(id:$id){children{id taxonRank taxonomicStatus taxonName{fullName} establishmentMeans}}}";
+  var MA_Q_PRF = "query($id:ID!){taxonConcept(id:$id){currentProfile{profile}}}";
+  var MC = {};   // genus name -> parsed taxa (this session)
+
+  var ORGANS = [
+    ["culm", /\b(?:culms?|plants?|stems?)\b/gi], ["blade", /\b(?:leaf blades?|blades?|leaves|leaf)\b/gi],
+    ["ligule", /\bligules?\b/gi], ["panicle", /\b(?:panicles?|inflorescences?)\b/gi],
+    ["spikelet", /\bspikelets?\b/gi], ["glume", /\bglumes?\b/gi], ["lemma", /\blemmas?\b/gi],
+    ["callus", /\bcallus\b/gi], ["awn", /\b(?:awns?|columns?)\b/gi], ["palea", /\bpaleas?\b/gi],
+    ["lobe", /\b(?:lateral )?lobes?\b/gi]
+  ];
+  var SKIP_BEFORE = /\b(?:beyond|exceed(?:s|ed|ing)?|above|below|than|equal(?:s|ling)?|surpass(?:es|ing)?|from|between|enclos\w+|including|of)\s+(?:the\s+|their\s+|its\s+|a\s+)?(?:[\w-]+\s+){0,2}$/i;
+  // Split a description into pieces, one per organ it talks about.
+  function organSegments(raw) {
+    var t = cleanText(raw).replace(/\((?:rarely|sometimes|occasionally|rare)[^)]*\)/gi, "").replace(/\b(?:rarely|occasionally|sometimes)\b[^,;.)]*/gi, "");
+    var marks = [];
+    ORGANS.forEach(function (o) {
+      var re = new RegExp(o[1].source, "gi"), m;
+      while ((m = re.exec(t))) {
+        if (SKIP_BEFORE.test(t.slice(Math.max(0, m.index - 40), m.index))) continue;
+        marks.push({ i: m.index, o: o[0] });
+      }
+    });
+    marks.sort(function (a, b) { return a.i - b.i; });
+    var seg = {};
+    marks.forEach(function (mk, k) {
+      var end = Math.min(k + 1 < marks.length ? marks[k + 1].i : t.length, mk.i + 240);
+      (seg[mk.o] = seg[mk.o] || []).push(t.slice(mk.i, end));
+    });
+    return { seg: seg, text: t };
+  }
+  var MRE = /(up to |to |c\. |about |mostly |usually )?(\d+(?:\.\d+)?)(?:\s*(?:–|-|—|to)\s*(\d+(?:\.\d+)?))?\s*(mm|cm|m)\b(?:\s+(long|high|tall|wide|broad|thick|in diameter|diam))?/gi;
+  function measures(str) {
+    var out = [], m;
+    MRE.lastIndex = 0;
+    while ((m = MRE.exec(str))) {
+      var f = { mm: 1, cm: 10, m: 1000 }[m[4].toLowerCase()];
+      var a = +m[2] * f, b = m[3] !== undefined ? +m[3] * f : a;
+      if (/^(up to|to)/i.test(m[1] || "") && m[3] === undefined) { b = a; a = 0; }
+      if (a > b) { var x = a; a = b; b = x; }
+      if (/\bby\s+$/i.test(str.slice(Math.max(0, m.index - 6), m.index))) continue;   // "extending ... by up to 5 mm" is not a length
+      out.push({ lo: a, hi: b, dim: /wide|broad|thick|diam/i.test(m[5] || "") ? "W" : "L" });
+    }
+    return out;
+  }
+  function numFor(seg, organ, dim) {
+    var arr = seg[organ] || [];
+    for (var i = 0; i < arr.length; i++) {
+      var ms = measures(arr[i]);
+      for (var j = 0; j < ms.length; j++) if (ms[j].dim === dim) return { lo: ms[j].lo, hi: ms[j].hi };
+    }
+    return null;
+  }
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function monthIdx(s) { return MONTHS.indexOf(s.slice(0, 3).replace(/^./, function (c) { return c.toUpperCase(); })); }
+  function floweringMonths(text) {
+    var set = new Set();
+    var m = text.match(/flower(?:s|ing)[^.]*?(?:\.|$)/i);
+    if (!m) return set;
+    var s = m[0];
+    var NM = "(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)";
+    var re = new RegExp(NM + "\\s*(?:to|–|-|—)\\s*" + NM, "gi"), r, used = s;
+    while ((r = re.exec(s))) {
+      var a = monthIdx(r[1]), b = monthIdx(r[2]);
+      if (a < 0 || b < 0) continue;
+      for (var i = a, n = 0; n < 12; n++, i = (i + 1) % 12) { set.add(MONTHS[i]); if (i === b) break; }
+    }
+    used = s.replace(re, " ");
+    var re2 = new RegExp("\\b" + NM + "\\b", "gi");
+    while ((r = re2.exec(used))) { var q = monthIdx(r[1]); if (q >= 0) set.add(MONTHS[q]); }
+    if (!set.size && /throughout the year|all year|year[- ]round|any time/i.test(s)) { for (var k = 0; k < 12; k++) set.add(MONTHS[k]); }
+    return set;
+  }
+  // Numeric characters (values held in mm; "f" converts the unit shown to the user).
+  var NUMC = [
+    { id: "height", group: "Plant", label: "Plant (culm) height", unit: "cm", f: 10, organ: "culm", dim: "L" },
+    { id: "blen", group: "Leaves", label: "Leaf blade length", unit: "cm", f: 10, organ: "blade", dim: "L" },
+    { id: "bwid", group: "Leaves", label: "Leaf blade width", unit: "mm", f: 1, organ: "blade", dim: "W" },
+    { id: "liglen", group: "Leaves", label: "Ligule length", unit: "mm", f: 1, organ: "ligule", dim: "L" },
+    { id: "plen", group: "Inflorescence", label: "Panicle length", unit: "cm", f: 10, organ: "panicle", dim: "L" },
+    { id: "slen", group: "Spikelet", label: "Spikelet length", unit: "mm", f: 1, organ: "spikelet", dim: "L" },
+    { id: "nfl", group: "Spikelet", label: "Florets per spikelet", unit: "", f: 1, custom: function (t) { var m = t.match(/(\d+)(?:\s*[–-]\s*(\d+))?[- ]?(?:flowered|florets?)\b/i); return m ? { lo: +m[1], hi: +(m[2] || m[1]) } : null; } },
+    { id: "glen", group: "Glumes", label: "Glume length", unit: "mm", f: 1, organ: "glume", dim: "L" },
+    { id: "llen", group: "Lemma and floret", label: "Lemma length", unit: "mm", f: 1, organ: "lemma", dim: "L" },
+    { id: "clen", group: "Lemma and floret", label: "Callus length", unit: "mm", f: 1, organ: "callus", dim: "L" },
+    { id: "lobelen", group: "Lemma and floret", label: "Lemma lobe length", unit: "mm", f: 1, organ: "lobe", dim: "L" },
+    { id: "palen", group: "Lemma and floret", label: "Palea length", unit: "mm", f: 1, organ: "palea", dim: "L" },
+    { id: "alen", group: "Awn", label: "Awn (or column plus awn) length", unit: "mm", f: 1, organ: "awn", dim: "L" }
+  ];
+  // Feature characters: each state is a regex tested on that organ's piece of the description.
+  var CATC = [
+    { id: "life", group: "Plant", label: "Life form", organ: "culm", states: [["Perennial", /perennial/i], ["Annual", /\bannual/i]], whole: true },
+    { id: "habit", group: "Plant", label: "Growth habit", whole: true, states: [["Tufted (tussock)", /tufted|tussock|caespitose|clump/i], ["Spreading or rhizomatous", /rhizomat|stolon|spreading|mat-forming|creeping|decumbent/i]] },
+    { id: "bform", group: "Leaves", label: "Leaf blade form", organ: "blade", states: [["Flat", /\bflat\b/i], ["Folded or channelled", /channel|folded|conduplicate|grooved/i], ["Inrolled or thread-like", /inrolled|rolled|involute|convolute|terete|filiform|setaceous|thread|needle/i]] },
+    { id: "bsurf", group: "Leaves", label: "Leaf blade surface", organ: "blade", states: [["Glabrous or smooth", /glabrous|smooth|hairless/i], ["Hairy", /\bhair|pilose|villous|pubescent|ciliate|tomentose|puberulous/i], ["Scabrous (rough)", /scabrous|scabrid|rough/i]] },
+    { id: "ligule", group: "Leaves", label: "Ligule", organ: "ligule", states: [["Membranous", /membran/i], ["A fringe of hairs", /ciliate|fringe|hair/i]] },
+    { id: "pshape", group: "Inflorescence", label: "Panicle shape", organ: "panicle", states: [["Contracted, narrow or spike-like", /contracted|narrow|linear|spike|dense|compact|lanceolate|cylindric/i], ["Open or spreading", /\bopen\b|spreading|diffuse|\blax\b|loose|ovate|pyramidal|broad/i]] },
+    { id: "gcolour", group: "Glumes", label: "Glume colour", organ: "glume", states: [["Purplish", /purpl|violet|dark/i], ["Straw, pale or golden", /straw|pale|yellow|cream|golden|whitish/i], ["Green", /green/i]] },
+    { id: "gapex", group: "Glumes", label: "Glume apex", organ: "glume", states: [["Acute to acuminate", /acute|acuminate|attenuate|pointed/i], ["Obtuse", /obtuse|rounded|blunt/i]] },
+    { id: "lsurf", group: "Lemma and floret", label: "Lemma surface", organ: "lemma", states: [["Hairy", /\bhair|pilose|villous|pubescent|silky|puberulous/i], ["Glabrous or smooth", /glabrous|hairless|smooth|shiny/i], ["Scabrous (rough)", /scabrous|scabrid|rough|papillose/i]] },
+    { id: "lobes", group: "Lemma and floret", label: "Lemma lobes (as in Rytidosperma)", organ: "lobe", states: [["Lobes present", /./]] },
+    { id: "lobeshape", group: "Lemma and floret", label: "Lemma lobe tips", organ: "lobe", states: [["Tapering into bristles (setae)", /seta|bristle|awn|tapering/i], ["Short, triangular or blunt", /triangular|obtuse|acute|short|blunt|entire/i]] },
+    { id: "callus", group: "Lemma and floret", label: "Callus tip", organ: "callus", states: [["Sharp (pungent)", /pungent|sharp|acute|pointed/i], ["Blunt", /blunt|obtuse|rounded|truncate/i]] },
+    { id: "callushair", group: "Lemma and floret", label: "Callus hairs", organ: "callus", states: [["Hairy or bearded", /hair|tuft|beard|pilose|villous|silky/i], ["Glabrous", /glabrous|hairless/i]] },
+    { id: "coma", group: "Lemma and floret", label: "Coma (ring of hairs) at the awn base", organ: "lemma", extra: "awn", states: [["Coma present", /\bcoma\b/i]] },
+    { id: "awnshape", group: "Awn", label: "Awn shape", organ: "awn", states: [["Twice bent", /bigeniculate|twice|two bends|doubly|bent twice/i], ["Bent once", /once[- ](?:bent|geniculate)|bent once|\bgeniculate\b|\bbent\b/i, /bigeniculate|twice|two bends|doubly/i], ["Straight or curved", /straight|not bent|unbent|curved|flexuose|incurved/i]] },
+    { id: "awntwist", group: "Awn", label: "Awn base (column)", organ: "awn", states: [["Twisted", /twist|spiral/i]] },
+    { id: "awnsurf", group: "Awn", label: "Awn surface", organ: "awn", states: [["Hairy or plumose", /plumose|hairy|ciliate|feathery|pilose|villous/i], ["Scabrous, scabrid or smooth", /scabrous|scabrid|rough|glabrous|smooth/i]] },
+    { id: "origin", group: "Other", label: "Origin in Victoria", origin: true, states: [["Native", /./], ["Introduced", /./]] },
+    { id: "months", group: "Other", label: "Months seen in flower", months: true, states: MONTHS.map(function (m) { return [m, /./]; }) }
+  ];
+  var MCH = {};
+  NUMC.forEach(function (c) { c.kind = "num"; MCH[c.id] = c; });
+  CATC.forEach(function (c) { c.kind = "cat"; MCH[c.id] = c; });
+  var MGROUPS = ["Plant", "Leaves", "Inflorescence", "Spikelet", "Glumes", "Lemma and floret", "Awn", "Other"];
+
+  function parseTaxon(id, name, text, em) {
+    var sg = organSegments(text || ""), seg = sg.seg, num = {}, cat = {};
+    NUMC.forEach(function (c) {
+      var v = c.custom ? c.custom(sg.text) : numFor(seg, c.organ, c.dim);
+      if (v) num[c.id] = v;
+    });
+    CATC.forEach(function (c) {
+      var st = new Set();
+      if (c.origin) { if (em) st.add(/^native/i.test(em) ? "Native" : "Introduced"); cat[c.id] = st; return; }
+      if (c.months) { floweringMonths(sg.text).forEach(function (m) { st.add(m); }); cat[c.id] = st; return; }
+      var txt = c.whole ? sg.text : ((seg[c.organ] || []).concat(c.extra ? (seg[c.extra] || []) : [])).join(" ");
+      if (!txt) { cat[c.id] = st; return; }
+      c.states.forEach(function (s) { if (s[1].test(txt) && !(s[2] && s[2].test(txt))) st.add(s[0]); });
+      cat[c.id] = st;
+    });
+    return { id: id, name: name, num: num, cat: cat, hasText: !!(text && text.replace(/<[^>]+>/g, "").trim()) };
+  }
+
+  function longGql(q, v) { return window.FHVicFlora.query(q, v, 60000); }
+  function maKids(pid, withProfile) {
+    return longGql(withProfile ? MA_Q_SPP : MA_Q_SPL, { id: pid }).then(function (j) { return (j.data && j.data.taxonConcept && j.data.taxonConcept.children) || []; });
+  }
+  function maOnlineSpecies(gid, depth) {
+    return maKids(gid, true).catch(function () { return maKids(gid, false); }).then(function (kids) {
+      var sp = [], sub = [];
+      kids.forEach(function (k) {
+        if (!k || (k.taxonomicStatus && k.taxonomicStatus !== "ACCEPTED")) return;
+        if (k.taxonRank === "SPECIES") sp.push(k);
+        else if (depth < 2 && ["SECTION", "SUBGENUS", "SERIES"].indexOf(k.taxonRank) >= 0) sub.push(k.id);
+      });
+      return Promise.all(sub.map(function (id) { return maOnlineSpecies(id, depth + 1); })).then(function (subs) {
+        subs.forEach(function (s) { sp = sp.concat(s); });
+        return sp;
       });
     });
   }
-  function expandKey(key, depth, out) {
-    var order = out.nKeys++;
-    function leaf(name, url) { if (!out.meta[name]) out.meta[name] = { url: url || "" }; return new Set([name]); }
-    function walk(nodeId) {
-      var kids = key.byParent[nodeId] || [], sets = [], chain = Promise.resolve();
-      kids.forEach(function (l, i) {
-        chain = chain.then(function () {
-          if (l.item) {
-            var it = key.items[l.item] || {}, nm0 = it.item_name || "";
-            if (it.to_key && depth < 3) {
-              return getKey(it.to_key).then(function (sub) { return sub ? expandKey(sub, depth + 1, out) : leaf(nm0 + " (see its key)", it.url); });
-            }
-            return leaf(nm0, it.url);
-          }
-          return walk(l.lead_id);
-        }).then(function (st) { sets[i] = st; });
-      });
-      return chain.then(function () {
-        if (kids.length > 1) out.chars.push({ id: key.id + ":" + nodeId, ord: order, no: key.number[nodeId] || 0, keyTitle: key.title, leads: kids.map(function (l, i) { return { text: cleanText(l.lead_text), taxa: sets[i] || new Set() }; }) });
-        var u = new Set();
-        sets.forEach(function (st) { if (st) st.forEach(function (x) { u.add(x); }); });
-        return u;
-      });
+  function maSpecies(gid, onProg) {
+    if (window.VFOffline && VFOffline.ready()) {
+      var offl = [];
+      (function lv(pid, d) {
+        VFOffline.children(pid).forEach(function (k) {
+          if (k.taxonomicStatus && k.taxonomicStatus !== "ACCEPTED") return;
+          if (k.taxonRank === "SPECIES") offl.push(k);
+          else if (d < 2 && ["SECTION", "SUBGENUS", "SERIES"].indexOf(k.taxonRank) >= 0) lv(k.id, d + 1);
+        });
+      })(gid, 0);
+      if (offl.length) {
+        return Promise.all(offl.map(function (k) {
+          return VFOffline.node(k.id).then(function (n) { return { id: k.id, name: nm(k), em: "", text: (n && n.currentProfile && n.currentProfile.profile) || "" }; });
+        }));
+      }
     }
-    return walk(key.root);
+    return maOnlineSpecies(gid, 0).then(function (sp) {
+      var need = sp.filter(function (k) { return k.currentProfile === undefined; }), done = 0, queue = need.slice();
+      function worker() {
+        var k = queue.shift();
+        if (!k) return Promise.resolve();
+        return longGql(MA_Q_PRF, { id: k.id }).then(function (j) {
+          var p = j.data && j.data.taxonConcept && j.data.taxonConcept.currentProfile;
+          k.currentProfile = p || null;
+        }).catch(function () { k.currentProfile = null; }).then(function () { done++; if (onProg) onProg(done, need.length); return worker(); });
+      }
+      return Promise.all([worker(), worker(), worker(), worker()]).then(function () {
+        return sp.map(function (k) { return { id: k.id, name: nm(k), em: k.establishmentMeans || "", text: (k.currentProfile && k.currentProfile.profile) || "" }; });
+      });
+    });
+  }
+  function maGenus(g, onProg) {
+    if (MC[g]) return Promise.resolve(MC[g]);
+    return search(g, ["GENUS"]).then(function (hits) {
+      var h = hits.filter(function (x) { return x.name.toLowerCase() === g.toLowerCase(); })[0] || hits[0];
+      if (!h) throw new Error("Could not find the genus " + g + " in VicFlora.");
+      return maSpecies(h.id, onProg).then(function (list) {
+        var out = list.map(function (k) { return parseTaxon(k.id, k.name, k.text, k.em); });
+        out.sort(function (a, b) { return a.name.localeCompare(b.name); });
+        MC[g] = out;
+        return out;
+      });
+    });
   }
   function loadMulti() {
     var my = ++runId, names = MG.slice();
-    MA = { chars: [], meta: {}, nKeys: 1, chosen: {}, byId: {}, all: new Set(), showAll: false, order: "split" };
-    if (!names.length) { status("Add a genus to start.", false); return; }
-    status("Loading the key" + (names.length > 1 ? "s" : "") + " for " + names.map(function (n) { return "<i>" + esc(n) + "</i>"; }).join(", ") + "...");
-    var parts = [];
+    MA = { taxa: [], entries: {}, tol: 0.1, keepUnknown: true, open: new Set(["Plant"]) };
+    if (!names.length) { status("Add a genus to start."); return; }
+    status("Loading species descriptions for " + names.map(function (n) { return "<i>" + esc(n) + "</i>"; }).join(", ") + "...");
+    var all = [];
     names.reduce(function (chain, g) {
       return chain.then(function () {
         if (my !== runId) throw new Error("stale");
-        return genusKeyId(g).then(function (kid) {
-          if (!kid) throw new Error("VicFlora has no species key for " + g + ".");
-          keyFetches = 0;
-          return getKey(kid).then(function (key) {
-            if (!key) throw new Error("Could not load the key for " + g + " (" + (VFOffline.keyErrors().slice(-3).join("; ") || "not saved on this device") + "). Download VicFlora for offline use to keep every key on this device.");
-            return expandKey(key, 0, MA).then(function (st) { parts.push({ g: g, taxa: st }); });
-          });
-        });
+        return maGenus(g, function (d, n) { if (my === runId) status("Loading descriptions for <i>" + esc(g) + "</i> (" + d + " of " + n + ")..."); }).then(function (t) { all = all.concat(t); });
       });
     }, Promise.resolve()).then(function () {
       if (my !== runId) return;
-      if (parts.length > 1) MA.chars.push({ id: "genus", ord: -1, no: 0, keyTitle: "", leads: parts.map(function (p) { return { text: "Genus *" + p.g + "*", taxa: p.taxa }; }) });
-      parts.forEach(function (p) { p.taxa.forEach(function (t) { MA.all.add(t); }); });
-      MA.chars.sort(function (a, b) { return a.ord - b.ord || a.no - b.no; });
-      MA.chars.forEach(function (c) { MA.byId[c.id] = c; });
+      MA.taxa = all;
       showMulti();
     }).catch(function (e) {
       if (my !== runId || (e && e.message === "stale")) return;
-      status(esc((e && e.message) || "Could not load the key.") , true);
+      status(esc((e && e.message) || "Could not load the species.") + " If you are offline, download VicFlora first (Menu > Offline VicFlora).", true);
     });
   }
-  function maRemaining(skipId) {
-    var rem = new Set(MA.all);
-    Object.keys(MA.chosen).forEach(function (id) {
-      if (id === skipId) return;
-      var c = MA.byId[id], keep = c.leads[MA.chosen[id]].taxa;
-      c.leads.forEach(function (l) { l.taxa.forEach(function (t) { if (!keep.has(t)) rem.delete(t); }); });
+  function maEval(t, skip) {
+    var unknown = 0, ok = true;
+    Object.keys(MA.entries).forEach(function (id) {
+      if (id === skip) return;
+      var v = MA.entries[id], ch = MCH[id];
+      if (ch.kind === "num") {
+        var r = t.num[id];
+        if (!r) { unknown++; if (!MA.keepUnknown) ok = false; return; }
+        if (v < r.lo * (1 - MA.tol) || v > r.hi * (1 + MA.tol)) ok = false;
+      } else {
+        var st = t.cat[id];
+        if (!st || !st.size) { unknown++; if (!MA.keepUnknown) ok = false; return; }
+        var any = false; v.forEach(function (s) { if (st.has(s)) any = true; });
+        if (!any) ok = false;
+      }
     });
-    return rem;
+    return { ok: ok, unknown: unknown };
   }
-  function cnt(set, rem) { var n = 0; set.forEach(function (t) { if (rem.has(t)) n++; }); return n; }
-  function chHtml(c, rem, on) {
-    var h = '<div class="vk-ch' + (on ? " on" : "") + '"><div class="vk-chh">' + (c.no ? "Step " + c.no : "Which genus") + " <small>" + esc(c.keyTitle) + "</small></div>";
-    c.leads.forEach(function (l, i) {
-      var n = cnt(l.taxa, rem), sel = on && MA.chosen[c.id] === i;
-      h += '<button type="button" class="vk-st" data-c="' + esc(c.id) + '" data-l="' + i + '" aria-pressed="' + sel + '"' + (n === 0 && !sel ? " disabled" : "") + ">" + inline(l.text) + ' <span class="vk-n">' + n + "</span></button>";
-    });
-    return h + "</div>";
+  function fmtNum(mm, c) { var x = mm / c.f; return (Math.round(x * 10) / 10) + (c.unit ? " " + c.unit : ""); }
+  function fmtRange(r, c) { return r.lo === r.hi ? fmtNum(r.lo, c) : (r.lo === 0 ? "up to " + fmtNum(r.hi, c) : fmtNum(r.lo, c).replace(" " + c.unit, "") + "–" + fmtNum(r.hi, c)); }
+  function evidence(t) {
+    var parts = [];
+    NUMC.forEach(function (c) { if (t.num[c.id]) parts.push("<li><b>" + esc(c.label) + ":</b> " + esc(fmtRange(t.num[c.id], c)) + "</li>"); });
+    CATC.forEach(function (c) { var st = t.cat[c.id]; if (st && st.size && c.id !== "lobes") parts.push("<li><b>" + esc(c.label) + ":</b> " + esc(Array.from(st).join(", ")) + "</li>"); });
+    return parts.length ? "<ul class=\"vk-ev\">" + parts.join("") + "</ul>" : "<p class=\"vk-foot\">Nothing could be read from this description.</p>";
   }
   function showMulti() {
-    var out = $b().querySelector("#vkOut"), body = $b(), top = body.scrollTop;
-    var rem = maRemaining(null), total = MA.all.size, chosenIds = Object.keys(MA.chosen);
-    var h = '<div class="vk-mhead"><b>' + rem.size + "</b> of " + total + " taxa remain" +
-      '<span class="vk-mbtns">' + (chosenIds.length ? '<button type="button" class="vk-sub" data-reset="1">Start again</button>' : "") +
-      '<button type="button" class="vk-sub" data-order="1">' + (MA.order === "split" ? "Order: best split first" : "Order: key order") + "</button></span></div>" +
-      '<div class="vo-bar"><i style="width:' + Math.round(100 * rem.size / Math.max(1, total)) + '%"></i></div>';
-    var names = Array.from(rem).sort();
-    h += '<details class="vk-path vk-rem"' + (rem.size <= 14 ? " open" : "") + "><summary>Taxa still possible (" + rem.size + ")</summary><div class=\"vk-remlist\">" +
-      (names.length ? names.map(function (n) { var u = MA.meta[n] && MA.meta[n].url; return "<span>" + (u && /^https?:/.test(u) ? '<a href="' + esc(u) + '" target="_blank" rel="noopener"><i>' + esc(n) + "</i></a>" : "<i>" + esc(n) + "</i>") + "</span>"; }).join("") : "<em>Nothing matches. Remove a selection.</em>") + "</div></details>";
-    if (rem.size === 1) h += '<div class="vk-status ok">One taxon left: <b><i>' + esc(names[0]) + "</i></b>. Check it against the VicFlora description before relying on it.</div>";
-    if (chosenIds.length) {
-      h += '<div class="vk-h">Your selections</div>';
-      chosenIds.forEach(function (id) { h += chHtml(MA.byId[id], maRemaining(id), true); });
-    }
-    var avail = MA.chars.filter(function (c) {
-      if (c.id in MA.chosen) return false;
-      var live = c.leads.filter(function (l) { return cnt(l.taxa, rem) > 0; }).length;
-      return live >= 2;
+    var out = $b().querySelector("#vkOut"), body = $b(), top = body.scrollTop, keys = Object.keys(MA.entries);
+    var results = MA.taxa.map(function (t) { return { t: t, e: maEval(t, null) }; });
+    var rem = results.filter(function (r) { return r.e.ok; });
+    rem.sort(function (a, b) { return a.e.unknown - b.e.unknown || a.t.name.localeCompare(b.t.name); });
+    var h = '<div class="vk-mhead"><span><b>' + rem.length + "</b> of " + MA.taxa.length + " taxa possible</span>" +
+      '<span class="vk-mbtns">' + (keys.length ? '<button type="button" class="vk-sub" data-reset="1">Clear all</button>' : "") + "</span></div>" +
+      '<div class="vo-bar"><i style="width:' + Math.round(100 * rem.length / Math.max(1, MA.taxa.length)) + '%"></i></div>';
+    h += '<div class="vk-set"><label>Measurement tolerance <select id="vkTol">' + [0, 0.1, 0.2, 0.3].map(function (x) { return '<option value="' + x + '"' + (x === MA.tol ? " selected" : "") + ">&plusmn;" + Math.round(x * 100) + "%</option>"; }).join("") + '</select></label>' +
+      '<label class="vk-tog"><input type="checkbox" id="vkUnk"' + (MA.keepUnknown ? " checked" : "") + "> Keep taxa with no data for a feature you entered</label></div>";
+    h += '<div class="vk-h">Taxa still possible</div>';
+    if (rem.length === 1) h += '<div class="vk-status ok">One taxon fits: <b><i>' + esc(rem[0].t.name) + "</i></b>. Check it against the VicFlora description before relying on it.</div>";
+    if (!rem.length) h += '<div class="vk-status">Nothing fits. Loosen the tolerance or clear a feature.</div>';
+    h += '<div class="vk-txlist">' + rem.slice(0, 80).map(function (r) {
+      return '<details class="vk-tx"><summary><i>' + esc(r.t.name) + "</i>" + (r.e.unknown ? ' <small class="vk-unk">' + r.e.unknown + " not stated</small>" : "") + (!r.t.hasText ? ' <small class="vk-unk">no description</small>' : "") + "</summary>" +
+        evidence(r.t) + '<p class="vk-foot"><a href="' + VF + "taxon/" + esc(r.t.id) + '" target="_blank" rel="noopener">Open in VicFlora</a></p></details>';
+    }).join("") + "</div>";
+    h += '<div class="vk-h">Enter your specimen <small class="vk-hn">(leave blank what you can\'t see or measure)</small></div>';
+    MGROUPS.forEach(function (gname) {
+      var chars = NUMC.concat(CATC).filter(function (c) { return c.group === gname; });
+      var inner = "", used = 0;
+      chars.forEach(function (c) {
+        var have = MA.taxa.filter(function (t) { return c.kind === "num" ? !!t.num[c.id] : (t.cat[c.id] && t.cat[c.id].size); });
+        if (!have.length) return;
+        used += (c.id in MA.entries) ? 1 : 0;
+        var blk = '<div class="vk-ch' + (c.id in MA.entries ? " on" : "") + '"><div class="vk-chh">' + esc(c.label) + " <small>(" + have.length + " of " + MA.taxa.length + " described)</small></div>";
+        if (c.kind === "num") {
+          var lo = Math.min.apply(null, have.map(function (t) { return t.num[c.id].lo; })), hi = Math.max.apply(null, have.map(function (t) { return t.num[c.id].hi; }));
+          var cur = c.id in MA.entries ? (Math.round(MA.entries[c.id] / c.f * 100) / 100) : "";
+          blk += '<div class="vk-numrow"><input type="number" inputmode="decimal" step="any" min="0" data-n="' + c.id + '" value="' + cur + '" placeholder="value"> <span>' + esc(c.unit || "count") + "</span> <small>taxa: " + esc(fmtNum(lo, c).replace(" " + c.unit, "") + "–" + fmtNum(hi, c)) + "</small></div>";
+        } else {
+          var ok2 = MA.taxa.filter(function (t) { return maEval(t, c.id).ok; });
+          blk += '<div class="vk-sc-row">' + c.states.map(function (s) {
+            var n = ok2.filter(function (t) { return t.cat[c.id] && t.cat[c.id].has(s[0]); }).length;
+            var sel = MA.entries[c.id] && MA.entries[c.id].has(s[0]);
+            return '<button type="button" class="vk-sc" data-c="' + c.id + '" data-s="' + esc(s[0]) + '" aria-pressed="' + !!sel + '"' + (n === 0 && !sel ? " disabled" : "") + ">" + esc(s[0]) + ' <span class="vk-n">' + n + "</span></button>";
+          }).join("") + "</div>";
+        }
+        inner += blk + "</div>";
+      });
+      if (inner) h += '<details class="vk-grp" data-g="' + esc(gname) + '"' + (MA.open.has(gname) || used ? " open" : "") + "><summary>" + esc(gname) + (used ? " <small>(" + used + " entered)</small>" : "") + "</summary>" + inner + "</details>";
     });
-    avail.forEach(function (c) { c._w = Math.max.apply(null, c.leads.map(function (l) { return cnt(l.taxa, rem); })); });
-    if (MA.order === "split") avail.sort(function (a, b) { return a._w - b._w || a.ord - b.ord || a.no - b.no; });
-    h += '<div class="vk-h">' + (chosenIds.length ? "Narrow it further" : "Choose what you can see") + ' <small class="vk-hn">(' + avail.length + " characters; the number is how many taxa have that feature)</small></div>";
-    if (!avail.length) h += '<div class="vk-status">No further characters separate the taxa that are left.</div>';
-    var lim = MA.showAll ? avail.length : 25;
-    avail.slice(0, lim).forEach(function (c) { h += chHtml(c, rem, false); });
-    if (avail.length > lim) h += '<button type="button" class="vk-sub" data-more="1">Show all ' + avail.length + " characters</button>";
-    h += '<p class="vk-foot">Built from the VicFlora keys (KeyBase). Choosing a statement only rules out taxa the key places under the other statement of that same couplet. Photos and full descriptions: open the taxon in VicFlora.</p>';
+    h += '<p class="vk-foot">Measurements and features are read automatically from the VicFlora descriptions, so a taxon can be missing a value or have one read wrongly. Open a taxon to see exactly what was read, and confirm against VicFlora. Species only (subspecies and varieties are not separate here).</p>';
     out.innerHTML = h;
     body.scrollTop = top;
+    out.onchange = function (e) {
+      var t = e.target;
+      if (t.id === "vkTol") { MA.tol = parseFloat(t.value) || 0; showMulti(); return; }
+      if (t.id === "vkUnk") { MA.keepUnknown = t.checked; showMulti(); return; }
+      if (t.dataset && t.dataset.n) {
+        var v = parseFloat(t.value), c = MCH[t.dataset.n];
+        if (isNaN(v)) delete MA.entries[c.id]; else MA.entries[c.id] = v * c.f;
+        showMulti();
+      }
+    };
     out.onclick = function (e) {
       var b;
-      if ((b = e.target.closest("[data-c]"))) {
-        var id = b.dataset.c, i = +b.dataset.l;
-        if (MA.chosen[id] === i) delete MA.chosen[id]; else MA.chosen[id] = i;
+      if ((b = e.target.closest("[data-s]"))) {
+        var id = b.dataset.c, s = b.dataset.s, set = MA.entries[id] || new Set();
+        if (set.has(s)) set.delete(s); else set.add(s);
+        if (set.size) MA.entries[id] = set; else delete MA.entries[id];
         showMulti(); return;
       }
-      if (e.target.closest("[data-reset]")) { MA.chosen = {}; showMulti(); return; }
-      if (e.target.closest("[data-order]")) { MA.order = MA.order === "split" ? "key" : "split"; showMulti(); return; }
-      if (e.target.closest("[data-more]")) { MA.showAll = true; showMulti(); }
+      if (e.target.closest("[data-reset]")) { MA.entries = {}; showMulti(); }
     };
+    out.addEventListener("toggle", function (e) {
+      var d = e.target; if (!d.dataset || !d.dataset.g) return;
+      if (d.open) MA.open.add(d.dataset.g); else MA.open.delete(d.dataset.g);
+    }, true);
   }
   function chipsHtml() {
     return MG.map(function (g, i) { return '<span class="vk-chip"><i>' + esc(g) + '</i><button type="button" data-rm="' + i + '" aria-label="Remove ' + esc(g) + '">&#10005;</button></span>'; }).join("");
@@ -2367,7 +2576,7 @@ window.FHFuzzy = (function () {
   function renderMultiMode() {
     var body = $b();
     body.innerHTML =
-      '<p class="vk-intro">A multi-access key: pick any features you can see, in any order, and the list of possible taxa narrows. Built from the VicFlora species keys, so it works offline once VicFlora is downloaded. Add more genera to key them together.</p>' +
+      '<p class="vk-intro">A multi-access key for your specimen: type the measurements you took and tap the features you see, in any order, and the list of possible species narrows. Built from the VicFlora species descriptions, so it works offline once VicFlora is downloaded. Add other genera to key them together.</p>' +
       '<p class="vk-off" id="vkOff"></p>' +
       '<div class="vk-chips" id="vkChips">' + chipsHtml() + "</div>" +
       '<div class="vk-col" style="max-width:520px"><label for="vkA">Add a genus</label><input id="vkA" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search genus, e.g. Poa"><div class="vk-list" id="vkListA"></div></div>' +
@@ -3926,7 +4135,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-08.1";
+  const BUILD_VERSION = "2026-10-08.2";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
