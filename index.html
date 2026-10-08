@@ -791,6 +791,53 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
   padding-right:max(14px, env(safe-area-inset-right, 0px))}
 .map-rail{right:max(10px, env(safe-area-inset-right, 0px))}
 .map-layer-menu{right:calc(max(10px, env(safe-area-inset-right, 0px)) + 58px)}
+/* ---- VicKey glossary ---- */
+.vk-term{font-weight:700;cursor:pointer;border-bottom:1px dotted var(--gold-dark);-webkit-tap-highlight-color:transparent}
+.vk-term:hover,.vk-term:focus{background:rgba(204,167,53,.22);outline:none}
+.vk-gl{flex:none;height:44px;padding:0 12px;border:1px solid rgba(255,255,255,.3);border-radius:3px;background:transparent;color:#fff;font-size:13px;font-weight:600;cursor:pointer}
+.vkg-pop{position:fixed;inset:0;z-index:9600;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center}
+.vkg-card{width:100%;max-width:520px;max-height:86dvh;max-height:86vh;display:flex;flex-direction:column;background:var(--page);color:var(--ink);border-radius:10px 10px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.35);font-family:var(--sans)}
+@media (min-width:600px){.vkg-pop{align-items:center}.vkg-card{border-radius:8px}}
+.vkg-bar{flex:none;display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border)}
+.vkg-grp{flex:1;font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.vkg-back,.vkg-close{width:40px;height:40px;border:1px solid var(--border);border-radius:3px;background:var(--field);color:var(--ink);font-size:18px;cursor:pointer}
+.vkg-body{overflow:auto;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.vkg-name{font-size:22px;font-weight:700}
+.vkg-also{font-size:13px;color:var(--muted);margin-top:2px}
+.vkg-def{font-size:15.5px;line-height:1.5;margin:10px 0}
+.vkg-src{font-size:11.5px;color:var(--muted);margin:12px 0 0}
+.vkg-svg{width:100%;height:auto;display:block}
+.vkg-svg path,.vkg-svg ellipse,.vkg-svg circle,.vkg-svg rect{fill:var(--line-soft);stroke:var(--muted);stroke-width:1.3}
+.vkg-svg path[fill="none"]{fill:none;stroke:var(--muted);stroke-width:2.4;stroke-linecap:round}
+.vkg-part.on path[fill="none"]{fill:none;stroke:var(--gold-dark)}
+.vkg-svg line{stroke:var(--muted);stroke-width:1.6;stroke-linecap:round}
+.vkg-gal{display:grid;grid-template-columns:repeat(var(--cols,5),1fr);gap:6px;margin-top:6px}
+.vkg-cell{display:flex;flex-direction:column;align-items:center;padding:4px 2px;border:1px solid transparent;border-radius:4px;opacity:.75}
+.vkg-cell span{font-size:10.5px;color:var(--muted);text-align:center;word-break:break-word}
+.vkg-cell .vkg-svg{max-height:84px}
+.vkg-cell.on{opacity:1;border-color:var(--gold-dark);background:rgba(204,167,53,.12)}
+.vkg-cell.on span{color:var(--ink);font-weight:700}
+.vkg-cell.on .vkg-svg path,.vkg-cell.on .vkg-svg ellipse,.vkg-cell.on .vkg-svg circle,.vkg-cell.on .vkg-svg rect{fill:var(--gold);stroke:var(--gold-dark)}
+.vkg-cell.on .vkg-svg line{stroke:var(--gold-dark)}
+.vkg-dia{margin-top:6px;border:1px solid var(--border);border-radius:4px;background:var(--row-alt)}
+.vkg-part.on path,.vkg-part.on ellipse,.vkg-part.on circle,.vkg-part.on rect{fill:var(--gold);stroke:var(--gold-dark)}
+.vkg-part.on line{stroke:var(--gold-dark)}
+.vkg-lab line{stroke:var(--muted);stroke-width:.8}
+.vkg-lab text{font-size:9.5px;fill:var(--muted);font-family:var(--sans)}
+.vkg-lab.on line{stroke:var(--gold-dark);stroke-width:1.2}
+.vkg-lab.on text{fill:var(--ink);font-weight:700}
+.vkg-list{position:fixed;inset:0;z-index:9500;background:var(--page);color:var(--ink);display:flex;flex-direction:column;font-family:var(--sans)}
+.vkg-lhead{flex:none;display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top,0px)) 12px 10px;background:var(--charcoal-deep);color:var(--gold-light)}
+.vkg-lhead b{flex:1;font-size:16px}
+.vkg-lclose{width:44px;height:44px;border:1px solid rgba(255,255,255,.3);border-radius:3px;background:transparent;color:#fff;font-size:20px;cursor:pointer}
+.vkg-lsearch{flex:none;padding:8px 12px;border-bottom:1px solid var(--border)}
+.vkg-lsearch input{width:100%;box-sizing:border-box;padding:10px;font-size:16px;border:1px solid var(--border);border-radius:3px;background:var(--field);color:var(--ink)}
+.vkg-lbody{flex:1;overflow:auto;padding:0 12px 20px}
+.vkg-az{position:sticky;top:0;background:var(--page);font-weight:700;color:var(--gold-dark);padding:8px 0 2px;border-bottom:1px solid var(--line-soft)}
+.vkg-row{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-soft);padding:9px 2px;color:var(--ink);font:inherit;cursor:pointer}
+.vkg-row b{display:block;font-size:15px}
+.vkg-row span{display:block;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vkg-none{padding:20px;color:var(--muted)}
 /* ---- VicKey: VicFlora comparison tool ---- */
 .vk-overlay{position:fixed;top:0;left:0;right:0;bottom:0;height:100vh;height:100dvh;z-index:9000;background:var(--page);color:var(--ink);display:flex;flex-direction:column;font-family:var(--sans)}
 .vk-head{flex:none;display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) 10px max(12px, env(safe-area-inset-left, 0px));background:var(--charcoal-deep);color:var(--gold-light)}
@@ -1771,6 +1818,374 @@ window.FHFuzzy = (function () {
 
 </script>
 <script>
+/* ---- VicKey glossary: botanical terms, pop-ups and diagrams ---- */
+(function () {
+  "use strict";
+  var RAW = "# Leaf shape\nlinear :: Long and narrow with more or less parallel sides, many times longer than wide (grass-like). :: leafshape\nlanceolate :: Lance-shaped: much longer than wide, widest below the middle and tapering to the tip. :: leafshape\noblanceolate :: Like lanceolate but widest above the middle, tapering towards the base. :: leafshape\nelliptic; elliptical :: Widest at the middle and tapering equally to both ends, with a gently curved outline. :: leafshape\noblong :: Longer than wide with nearly parallel sides and rounded ends. :: leafshape\novate :: Egg-shaped in outline, widest below the middle, attached by the broad end. :: leafshape\nobovate :: Egg-shaped but attached by the narrow end, so widest above the middle. :: leafshape\norbicular; orbiculate; circular :: Round, or nearly round, in outline. :: leafshape\nspathulate; spatulate :: Spoon-shaped: broad and rounded at the tip and narrowing to a long, narrow base. :: leafshape\ndeltoid; triangular :: Triangular, with the broadest part at the base. :: leafshape\ncordate :: Heart-shaped, with a notch at the base and rounded lobes either side of it. :: leafshape\nreniform :: Kidney-shaped: broader than long, with a notch at the base. :: leafshape\nsagittate :: Arrow-shaped, with two pointed lobes at the base directed downwards. :: leafshape\nfalcate :: Curved like a sickle; flattened and bent to one side (as in many Acacia phyllodes and Eucalyptus adult leaves). :: leafshape\nterete :: Round in cross-section, like a pencil or needle rather than flattened.\nacicular :: Needle-shaped: slender, stiff and pointed.\nfiliform :: Thread-like; very slender and cylindrical.\nsubulate :: Awl-shaped; narrow and tapering gradually from the base to a fine point.\nsetaceous :: Bristle-like.\nobtriangular :: Triangular with the narrow end at the base.\ncuneiform :: Wedge-shaped, broad at the apex and narrowing to the base. :: leafbase/cuneate\novoid :: Egg-shaped in three dimensions (a solid body, as in fruits and buds), broadest below the middle.\nobovoid :: Egg-shaped in three dimensions, broadest above the middle.\nellipsoid :: Elliptic in outline when seen from the side; a solid body that is rounded at both ends.\nglobose; globular :: Spherical, or nearly so.\nfusiform :: Spindle-shaped; widest in the middle and tapering at both ends.\ncylindrical :: Shaped like a cylinder, with roughly parallel sides and a circular cross-section.\ncampanulate :: Bell-shaped.\nurceolate :: Urn-shaped: swollen and then constricted at the mouth.\nobconic :: Cone-shaped, attached by the narrow end.\nturbinate :: Top-shaped; inversely conical.\n# Leaf apex\nacute :: Ending in a sharp point where the sides meet at less than a right angle. :: leafapex\nacuminate :: Tapering gradually into a long, drawn-out point, with the sides concave near the tip. :: leafapex\nobtuse :: Blunt, with the sides meeting at more than a right angle. :: leafapex\nrounded :: Tip forming a smooth curve with no point. :: leafapex\ntruncate :: Ending abruptly, as if cut off straight across. :: leafapex\nemarginate :: With a distinct notch at the rounded tip. :: leafapex\nretuse :: With a shallow, rounded notch at an otherwise blunt or rounded tip. :: leafapex\nmucronate :: Tip ending abruptly in a short, small, sharp point (a mucro) that is a continuation of the midrib. :: leafapex\nmucro :: A short, sharp, abrupt point at the tip of a leaf or other organ. :: leafapex/mucronate\ncuspidate :: Tip tapering to a sharp, stiff point (a cusp). :: leafapex\naristate :: Ending in a stiff, bristle-like tip (an awn). :: leafapex\napiculate :: Ending in a short, sharp but not stiff point (an apiculus). :: leafapex/mucronate\npungent :: Ending in a sharp, stiff, prickly point that can sting or pierce.\nattenuate :: Gradually tapering to a long, narrow point or base. :: leafbase\napex; apices :: The tip of an organ (the end furthest from where it is attached).\n# Leaf base\ncuneate :: Wedge-shaped; the base tapers in straight lines to the stalk. :: leafbase\noblique :: Asymmetric: the two sides of the base are unequal or the base slants. :: leafbase\nauriculate :: With ear-like lobes at the base. :: leafbase\ndecurrent :: Having the base extended down the stem as a wing or ridge below the point of attachment. :: leafbase\namplexicaul :: Clasping the stem, with the base of the leaf wrapping around it. :: leafbase/auriculate\nstem-clasping :: With the base of the leaf wrapping around the stem. :: leafbase/auriculate\nperfoliate :: With the base of the leaf completely surrounding the stem, so the stem seems to pass through it.\nconnate :: Joined together at the base, as when opposite leaves are fused around the stem.\nsessile :: Attached directly, without a stalk.\npetiolate :: With a stalk (petiole).\ncauline :: Borne on the stem (rather than at the base of the plant).\nbasal :: At or near the base of the plant or organ.\nradical :: Arising from the root or the base of the plant; basal.\n# Leaf margin\nentire :: With a smooth margin, without teeth or lobes. :: leafmargin\nserrate :: With sharp teeth pointing towards the tip, like a saw. :: leafmargin\nserrulate :: Finely serrate, with very small teeth. :: leafmargin\ndentate :: With coarse, sharp teeth pointing outwards (not forwards). :: leafmargin\ndenticulate :: Finely dentate, with very small outward-pointing teeth. :: leafmargin/dentate\ncrenate :: With rounded teeth or scallops along the margin. :: leafmargin\nundulate :: With a wavy margin, the waves in the plane perpendicular to the blade. :: leafmargin\nsinuate :: With a strongly wavy margin, the waves in the plane of the blade. :: leafmargin/undulate\nlobed :: Cut into rounded or pointed divisions, with the cuts extending less than about halfway to the midrib. :: leafmargin\npinnatifid :: Cut about halfway or more towards the midrib in a pinnate pattern, but not into separate leaflets. :: leafmargin/lobed\npinnatisect :: Cut right to the midrib in a pinnate pattern, but with the segments still joined along it. :: leafmargin\npinnatilobed :: Cut into lobes along each side of the midrib. :: leafmargin/lobed\nspinose :: Bearing spines or ending in a spine. :: leafmargin\nspiny :: Bearing spines.\nciliate :: Fringed with fine hairs along the margin. :: leafmargin\nrevolute :: With the margin rolled under towards the lower surface. :: leafmargin\nrecurved :: Curved backwards or downwards. :: leafmargin\ninvolute :: With the margin rolled inwards towards the upper surface. :: leafmargin\ninrolled :: Rolled inwards, usually along the length of the leaf, as in many grass blades.\nchannelled; canaliculate :: Having a longitudinal groove or channel along the surface.\nfolded :: Folded lengthwise along the midrib (V-shaped in cross-section).\nconduplicate :: Folded lengthwise along the midrib with the two halves facing each other, as in the young leaves of many grasses.\nplicate :: Folded like a fan, in pleats.\nmargin :: The edge of a leaf or other flat organ. :: leafparts\n# Leaf arrangement and type\nalternate :: Arranged singly at each node, one leaf at a time, usually on alternating sides of the stem. :: leafarr\nopposite :: Arranged in pairs, with two leaves at each node on opposite sides of the stem. :: leafarr\nwhorled; verticillate :: Arranged in rings of three or more leaves at each node. :: leafarr\ndecussate :: Opposite, with each pair at right angles to the pair below. :: leafarr\nrosette :: A circle of leaves arising from a single point, usually at the base of the plant. :: leafarr\nfascicle; fascicled :: A tight cluster of leaves or other organs arising from one point. :: leafarr\ndistichous :: Arranged in two opposite ranks, in one plane.\nsimple :: Not divided into separate leaflets (a leaf with one blade). :: compound\ncompound :: Divided into two or more separate leaflets. :: compound\npinnate :: A compound leaf with leaflets arranged along each side of a central axis (rachis), like a feather. :: compound\nimparipinnate :: Pinnate with a single leaflet at the end of the rachis (an odd number of leaflets). :: compound/pinnate\nparipinnate :: Pinnate with no terminal leaflet (an even number of leaflets). :: compound/pinnate\nbipinnate :: Twice pinnate: the primary branches of the rachis each carry leaflets along them (as in many wattles). :: compound\npalmate :: With leaflets or lobes radiating from a single point, like fingers from a palm. :: compound\ntrifoliolate :: A compound leaf with three leaflets. :: compound\ndigitate :: With leaflets radiating from the end of the petiole like the fingers of a hand. :: compound/palmate\nleaflet :: One of the separate blades of a compound leaf. :: compound/pinnate\npinna; pinnae :: A primary division of a pinnate leaf or frond; in bipinnate leaves, one of the branches of the rachis. :: compound/bipinnate\npinnule :: A secondary division (leaflet) of a bipinnate leaf. :: compound/bipinnate\nrachis :: The main axis of a compound leaf or an inflorescence. :: compound/pinnate\nrachilla :: A small axis; in grasses and sedges the axis of a spikelet that carries the florets. :: spikelet\nphyllode :: A flattened leaf stalk that functions as a leaf, as in many Australian wattles (Acacia). :: wattle\ncladode :: A flattened, leaf-like stem that functions as a leaf.\njuvenile :: The young form of a plant or its leaves, often different in shape and arrangement from the adult leaves (as in many eucalypts).\nadult :: The mature form of a plant or its leaves, as distinct from the juvenile form.\nintermediate :: Between juvenile and adult in form; applies to leaves of eucalypts as they change.\n# Leaf parts\nblade; lamina :: The flat, expanded part of a leaf. :: leafparts\npetiole :: The stalk that attaches a leaf blade to the stem. :: leafparts\nmidrib; midvein :: The central, usually largest, vein running along the length of a leaf. :: leafparts\nvein :: A strand of conducting tissue visible in a leaf. :: leafparts\nvenation :: The pattern of veins in a leaf.\nstipule :: A small leaf-like or scale-like appendage at the base of a petiole, usually in pairs. :: leafparts\nnode :: The point on a stem where a leaf or branch is attached. :: leafparts\ninternode :: The part of a stem between two nodes. :: grassleaf\naxil :: The angle between a leaf (or other organ) and the stem it grows from. :: leafparts\nsheath :: The base of a leaf (as in grasses and sedges) that wraps around the stem. :: grassleaf\nligule :: In grasses and sedges, a membranous or hairy outgrowth at the junction of the leaf sheath and blade; in daisies, the strap-shaped part of a ray floret. :: grassleaf\nauricle :: A small ear-like lobe at the base of a leaf blade or at the top of a leaf sheath. :: grassleaf\ncollar :: In grasses, the area on the outer face of the leaf where the blade joins the sheath. :: grassleaf\nculm :: The flowering stem of a grass, sedge or rush. :: grassleaf\ntussock :: A dense clump of grasses, sedges or rushes.\ntufted :: Growing in dense clumps or tufts.\ncaespitose :: Growing in dense tufts or tussocks.\nvenose; reticulate :: With a network of veins.\nparallel-veined :: With veins running side by side along the length of the leaf.\nstomata :: Microscopic pores in the surface of a leaf through which gases pass.\nglandular :: Bearing glands or gland-tipped hairs.\ngland :: A small structure that secretes oil, resin, nectar or other substances. :: wattle\npulvinus :: A swollen joint at the base of a leaf or leaflet that allows it to move. :: wattle\ndomatia :: Small pits or tufts of hairs in the vein axils on the underside of leaves.\noil gland :: A tiny, translucent, oil-containing cavity visible as dots when a leaf is held to the light (common in the myrtle family and Rutaceae).\npunctate :: Marked with dots, pits or translucent glands.\ndiscolorous :: With the upper and lower surfaces of different colours.\nconcolorous :: With both surfaces of the same colour.\n# Surfaces and hairs\nglabrous :: Without hairs; smooth.\nglabrescent :: Becoming hairless with age.\npubescent :: Covered with short, soft, fine hairs.\npuberulous; puberulent :: Covered with very short, fine hairs (minutely pubescent).\nhirsute :: Covered with rather coarse, stiff hairs.\nhispid :: Covered with stiff, bristly hairs that may be rough to touch.\npilose :: Covered with sparse, long, soft, straight hairs.\nvillous :: Covered with long, soft, shaggy hairs that are not matted.\ntomentose :: Covered with dense, matted, woolly hairs.\ntomentum :: A covering of dense, matted hairs.\nlanate :: Woolly; covered with long, curly, tangled hairs.\nwoolly :: Covered with long, soft, tangled hairs.\narachnoid; cobwebby :: Covered with fine hairs resembling a cobweb.\nsericeous; silky :: Covered with fine, soft, closely pressed, shiny hairs.\nstrigose :: With stiff, straight hairs pressed closely against the surface.\nsetose :: Bearing bristles.\nscabrous; scabrid :: Rough to the touch, due to short, stiff hairs, points or bumps.\npapillose; papillate :: Covered with small, rounded or nipple-like projections (papillae).\npapillae :: Small, rounded or nipple-like projections on a surface.\nmuricate :: Covered with short, hard, pointed projections.\ntuberculate :: Covered with small wart-like swellings.\nverrucose :: Covered with wart-like bumps.\nglaucous :: Covered with a whitish or bluish-grey waxy bloom that rubs off.\npruinose :: Covered with a fine, powdery, waxy bloom.\nfarinose :: Covered with a mealy, floury powder.\nviscid :: Sticky.\nglutinous :: Covered with a sticky substance.\nresinous :: Bearing or exuding resin.\nindumentum :: A covering of hairs or scales on a surface.\nscale :: A small, flat, dry, often papery plate or flap on a surface (or a modified leaf, as on a bud).\nlepidote :: Covered with small, flattened scales.\nstellate :: Star-shaped; with hairs branched from a central point.\nciliolate :: Fringed with very short hairs.\nfimbriate :: Fringed with slender, hair-like or thread-like outgrowths.\nlacerate :: Torn or irregularly cut at the edge.\nglossy; shiny :: With a smooth, polished, reflective surface.\ndull :: Not shiny; without gloss.\nrugose :: Wrinkled, with a surface of deep, sunken veins.\nstriate :: Marked with fine, parallel lines, grooves or ridges.\nribbed :: Marked with prominent ridges (ribs) along the length.\nfurrowed :: Marked with longitudinal grooves.\nverruculose :: Minutely warty.\nechinate :: Covered with prickles or spines.\naculeate :: Bearing prickles.\nprickle :: A sharp outgrowth from the surface of a stem or leaf (unlike a thorn, it has no vascular tissue).\nthorn :: A sharp-pointed, stiff modified branch.\nspine :: A sharp, stiff, pointed structure, usually a modified leaf or stipule.\n# Stems, roots and habit\nperennial :: Living for more than two years.\nannual :: Completing its life cycle (germination, flowering, seed set and death) in a single year or season.\nbiennial :: Taking two years to complete its life cycle, normally flowering in the second.\nephemeral :: Living for a very short time, often growing and flowering within weeks of rain.\nherb :: A plant without a woody stem above ground, dying back each year or after flowering.\nforb :: A herbaceous plant that is not a grass, sedge or rush.\nshrub :: A woody plant, usually branched from near the base, smaller than a tree.\nsubshrub :: A low plant that is woody at the base but has herbaceous upper stems.\ntree :: A woody plant with a single main trunk, usually more than 5 m tall.\nmallee :: A eucalypt that grows with many stems from a woody base (lignotuber), usually less than 10 m tall.\nlignotuber :: A woody swelling at the base of a plant, containing buds and food reserves, allowing it to resprout after fire.\nclimber :: A plant that climbs on others using twining stems, tendrils or hooks.\ntwiner :: A climber with stems that spiral around its support.\nscrambler :: A plant with long, weak stems that climbs by leaning on other vegetation.\ntendril :: A slender, coiling organ by which a climbing plant grips its support.\nepiphyte :: A plant that grows on another plant without taking nourishment from it.\nparasite :: An organism that obtains nutrients from a host plant.\nhemiparasite :: A plant that is green and photosynthesises but also takes water and nutrients from a host.\nsaprophyte :: A plant that obtains nutrients from decaying organic matter.\naquatic :: Growing in water.\namphibious :: Able to grow in water or on land.\nterrestrial :: Growing on the ground.\nrhizome :: An underground stem that grows horizontally, often producing roots and shoots at the nodes.\nstolon :: A creeping stem that runs along the surface and roots at the nodes.\nrunner :: A slender stolon.\ncorm :: A short, swollen, vertical underground stem, solid inside, enclosed in dry leaf bases.\nbulb :: An underground storage organ consisting of a short stem surrounded by fleshy leaf scales.\ntuber :: A swollen underground stem or root used for storage.\ntuberous :: Bearing tubers or having a swollen, tuber-like form.\ntaproot :: A single, thick, main root growing downwards.\nfibrous :: Composed of many thin, thread-like roots or fibres.\ndecumbent :: Lying on the ground with the tips turned upwards.\nprostrate :: Lying flat along the ground.\nprocumbent :: Trailing along the ground without rooting at the nodes.\nascending :: Growing obliquely upwards, often from a curved base.\nerect :: Growing upright.\nspreading :: Extending outwards, nearly horizontally.\npendulous; pendent :: Hanging downwards.\ncushion :: A low, dense, rounded plant.\nmat-forming :: Forming a low, dense carpet.\nrosulate :: Arranged in a rosette.\nbranchlet :: A small branch; the ultimate division of a branch.\ntwig :: A small woody shoot.\ntrunk :: The main woody stem of a tree.\nbark :: The outer protective layer of the stem of a woody plant.\nstringybark :: Bark of eucalypts that is thick, fibrous and can be pulled off in long strips.\nironbark :: Bark of eucalypts that is hard, deeply furrowed, dark and persistent.\nbox :: Bark of eucalypts that is rough, short-fibred and persistent, often flaky, covering the trunk and main branches.\ngum :: A eucalypt with smooth bark that is shed in strips or flakes.\nribbon bark :: Bark that is shed in long ribbons that hang from the branches, as in some gums.\nsmooth bark :: Bark shed annually so that the trunk is smooth.\ntessellated :: Having bark divided into small blocks like a mosaic.\npersistent :: Remaining on the plant and not falling off.\ndeciduous :: Falling off at a particular season or stage of growth.\nevergreen :: Retaining its leaves throughout the year.\ncaducous :: Falling off early.\nsucker :: A shoot that arises from the roots or from the base of a plant.\ncoppice :: Shoots arising from a cut or burnt stump.\nligneous; woody :: Hard and rigid because of the production of wood.\nherbaceous :: Not woody; soft and green.\nsucculent :: Fleshy and juicy, storing water.\ndioecious :: Having male and female flowers on separate plants.\nmonoecious :: Having separate male and female flowers on the same plant.\nhermaphrodite; bisexual :: Having both male and female parts in the same flower.\nunisexual :: Having either male or female parts, but not both, in a single flower.\npolygamous :: Having both bisexual and unisexual flowers on the same or different plants.\n# Inflorescence\ninflorescence :: A flower cluster, or the arrangement of flowers on a plant. :: inflo\nraceme :: An unbranched inflorescence with stalked flowers arranged along a central axis; the oldest are at the base. :: inflo\nspike :: An unbranched inflorescence with unstalked (sessile) flowers along a central axis. :: inflo\npanicle :: A branched inflorescence in which the branches are themselves racemes. :: inflo\ncorymb :: A flat-topped or convex inflorescence in which the outer flower stalks are longer than the inner ones. :: inflo\numbel :: An inflorescence in which the flower stalks all arise from one point, like the ribs of an umbrella. :: inflo\ncapitulum; head; capitula :: A dense cluster of unstalked flowers (florets) on a common receptacle, as in daisies and many wattles. :: inflo\ncyme; cymose :: A branched inflorescence in which the central flower opens first and each branch ends in a flower. :: inflo\ndichasium :: A cyme with two opposite lateral branches below each terminal flower. :: inflo/cyme\ncatkin :: A drooping spike of small, usually unisexual, flowers.\nspadix :: A fleshy spike of tiny flowers, often surrounded by a leaf-like bract.\nspathe :: A large bract surrounding or subtending an inflorescence.\numbellate :: Arranged in an umbel.\npaniculate :: Arranged in a panicle.\nterminal :: At the tip of a stem or branch.\naxillary :: Arising from the axil (the angle between the leaf and the stem).\nlateral :: On or at the side.\nsolitary :: Occurring singly.\npeduncle :: The stalk of an inflorescence or of a solitary flower. :: euc\npedicel :: The stalk of a single flower within an inflorescence. :: flower\nscape :: A leafless flowering stem arising from the ground, bearing a flower or an inflorescence.\nbract :: A modified, often reduced leaf at the base of a flower or inflorescence.\nbracteole :: A small bract on the stalk of a flower, or at the base of the calyx.\ninvolucre :: A ring of bracts surrounding a flower cluster or head, as in daisies. :: daisy\ninvolucral :: Relating to an involucre.\nphyllary; phyllaries :: One of the bracts that make up the involucre of a daisy head. :: daisy\ncalyculus :: A ring of small bracts at the base of the involucre of some daisies (such as Senecio), outside the main phyllaries. :: daisy\nreceptacle :: The tip of the stalk to which the floral parts are attached. :: flower\nchaffy :: Having thin, dry scales (paleae or chaff) on the receptacle among the florets.\nspikelet :: The basic unit of the inflorescence in grasses and sedges: a small spike with one or more florets and the bracts that surround them. :: spikelet\nfloret :: A small flower, especially in grasses, sedges and daisies. :: spikelet\nray floret :: In daisies, a floret at the edge of the head with a strap-shaped, petal-like ligule. :: daisy\ndisc floret :: In daisies, a tubular floret in the centre of the head. :: daisy\nligulate :: Strap-shaped, or bearing a strap-shaped ligule.\nradiate :: With ray florets around the edge of the flower head.\ndiscoid :: A flower head with only disc florets and no rays.\nrayless :: Without ray florets.\ntubular :: Shaped like a tube.\ninvolucel :: A secondary involucre, such as that surrounding the small umbels of a compound umbel.\nverticillaster :: A pair of dense, opposite clusters of flowers at a node, appearing like a whorl (as in mints).\nglomerule :: A dense, compact cluster of flowers.\nhead-like :: Resembling a head.\n# Flower parts\nflower :: The reproductive structure of a flowering plant, usually with sepals, petals, stamens and carpels. :: flower\ncalyx :: The outer whorl of the flower, formed by the sepals. :: flower/sepal\nsepal :: One of the (usually green) parts forming the outer whorl of a flower, protecting the bud. :: flower\ncorolla :: All the petals of a flower together. :: flower/petal\npetal :: One of the (usually coloured) parts forming the inner whorl of the perianth of a flower. :: flower\nperianth :: The calyx and corolla together; the non-reproductive parts of a flower.\ntepal :: A sepal or petal that is not clearly distinguishable from the other perianth parts.\nstamen :: The male part of a flower, consisting of a filament and an anther. :: flower\nfilament :: The stalk of a stamen that supports the anther. :: flower\nanther :: The pollen-bearing part of a stamen. :: flower\nstaminode :: A sterile stamen, often modified into a petal-like or other structure.\npistil :: The female part of a flower: ovary, style and stigma. :: flower\ncarpel :: One female unit of a flower, containing ovules; a pistil may be of one or several united carpels. :: flower/pistil\novary :: The swollen base of the pistil, containing the ovules. :: flower\novule :: A structure in the ovary that develops into a seed after fertilisation. :: flower\nstyle :: The slender stalk of the pistil connecting the ovary to the stigma. :: flower\nstigma :: The tip of the style, where pollen is received. :: flower\nlocule :: A cavity within an ovary or fruit that contains the ovules or seeds.\nplacenta :: The part of the ovary to which the ovules are attached.\nplacentation :: The way ovules are attached within the ovary.\nhypanthium :: A cup-like structure formed by the fused bases of the sepals, petals and stamens, surrounding or fused to the ovary (as in eucalypts). :: euc\nhypogynous :: With the ovary above the attachment of the other floral parts (a superior ovary). :: ovarypos\nperigynous :: With the other floral parts attached to a cup around, but free from, the ovary. :: ovarypos\nepigynous :: With the other floral parts attached above the ovary, which is sunk in the receptacle (an inferior ovary). :: ovarypos\nsuperior :: Positioned above, as an ovary above the attachment of the sepals and petals. :: ovarypos/hypogynous\ninferior :: Positioned below, as an ovary below the attachment of the sepals and petals. :: ovarypos/epigynous\ngynoecium :: The female parts of a flower (all the carpels).\nandroecium :: The male parts of a flower (all the stamens).\npollen :: The fine grains produced by anthers that contain the male reproductive cells.\npollinium; pollinia :: A mass of pollen grains stuck together, as in orchids. :: orchid\nnectary :: A gland that produces nectar.\nnectar :: A sugary liquid produced by flowers to attract pollinators.\nexserted :: Projecting beyond the surrounding structure.\nincluded :: Not projecting beyond the surrounding structure.\nactinomorphic :: Radially symmetric, so that it can be divided into equal halves in more than one plane.\nzygomorphic :: Bilaterally symmetric, so that it can be divided into mirror-image halves in only one plane.\nregular :: Of a flower, radially symmetrical.\nirregular :: Of a flower, not radially symmetrical.\nconnivent :: Converging and touching but not fused.\ncoherent :: Joined, but not fused, to a part of the same kind.\nadnate :: Fused to a different part (e.g. stamens fused to petals).\nfree :: Not joined to other parts.\nfused :: Joined together.\nlobe :: A rounded or pointed division of an organ, not cut to the base.\ntube :: The part of a calyx or corolla in which the parts are fused.\nthroat :: The opening of a tubular flower, where the tube widens into the lobes.\nlimb :: The expanded, free part of a corolla or calyx.\nspur :: A hollow, tubular projection from a petal or sepal, often containing nectar.\ncorona :: A crown-like structure between the corolla and stamens.\nanthesis :: The time when a flower is open and functional.\nbud :: An undeveloped flower or shoot. :: euc\ncalyx tube :: The tube formed by the fused sepals.\nsepaloid :: Resembling a sepal.\npetaloid :: Resembling a petal.\napetalous :: Without petals.\n# Fruit and seed\nfruit :: The ripened ovary of a flower, containing the seeds.\ncapsule :: A dry fruit that opens along several lines or pores to release the seeds. :: euc\nvalve :: One of the sections into which a capsule splits to release its seeds. :: euc\nfollicle :: A dry fruit formed from one carpel that splits along one side.\nlegume :: A fruit of the pea family: a pod that usually splits along two seams. :: wattle\npod :: A dry fruit that splits along a seam or seams, as in legumes. :: wattle\nachene :: A small, dry, one-seeded fruit that does not split open. :: daisy\ncypsela :: The one-seeded dry fruit of a daisy, which is formed from an inferior ovary (often called an achene). :: daisy/achene\nnut :: A hard, dry, one-seeded fruit that does not split open.\nnutlet :: A small nut.\ncaryopsis :: The dry, one-seeded fruit of grasses, in which the seed coat is fused to the fruit wall (a grain).\nutricle :: A small, thin-walled, bladder-like, one-seeded fruit.\nberry :: A fleshy fruit with several seeds, without a stony layer around them.\ndrupe :: A fleshy fruit with a single hard stone containing the seed.\nsamara :: A dry, winged fruit that does not split open.\nschizocarp :: A dry fruit that splits into one-seeded parts.\nmericarp :: One of the parts of a fruit that splits into one-seeded sections.\ncone :: A woody structure bearing seeds between scales, as in conifers and Allocasuarina.\nsyncarp :: A fruit formed from several fused fruits.\nperigynium :: In Carex, the sac that encloses the female flower and later the nut.\nseed :: The ripened ovule containing an embryo. :: wattle\naril :: A fleshy or hairy outgrowth from the seed, often brightly coloured. :: wattle\nfunicle; funiculus :: The stalk attaching a seed to the placenta. :: wattle\ntesta :: The outer coat of a seed.\nendosperm :: Tissue in a seed that stores food for the embryo.\ncotyledon :: A seed leaf: the first leaf or leaves of the embryo.\ndehiscent :: Splitting open at maturity to release the seeds.\nindehiscent :: Not splitting open at maturity.\nwinged :: Having a thin, flat extension (a wing).\nbeak :: A prominent, narrow tip on a fruit or other organ.\npappus :: The tuft or ring of hairs, bristles or scales at the top of the cypsela in daisies. :: daisy\ncoma :: A tuft or ring of hairs, as at the base of the awn on the lemma of some Austrostipa species. :: grassfloret\ndisc :: In eucalypts, the ring of tissue inside the rim of the fruit; in daisies, the central part of the head. :: euc\nrim :: The edge of the hypanthium in a eucalypt fruit (the top of the fruit cup). :: euc\noperculum :: The cap covering the flower bud of a eucalypt, shed when the flower opens. :: euc\ncalyptra :: A cap formed by fused sepals or petals that falls off as the flower opens.\numbellaster :: A small umbel.\n# Grasses and sedges\nglume :: One of the two bracts at the base of a grass spikelet. :: spikelet\nlemma :: The lower of the two bracts that enclose the flower of a grass; it often bears an awn. :: spikelet\npalea :: The upper bract that encloses a grass flower, between the lemma and the axis. :: spikelet\nawn :: A bristle-like extension on the glume or lemma of a grass. :: grassfloret\ncolumn :: The lower, usually twisted part of an awn that has a bend in it (as in Austrostipa and Rytidosperma); in orchids, the structure formed by the fusion of the style and stamens. :: grassfloret\nseta; setae :: A bristle; in Rytidosperma, a bristle-like tip of a lemma lobe. :: rytid\ngeniculate :: Bent abruptly, like a knee. :: grassfloret\nbigeniculate :: Having two bends (twice bent), as in the awn of some Austrostipa species. :: grassfloret/geniculate\ncallus :: A hard, thickened, often pointed or hairy base of the lemma, which acts to bury the seed. :: grassfloret\nsinus :: The gap or notch between two lobes. :: rytid\nbristle :: A stiff, hair-like outgrowth.\nrhizomatous :: Having rhizomes.\nstoloniferous :: Having stolons.\ninflated :: Swollen like a bladder.\nscarious :: Thin, dry, papery and translucent.\nhyaline :: Thin and translucent or transparent.\nmembranous :: Thin, flexible and semi-transparent, like a membrane.\nchartaceous :: Papery in texture.\ncoriaceous :: Thick, tough and leathery.\ncartilaginous :: Tough and firm but flexible.\nkeel :: A sharp ridge along the middle of a structure, like the keel of a boat.\nkeeled :: Having a keel or sharp ridge.\nnerve :: A vein; especially a prominent vein or line on a bract.\nnerved :: Having prominent veins.\ndecurved :: Curved downwards.\nincurved :: Curved inwards.\npseudopetiolate :: Appearing to have a stalk.\n# Daisies (Asteraceae)\n# Eucalypts and myrtles\n# Wattles (Acacia)\nglobular head :: A ball-shaped head of tiny, many-stamened flowers, as in most wattles. :: inflo/capitulum\nphyllodinous :: Having phyllodes.\n# Orchids\nlabellum :: The modified, often showy, lowest petal of an orchid flower; the lip. :: orchid\ndorsal sepal :: The uppermost sepal of an orchid flower. :: orchid\nlateral sepal :: One of the two lower sepals of an orchid flower. :: orchid\nlabellum calli :: Outgrowths on the surface of the labellum. :: orchid\n# Taxonomy and distribution\nspecies :: The basic unit of classification: a group of organisms that can interbreed and are distinct from other groups.\nsubspecies :: A geographically or ecologically distinct group within a species, ranked below species (abbreviated subsp.).\nvariety :: A group within a species that differs in minor characters, ranked below subspecies (abbreviated var.).\ngenus :: A group of closely related species.\nfamily :: A group of related genera.\nhybrid :: The offspring of two different species, subspecies or varieties.\ncultivar :: A cultivated variety selected and maintained by people.\nendemic :: Native to, and restricted to, a particular region.\nindigenous :: Occurring naturally in an area (native).\nnative :: Occurring naturally in an area.\nnaturalised :: An introduced plant that has established wild populations.\nintroduced :: Brought to an area by people, not native.\nalien :: A plant that is not native to an area.\nweed :: A plant growing where it is not wanted, especially a harmful introduced species.\ncomplex :: A group of closely related species or forms that are difficult to separate.\nsubgenus :: A rank between genus and species that groups related species within a genus.\ntype :: A specimen used as the permanent reference for a name.\nsynonym :: An alternative scientific name for the same plant.\ntaxon; taxa :: A named group of organisms of any rank (species, genus, family etc.).\n# Colour and texture\nglaucescent :: Slightly glaucous.\npurplish :: Tinged with purple.\nstraw-coloured :: Pale yellowish brown, like dry straw.\nstramineous :: Straw-coloured.\nbrownish :: Tinged with brown.\ncream :: Pale yellowish white.\nrufous :: Reddish brown.\nferruginous :: Rust-coloured.\nfulvous :: Tawny; dull yellowish brown.\ncastaneous :: Chestnut-brown.\natropurpureus :: Dark purple.\nchlorotic :: Pale green or yellowish from lack of chlorophyll.\nvariegated :: Marked with patches or streaks of different colours.\n# Measurement and direction\nadaxial :: The side of a leaf or bract that faces the stem (the upper surface).\nabaxial :: The side of a leaf or bract that faces away from the stem (the lower surface).\nproximal :: Nearest to the point of attachment.\ndistal :: Furthest from the point of attachment.\nbasifixed :: Attached by the base.\ndorsifixed :: Attached by the back.\nversatile :: Attached at one point so that it can swing freely, as the anther on its filament.\n";
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+
+  /* ---------- data ---------- */
+  var TERMS = [], BYKEY = {}, GROUPS = [];
+  (function parse() {
+    var grp = "";
+    RAW.split("\n").forEach(function (l) {
+      l = l.trim(); if (!l) return;
+      if (l.charAt(0) === "#") { grp = l.slice(1).trim(); GROUPS.push(grp); return; }
+      var p = l.split(" :: "); if (p.length < 2) return;
+      var names = p[0].split(";").map(function (x) { return x.trim(); }).filter(Boolean);
+      var t = { name: names[0], names: names, def: p[1].trim(), diag: (p[2] || "").trim(), group: grp };
+      TERMS.push(t);
+      names.forEach(function (n) { BYKEY[n.toLowerCase()] = t; });
+    });
+  })();
+
+  // Words that are also everyday English or far too common in descriptions: still in the
+  // Glossary list, but not made tappable inside text.
+  var SKIP = {}; ("flower fruit seed tree shrub herb bark bud hybrid introduced alien weed native type species family genus variety section complex " +
+    "free fused simple regular irregular margin scale disc rim tube limb throat head dull cream rounded folded adult juvenile intermediate included " +
+    "column box gum cone spine thorn blade vein node gland lobe lobes basal terminal lateral lateral erect alternate opposite linear tuberous " +
+    "fibrous aquatic terrestrial persistent winged inflated rough smooth parasite climber runner bristle teeth endemic naturalised indigenous " +
+    "parallel-veined fascicle decumbent ascending prostrate spreading cushion annual perennial biennial hairy woody flowers stem leaf leaves").split(" ").forEach(function (w) { SKIP[w] = 1; });
+  // Keep a few of the genuinely useful short ones tappable
+  ["lobe", "gland", "vein", "node", "blade", "column", "alternate", "opposite", "basal", "terminal", "lateral", "erect", "linear", "decumbent", "ascending", "prostrate", "perennial", "annual", "biennial", "fascicle", "scale", "spine", "thorn", "parallel-veined", "tuberous", "winged", "inflated"].forEach(function (w) { delete SKIP[w]; });
+
+  var RE = null, FORMS = {};
+  function variants(n) {
+    var v = [n], l = n.toLowerCase();
+    if (/[^s]$/.test(l)) v.push(n + "s");
+    if (/(s|x|ch|sh)$/.test(l)) v.push(n + "es");
+    if (/y$/.test(l)) v.push(n.slice(0, -1) + "ies");
+    if (/um$/.test(l)) v.push(n.slice(0, -2) + "a");
+    return v;
+  }
+  function build() {
+    var words = [];
+    TERMS.forEach(function (t) {
+      t.names.forEach(function (n) {
+        if (SKIP[n.toLowerCase()] || n.length < 3) return;
+        variants(n).forEach(function (f) { var k = f.toLowerCase(); if (!FORMS[k]) { FORMS[k] = t; words.push(f); } });
+      });
+    });
+    words.sort(function (a, b) { return b.length - a.length; });
+    RE = new RegExp("(^|[^A-Za-z])(" + words.map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+"); }).join("|") + ")(?![A-Za-z])", "gi");
+  }
+  build();
+
+  // Wrap known terms in already-escaped inline HTML (skips tags and italic text).
+  function termify(html, selfKey) {
+    if (!RE || !html) return html;
+    var parts = String(html).split(/(<[^>]+>)/), ital = 0;
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      if (!p) continue;
+      if (p.charAt(0) === "<" && p.charAt(p.length - 1) === ">") {
+        if (/^<i[\s>]/i.test(p)) ital++; else if (/^<\/i>/i.test(p)) ital = Math.max(0, ital - 1);
+        continue;
+      }
+      if (ital) continue;
+      RE.lastIndex = 0;
+      parts[i] = p.replace(RE, function (m, pre, w) {
+        var t = FORMS[w.toLowerCase().replace(/\s+/g, " ")];
+        if (!t || (selfKey && t.name === selfKey)) return m;
+        return pre + '<b class="vk-term" role="button" tabindex="0" data-t="' + esc(t.name) + '">' + w + "</b>";
+      });
+    }
+    return parts.join("");
+  }
+
+  /* ---------- diagrams ---------- */
+  var INK = "#4a4a4a";
+  function svg(w, h, body, cls) { return '<svg class="' + (cls || "vkg-svg") + '" viewBox="0 0 ' + w + " " + h + '" xmlns="http://www.w3.org/2000/svg" role="img">' + body + "</svg>"; }
+  function P(d, extra) { return '<path d="' + d + '" ' + (extra || "") + "/>"; }
+  function flip(b, h) { return '<g transform="translate(0,' + h + ') scale(1,-1)">' + b + "</g>"; }
+  function leafAt(x, y, ang, L, wd) {
+    var rx = (wd || 0.24) * L, a = ang * Math.PI / 180, cx = x + Math.sin(a) * L / 2, cy = y - Math.cos(a) * L / 2;
+    return '<ellipse cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" rx="' + rx.toFixed(1) + '" ry="' + (L / 2).toFixed(1) + '" transform="rotate(' + ang + " " + cx.toFixed(1) + " " + cy.toFixed(1) + ')"/>';
+  }
+  function line(x1, y1, x2, y2) { return '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"/>'; }
+  function dot(x, y, r) { return '<circle cx="' + x + '" cy="' + y + '" r="' + (r || 3.5) + '"/>'; }
+
+  // Galleries: each item has names (k), svg body, shown in a grid with the chosen one highlighted.
+  function edge(fn, n, w) { var d = "M2 42 L2 26", step = 56 / n; for (var i = 0; i < n; i++) d += fn(2 + i * step, step); return d + " L58 26 L58 42Z"; }
+  var G = {};
+  G.leafshape = { w: 60, h: 90, cols: 5, items: [
+    ["linear", P("M30 4 C33 8 34 14 34 20 L34 72 C34 78 32 82 30 86 C28 82 26 78 26 72 L26 20 C26 14 27 8 30 4Z")],
+    ["lanceolate", P("M30 4 C38 20 44 45 42 62 C41 72 35 80 30 86 C25 80 19 72 18 62 C16 45 22 20 30 4Z")],
+    ["oblanceolate", flip(P("M30 4 C38 20 44 45 42 62 C41 72 35 80 30 86 C25 80 19 72 18 62 C16 45 22 20 30 4Z"), 90)],
+    ["elliptic", '<ellipse cx="30" cy="45" rx="18" ry="40"/>'],
+    ["oblong", '<rect x="15" y="6" width="30" height="78" rx="14"/>'],
+    ["ovate", P("M30 4 C42 22 52 46 48 62 C45 76 38 84 30 84 C22 84 15 76 12 62 C8 46 18 22 30 4Z")],
+    ["obovate", flip(P("M30 4 C42 22 52 46 48 62 C45 76 38 84 30 84 C22 84 15 76 12 62 C8 46 18 22 30 4Z"), 88)],
+    ["orbicular", '<circle cx="30" cy="45" r="28"/>'],
+    ["spathulate", P("M30 6 C42 6 46 18 42 30 C38 42 33 54 32 66 L32 86 L28 86 L28 66 C27 54 22 42 18 30 C14 18 18 6 30 6Z")],
+    ["deltoid", P("M30 8 L54 76 Q54 80 50 80 L10 80 Q6 80 6 76Z")],
+    ["cordate", P("M30 4 C40 20 54 36 54 56 C54 72 36 78 30 70 C24 78 6 72 6 56 C6 36 20 20 30 4Z")],
+    ["reniform", P("M4 44 C4 16 56 16 56 44 C56 62 42 72 30 62 C18 72 4 62 4 44Z")],
+    ["sagittate", P("M30 4 L42 48 L56 80 L30 66 L4 80 L18 48Z")],
+    ["falcate", P("M16 6 C52 18 58 62 34 88 C42 60 38 30 16 6Z")]
+  ] };
+  G.leafapex = { w: 60, h: 52, cols: 5, items: [
+    ["acute", P("M10 50 C10 38 24 22 30 6 C36 22 50 38 50 50Z")],
+    ["acuminate", P("M10 50 C12 38 26 32 28 20 C29 14 30 10 30 4 C30 10 31 14 32 20 C34 32 48 38 50 50Z")],
+    ["obtuse", P("M10 50 L10 42 L30 16 L50 42 L50 50Z")],
+    ["rounded", P("M10 50 L10 32 C10 10 50 10 50 32 L50 50Z")],
+    ["truncate", P("M10 50 L10 18 L50 18 L50 50Z")],
+    ["emarginate", P("M10 50 L10 30 C10 12 22 12 28 20 L30 26 L32 20 C38 12 50 12 50 30 L50 50Z")],
+    ["retuse", P("M10 50 L10 28 C10 12 22 12 27 15 L30 19 L33 15 C38 12 50 12 50 28 L50 50Z")],
+    ["mucronate", P("M10 50 L10 36 C10 18 22 16 28.5 14 L30 3 L31.5 14 C38 16 50 18 50 36 L50 50Z")],
+    ["cuspidate", P("M10 50 C10 36 22 30 26 22 L30 4 L34 22 C38 30 50 36 50 50Z")],
+    ["aristate", P("M10 50 L10 38 C10 24 22 20 29 18 L29.6 1 L30.4 1 L31 18 C38 20 50 24 50 38 L50 50Z")]
+  ] };
+  G.leafbase = { w: 60, h: 52, cols: 5, items: [
+    ["cuneate", P("M6 0 L28.5 40 L28.5 51 L31.5 51 L31.5 40 L54 0Z")],
+    ["attenuate", P("M10 0 C14 20 28 28 29 51 L31 51 C32 28 46 20 50 0Z")],
+    ["oblique", P("M4 0 L4 14 C10 24 24 32 29 40 L29 51 L31 51 L31 40 C42 32 54 20 54 0Z")],
+    ["auriculate", P("M12 0 L13 22 C4 24 2 36 12 38 C20 40 28 36 30 34 C32 36 40 40 48 38 C58 36 56 24 47 22 L48 0Z") + P("M29 38 L29 51 L31 51 L31 38Z")],
+    ["decurrent", P("M8 0 C12 12 26 16 28 30 L28 51 L32 51 L32 30 C34 16 48 12 52 0Z")]
+  ] };
+  G.leafmargin = { w: 60, h: 46, cols: 4, items: [
+    ["entire", P("M2 44 L2 24 L58 24 L58 44Z")],
+    ["serrate", P(edge(function (x, s) { return " L" + (x + s * .85).toFixed(1) + " 12 L" + (x + s).toFixed(1) + " 26"; }, 6) )],
+    ["serrulate", P(edge(function (x, s) { return " L" + (x + s * .85).toFixed(1) + " 20 L" + (x + s).toFixed(1) + " 26"; }, 14))],
+    ["dentate", P(edge(function (x, s) { return " L" + (x + s / 2).toFixed(1) + " 12 L" + (x + s).toFixed(1) + " 26"; }, 5))],
+    ["crenate", P(edge(function (x, s) { return " A" + (s / 2).toFixed(1) + " 9 0 0 1 " + (x + s).toFixed(1) + " 26"; }, 5))],
+    ["undulate", P("M2 44 L2 24 Q9 14 16 24 T30 24 T44 24 T58 24 L58 44Z")],
+    ["lobed", P("M2 44 L2 30 C2 4 20 4 20 30 C20 36 22 36 22 30 C22 4 38 4 38 30 C38 36 40 36 40 30 C40 4 58 4 58 30 L58 44Z")],
+    ["pinnatisect", P("M2 20 C4 8 16 8 18 20 L18 40 L2 40Z M22 20 C24 8 36 8 38 20 L38 40 L22 40Z M42 20 C44 8 56 8 58 20 L58 40 L42 40Z M2 40 L58 40 L58 44 L2 44Z")],
+    ["spinose", P(edge(function (x, s) { return " L" + (x + s / 2).toFixed(1) + " 10 L" + (x + s).toFixed(1) + " 26"; }, 4)) + line(10, 14, 9, 2) + line(24, 14, 23, 2) + line(38, 14, 37, 2) + line(52, 14, 51, 2)],
+    ["ciliate", P("M2 44 L2 26 L58 26 L58 44Z") + '<g stroke="' + INK + '" stroke-width="1">' + [6, 12, 18, 24, 30, 36, 42, 48, 54].map(function (x) { return line(x, 26, x + 1, 17); }).join("") + "</g>"],
+    ["revolute", '<path d="M4 8 L46 8 C58 8 58 24 48 24" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round"/>'],
+    ["involute", '<path d="M4 38 L46 38 C58 38 58 22 48 22" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round"/>']
+  ] };
+  G.leafarr = { w: 60, h: 90, cols: 6, items: [
+    ["alternate", line(30, 86, 30, 8) + leafAt(30, 76, -50, 28) + leafAt(30, 56, 50, 28) + leafAt(30, 36, -50, 28) + leafAt(30, 18, 50, 24)],
+    ["opposite", line(30, 86, 30, 8) + leafAt(30, 70, -60, 26) + leafAt(30, 70, 60, 26) + leafAt(30, 42, -60, 26) + leafAt(30, 42, 60, 26)],
+    ["whorled", line(30, 86, 30, 8) + [-70, -35, 35, 70].map(function (a) { return leafAt(30, 66, a, 24) + leafAt(30, 36, a, 22); }).join("")],
+    ["decussate", line(30, 86, 30, 8) + leafAt(30, 74, -60, 28) + leafAt(30, 74, 60, 28) + leafAt(30, 52, -18, 20, .3) + leafAt(30, 52, 18, 20, .3) + leafAt(30, 30, -60, 28) + leafAt(30, 30, 60, 28)],
+    ["rosette", [0, 45, 90, 135, 180, 225, 270, 315].map(function (a) { return leafAt(30, 45, a, 32, .16).replace(/cy="([\d.\-]+)"/, function (m, v) { return m; }); }).join("").replace(/<ellipse/g, "<ellipse")],
+    ["fascicle", line(30, 86, 30, 56) + [-40, -20, 0, 20, 40].map(function (a) { return leafAt(30, 56, a, 40, .06); }).join("")]
+  ] };
+  var TRI = function (cx, cy, a, L) { return leafAt(cx, cy, a, L, .3); };
+  G.compound = { w: 60, h: 90, cols: 5, items: [
+    ["simple", leafAt(30, 84, 0, 74, .3) ],
+    ["pinnate", line(30, 86, 30, 20) + [66, 48, 30].map(function (y) { return leafAt(30, y, -55, 22, .3) + leafAt(30, y, 55, 22, .3); }).join("")],
+    ["imparipinnate", line(30, 86, 30, 22) + [66, 48, 34].map(function (y) { return leafAt(30, y, -55, 22, .3) + leafAt(30, y, 55, 22, .3); }).join("") + leafAt(30, 26, 0, 22, .3)],
+    ["paripinnate", line(30, 86, 30, 20) + [68, 50, 32].map(function (y) { return leafAt(30, y, -55, 22, .3) + leafAt(30, y, 55, 22, .3); }).join("")],
+    ["bipinnate", line(30, 86, 30, 30) + [-1, 1].map(function (s) { return line(30, 62, 30 + s * 24, 34) + [0, 1, 2].map(function (i) { var x = 30 + s * (8 + i * 8), y = 62 - (i * 9 + 6); return leafAt(x, y, -s * 50, 11, .3) + leafAt(x, y, s * 50 + s * 0, 11, .3); }).join(""); }).join("")],
+    ["palmate", [-60, -30, 0, 30, 60].map(function (a) { return leafAt(30, 70, a, 46, .13); }).join("") + line(30, 70, 30, 88)],
+    ["trifoliolate", line(30, 88, 30, 62) + leafAt(30, 62, -50, 36, .3) + leafAt(30, 62, 50, 36, .3) + leafAt(30, 62, 0, 40, .3)]
+  ] };
+  function fl(x, y, r) { return '<circle cx="' + x + '" cy="' + y + '" r="' + (r || 4) + '"/>'; }
+  G.inflo = { w: 60, h: 84, cols: 5, items: [
+    ["raceme", line(30, 80, 30, 14) + [66, 52, 38, 24].map(function (y, i) { var s = i % 2 ? -1 : 1; return line(30, y, 30 + s * 12, y - 4) + fl(30 + s * 13, y - 4); }).join("") + fl(30, 10)],
+    ["spike", line(30, 80, 30, 14) + [70, 58, 46, 34, 22].map(function (y, i) { return fl(30 + (i % 2 ? -4 : 4), y, 4.5); }).join("") + fl(30, 10, 4.5)],
+    ["panicle", line(30, 80, 30, 10) + [60, 40, 24].map(function (y, i) { var w = 24 - i * 6; return line(30, y, 30 - w, y - 8) + line(30, y, 30 + w, y - 8) + fl(30 - w, y - 8, 3.5) + fl(30 + w, y - 8, 3.5) + fl(30 - w / 2, y - 3, 3) + fl(30 + w / 2, y - 3, 3); }).join("") + fl(30, 8, 3.5)],
+    ["corymb", line(30, 80, 30, 44) + [[-24, 14], [-12, 14], [0, 14], [12, 14], [24, 14]].map(function (p, i) { var y0 = 44 + (i % 2 ? 6 : 0); return line(30, y0 + (i === 2 ? -10 : 0), 30 + p[0], p[1] + 4) + fl(30 + p[0], p[1] + 2, 4); }).join("")],
+    ["umbel", line(30, 80, 30, 36) + [-26, -13, 0, 13, 26].map(function (x) { return line(30, 36, 30 + x, 16 + Math.abs(x) * .3) + fl(30 + x, 14 + Math.abs(x) * .3, 4); }).join("")],
+    ["capitulum", line(30, 80, 30, 48) + '<circle cx="30" cy="30" r="19" fill-opacity=".5"/>' + [[22, 24], [30, 20], [38, 24], [20, 33], [30, 30], [40, 33], [25, 40], [35, 40]].map(function (p) { return fl(p[0], p[1], 3); }).join("")],
+    ["cyme", line(30, 80, 30, 36) + fl(30, 32, 4.5) + line(30, 58, 12, 44) + fl(12, 41, 4) + line(30, 58, 48, 44) + fl(48, 41, 4) + line(30, 70, 14, 62) + fl(13, 60, 3.5) + line(30, 70, 46, 62) + fl(47, 60, 3.5)]
+  ] };
+  function cup(inner) { return inner; }
+  G.ovarypos = { w: 80, h: 84, cols: 3, items: [
+    ["hypogynous", P("M10 70 L70 70 L70 76 L10 76Z") + '<ellipse cx="40" cy="56" rx="13" ry="14"/>' + P("M34 44 L40 18 L46 44Z") + P("M10 68 C6 50 10 38 16 28 C20 44 26 56 28 68Z") + P("M70 68 C74 50 70 38 64 28 C60 44 54 56 52 68Z")],
+    ["perigynous", P("M12 76 L68 76 L68 70 C70 50 74 40 74 24 L68 24 C68 40 62 56 58 66 L22 66 C18 56 12 40 12 24 L6 24 C6 40 10 50 12 70Z") + '<ellipse cx="40" cy="54" rx="13" ry="13"/>' + P("M34 42 L40 16 L46 42Z")],
+    ["epigynous", P("M12 76 L68 76 C72 60 70 44 66 38 C62 34 56 36 54 34 L52 24 L58 20 L54 14 L46 22 L40 18 L34 22 L26 14 L22 20 L28 24 L26 34 C24 36 18 34 14 38 C10 44 8 60 12 76Z") + '<ellipse cx="40" cy="56" rx="17" ry="14" class="vkg-in"/>']
+  ] };
+  var ALIAS = { hypogynous: ["hypogynous", "superior"], perigynous: ["perigynous", "superior"], epigynous: ["epigynous", "inferior"],
+    "simple": ["simple"], compound: ["compound"], cuneate: ["cuneate", "cuneiform"], mucronate: ["mucronate", "mucro", "apiculate"], undulate: ["undulate", "sinuate"], lobed: ["lobed", "pinnatifid", "pinnatilobed", "lobe"], dentate: ["dentate", "denticulate"],
+    acute: ["acute"], falcate: ["falcate"], elliptic: ["elliptic", "elliptical"], orbicular: ["orbicular", "orbiculate", "circular"], spathulate: ["spathulate", "spatulate"], deltoid: ["deltoid", "triangular"], auriculate: ["auriculate", "amplexicaul", "stem-clasping"], attenuate: ["attenuate"],
+    pinnate: ["pinnate"], palmate: ["palmate", "digitate"], whorled: ["whorled", "verticillate"], fascicle: ["fascicle", "fascicled"], capitulum: ["capitulum", "head", "capitula"], cyme: ["cyme", "cymose", "dichasium"] };
+  Object.keys(G).forEach(function (g) { G[g].items.forEach(function (it) { it.names = ALIAS[it[0]] || [it[0]]; }); });
+
+  // Labelled diagrams: parts with shape, leader point and label.
+  var L = {};
+  L.flower = { w: 240, h: 150, parts: [
+    { k: ["petal", "corolla", "petaloid", "perianth"], label: "Petal", svg: P("M98 120 C60 112 48 72 66 48 C76 78 92 100 102 112Z") + P("M142 120 C180 112 192 72 174 48 C164 78 148 100 138 112Z"), pt: [66, 62], lab: [4, 56, "start"] },
+    { k: ["sepal", "calyx", "sepaloid", "perianth", "tepal"], label: "Sepal", svg: P("M98 128 C80 134 62 128 56 114 C74 114 90 118 102 124Z") + P("M142 128 C160 134 178 128 184 114 C166 114 150 118 138 124Z"), pt: [64, 124], lab: [4, 134, "start"] },
+    { k: ["stamen", "androecium", "filament"], label: "Filament", svg: '<path d="M100 114 Q92 90 86 66 M140 114 Q148 90 154 66" fill="none" stroke="' + INK + '" stroke-width="3"/>', pt: [93, 92], lab: [4, 98, "start"] },
+    { k: ["stamen", "androecium", "anther"], label: "Anther", svg: '<ellipse cx="84" cy="58" rx="5" ry="9"/><ellipse cx="156" cy="58" rx="5" ry="9"/>', pt: [84, 48], lab: [4, 28, "start"] },
+    { k: ["stigma", "pistil", "carpel", "gynoecium"], label: "Stigma", svg: '<circle cx="120" cy="60" r="7"/>', pt: [126, 58], lab: [236, 40, "end"] },
+    { k: ["style", "pistil", "carpel", "gynoecium"], label: "Style", svg: '<rect x="117" y="66" width="6" height="32"/>', pt: [123, 82], lab: [236, 70, "end"] },
+    { k: ["ovary", "pistil", "carpel", "gynoecium", "ovule", "locule", "placenta"], label: "Ovary", svg: '<ellipse cx="120" cy="108" rx="17" ry="13"/>', pt: [136, 108], lab: [236, 104, "end"] },
+    { k: ["receptacle"], label: "Receptacle", svg: '<rect x="100" y="121" width="40" height="8" rx="3"/>', pt: [128, 126], lab: [236, 140, "end"] }
+  ] };
+  L.leafparts = { w: 240, h: 150, parts: [
+    { k: ["node"], label: "Node", svg: '<rect x="34" y="94" width="12" height="7" rx="2"/>', pt: [34, 97], lab: [4, 118, "start"] },
+    { k: ["internode"], label: "Internode", svg: '<rect x="36" y="112" width="8" height="30"/>', pt: [36, 128], lab: [4, 140, "start"] },
+    { k: ["petiole", "pseudopetiolate"], label: "Petiole", svg: '<path d="M46 96 Q70 96 100 78" fill="none" stroke="' + INK + '" stroke-width="4"/>', pt: [72, 92], lab: [60, 122, "start"] },
+    { k: ["stipule"], label: "Stipule", svg: P("M46 98 C54 112 62 112 64 104 C58 104 52 102 46 98Z") + P("M34 98 C26 112 18 112 16 104 C22 104 28 102 34 98Z"), pt: [22, 108], lab: [4, 76, "start"] },
+    { k: ["axil"], label: "Axil", svg: '<circle cx="44" cy="88" r="4"/>', pt: [44, 86], lab: [6, 56, "start"] },
+    { k: ["blade", "lamina"], label: "Blade", svg: '<path d="M100 78 C120 40 170 20 226 24 C214 60 160 96 100 78Z" fill-opacity=".45"/>', pt: [190, 62], lab: [236, 100, "end"] },
+    { k: ["midrib", "midvein", "vein"], label: "Midrib", svg: '<path d="M100 78 Q160 60 222 26" fill="none" stroke="' + INK + '" stroke-width="2.4"/>', pt: [140, 64], lab: [236, 130, "end"] },
+    { k: ["vein", "venation"], label: "Veins", svg: '<path d="M130 68 L150 46 M154 62 L176 44 M178 48 L196 38 M140 66 L160 86 M170 62 L188 80" fill="none" stroke="' + INK + '" stroke-width="1.2"/>', pt: [188, 80], lab: [236, 12, "end"] }
+  ] };
+  L.daisy = { w: 240, h: 150, parts: [
+    { k: ["ray floret", "ligulate", "radiate", "ray", "ligule-of-ray"], label: "Ray floret", svg: P("M72 98 C30 94 14 70 18 44 C38 58 62 76 76 92Z") + P("M168 98 C210 94 226 70 222 44 C202 58 178 76 164 92Z"), pt: [30, 62], lab: [4, 28, "start"] },
+    { k: ["disc floret", "tubular", "discoid", "disc"], label: "Disc floret", svg: [92, 106, 120, 134, 148].map(function (x) { return '<rect x="' + (x - 4) + '" y="58" width="8" height="40" rx="3"/>'; }).join(""), pt: [120, 70], lab: [236, 40, "end"] },
+    { k: ["pappus", "coma"], label: "Pappus", svg: '<g stroke="' + INK + '" stroke-width="1" fill="none">' + [92, 106, 120, 134, 148].map(function (x) { return line(x, 58, x - 6, 44) + line(x, 58, x, 42) + line(x, 58, x + 6, 44); }).join("") + "</g>", pt: [120, 42], lab: [120, 12, "middle"] },
+    { k: ["achene", "cypsela", "ovary"], label: "Achene", svg: '<ellipse cx="120" cy="100" rx="9" ry="8"/>', pt: [129, 102], lab: [236, 122, "end"] },
+    { k: ["phyllary", "phyllaries", "involucre", "bract", "calyculus"], label: "Phyllaries", svg: leafAt(84, 112, -30, 34, .22) + leafAt(98, 114, -12, 36, .22) + leafAt(156, 114, 12, 36, .22) + leafAt(170, 112, 30, 34, .22), pt: [90, 96], lab: [4, 132, "start"] },
+    { k: ["receptacle", "chaffy"], label: "Receptacle", svg: P("M76 112 Q120 102 164 112 L164 120 Q120 110 76 120Z"), pt: [164, 116], lab: [236, 140, "end"] }
+  ] };
+  L.grassleaf = { w: 240, h: 150, parts: [
+    { k: ["culm", "node", "internode"], label: "Culm", svg: '<rect x="66" y="108" width="28" height="36" rx="2" fill-opacity=".3"/><rect x="62" y="104" width="36" height="6" rx="2"/>', pt: [62, 107], lab: [4, 100, "start"] },
+    { k: ["sheath"], label: "Sheath", svg: '<rect x="66" y="62" width="28" height="42" rx="2" fill-opacity=".55"/>', pt: [66, 84], lab: [4, 86, "start"] },
+    { k: ["collar"], label: "Collar", svg: '<rect x="64" y="58" width="32" height="5" rx="2"/>', pt: [64, 60], lab: [4, 54, "start"] },
+    { k: ["ligule"], label: "Ligule", svg: '<rect x="74" y="48" width="12" height="10" rx="1"/>', pt: [80, 50], lab: [60, 18, "start"] },
+    { k: ["auricle"], label: "Auricles", svg: P("M64 58 C56 54 54 46 60 44 C62 50 66 52 68 54Z") + P("M96 58 C104 54 106 46 100 44 C98 50 94 52 92 54Z"), pt: [102, 48], lab: [130, 30, "start"] },
+    { k: ["blade", "lamina"], label: "Blade", svg: P("M96 62 C130 42 180 42 230 60 L230 68 C180 54 130 56 94 70Z"), pt: [180, 52], lab: [236, 100, "end"] }
+  ] };
+  var SP_FL = '<g fill-opacity=".5">';
+  L.spikelet = { w: 240, h: 150, parts: [
+    { k: ["glume", "glumes"], label: "Glumes", svg: '<ellipse cx="102" cy="108" rx="12" ry="30" transform="rotate(-8 102 108)"/><ellipse cx="138" cy="104" rx="12" ry="32" transform="rotate(8 138 104)"/>', pt: [96, 118], lab: [4, 130, "start"] },
+    { k: ["palea", "paleae", "floret"], label: "Palea", svg: '<ellipse cx="121" cy="70" rx="7" ry="20" fill-opacity=".3"/>', pt: [127, 62], lab: [4, 66, "start"] },
+    { k: ["lemma", "floret"], label: "Lemma", svg: '<ellipse cx="118" cy="76" rx="11" ry="26"/>', pt: [108, 70], lab: [4, 40, "start"] },
+    { k: ["callus"], label: "Callus", svg: P("M113 98 L120 112 L127 98Z"), pt: [128, 106], lab: [236, 122, "end"] },
+    { k: ["rachilla"], label: "Rachilla", svg: '<line x1="122" y1="136" x2="122" y2="104" stroke="' + INK + '" stroke-width="2.5"/>', pt: [122, 128], lab: [236, 142, "end"] },
+    { k: ["awn", "aristate", "geniculate", "bigeniculate", "column", "seta"], label: "Awn", svg: '<path d="M118 50 L118 30 L150 8" fill="none" stroke="' + INK + '" stroke-width="2"/>', pt: [134, 19], lab: [236, 20, "end"] },
+    { k: ["geniculate", "bigeniculate"], label: "Bend (geniculate)", svg: '<circle cx="118" cy="30" r="3.5"/>', pt: [121, 30], lab: [4, 14, "start"] }
+  ] };
+  L.euc = { w: 240, h: 150, parts: [
+    { k: ["operculum", "calyptra"], label: "Operculum (cap)", svg: P("M44 52 C44 30 76 30 76 52Z"), pt: [60, 38], lab: [4, 16, "start"] },
+    { k: ["hypanthium", "rim", "bud"], label: "Hypanthium", svg: P("M44 52 L76 52 C74 70 66 80 62 86 L58 86 C54 80 46 70 44 52Z"), pt: [44, 64], lab: [4, 82, "start"] },
+    { k: ["pedicel"], label: "Pedicel", svg: '<rect x="57" y="86" width="6" height="22"/>', pt: [57, 100], lab: [4, 112, "start"] },
+    { k: ["peduncle"], label: "Peduncle", svg: '<rect x="57" y="108" width="6" height="36"/>', pt: [57, 130], lab: [4, 142, "start"] },
+    { k: ["stamen", "stamens", "filament", "anther"], label: "Stamens", svg: '<g stroke="' + INK + '" stroke-width="1.2">' + [-50, -35, -20, -8, 8, 20, 35, 50].map(function (a) { var r = a * Math.PI / 180; return line(160, 82, (160 + Math.sin(r) * 50).toFixed(1), (82 - Math.cos(r) * 52).toFixed(1)); }).join("") + "</g>", pt: [190, 46], lab: [236, 30, "end"] },
+    { k: ["hypanthium", "capsule", "rim", "disc", "valve"], label: "Fruit cup", svg: P("M142 82 L178 82 C176 100 168 108 164 114 L156 114 C152 108 144 100 142 82Z"), pt: [176, 98], lab: [236, 118, "end"] }
+  ] };
+  L.wattle = { w: 240, h: 150, parts: [
+    { k: ["phyllode", "phyllodinous"], label: "Phyllode", svg: P("M14 130 C14 70 40 30 84 12 C76 60 52 110 14 130Z"), pt: [44, 70], lab: [4, 146, "start"] },
+    { k: ["gland"], label: "Gland", svg: '<circle cx="46" cy="60" r="4" fill="#cca735"/>', pt: [50, 58], lab: [100, 62, "start"] },
+    { k: ["raceme", "peduncle"], label: "Raceme axis", svg: '<path d="M120 130 L120 40 L212 40" fill="none" stroke="' + INK + '" stroke-width="2.2"/>', pt: [166, 40], lab: [120, 28, "start"] },
+    { k: ["globular head", "capitulum", "head", "stamen"], label: "Globular head", svg: [150, 180, 210].map(function (x) { return '<circle cx="' + x + '" cy="64" r="10" fill="#e0c468"/>' + line(x, 40, x, 54); }).join(""), pt: [180, 74], lab: [236, 96, "end"] },
+    { k: ["pod", "legume"], label: "Pod", svg: P("M140 130 L228 126 L228 136 L140 138Z"), pt: [190, 132], lab: [236, 148, "end"] }
+  ] };
+  L.orchid = { w: 240, h: 150, parts: [
+    { k: ["dorsal sepal", "sepal"], label: "Dorsal sepal", svg: '<ellipse cx="120" cy="34" rx="14" ry="28"/>', pt: [134, 30], lab: [236, 14, "end"] },
+    { k: ["petal"], label: "Petals", svg: '<ellipse cx="78" cy="56" rx="12" ry="30" transform="rotate(-55 78 56)"/><ellipse cx="162" cy="56" rx="12" ry="30" transform="rotate(55 162 56)"/>', pt: [66, 46], lab: [4, 28, "start"] },
+    { k: ["lateral sepal", "sepal"], label: "Lateral sepals", svg: '<ellipse cx="92" cy="108" rx="10" ry="34" transform="rotate(25 92 108)"/><ellipse cx="148" cy="108" rx="10" ry="34" transform="rotate(-25 148 108)"/>', pt: [84, 124], lab: [4, 140, "start"] },
+    { k: ["column"], label: "Column", svg: '<rect x="116" y="56" width="8" height="30" rx="4" fill-opacity=".8"/>', pt: [124, 66], lab: [236, 60, "end"] },
+    { k: ["labellum", "labellum calli", "calli", "callus"], label: "Labellum", svg: P("M120 84 C98 86 96 112 104 124 C112 130 128 130 136 124 C144 112 142 86 120 84Z") + '<circle cx="116" cy="102" r="2.6" fill="#cca735"/><circle cx="124" cy="102" r="2.6" fill="#cca735"/>', pt: [138, 108], lab: [236, 112, "end"] }
+  ] };
+  L.rytid = { w: 240, h: 150, parts: [
+    { k: ["lemma"], label: "Lemma", svg: P("M96 140 C84 100 92 70 104 56 L136 56 C148 70 156 100 144 140Z"), pt: [100, 100], lab: [4, 110, "start"] },
+    { k: ["lobe", "lobes", "seta", "sinus"], label: "Lobes (with setae)", svg: P("M104 56 L98 30 L108 56Z") + P("M136 56 L142 30 L132 56Z") + line(98, 30, 96, 14) + line(142, 30, 144, 14), pt: [98, 32], lab: [4, 28, "start"] },
+    { k: ["awn", "column"], label: "Awn", svg: '<path d="M120 56 L120 20 C120 8 150 8 170 20" fill="none" stroke="' + INK + '" stroke-width="2.4"/>', pt: [150, 12], lab: [236, 30, "end"] }
+  ] };
+  var DIAGMAP = { grassfloret: "spikelet", spikelet: "spikelet", grassleaf: "grassleaf", flower: "flower", daisy: "daisy", euc: "euc", wattle: "wattle", orchid: "orchid", rytid: "rytid", leafparts: "leafparts" };
+  var GAL = ["leafshape", "leafapex", "leafbase", "leafmargin", "leafarr", "compound", "inflo", "ovarypos"];
+
+  function norm(s) { return String(s || "").toLowerCase().trim(); }
+  function nameSet(t, key) { var s = []; if (key) s.push(norm(key)); t.names.forEach(function (n) { s.push(norm(n)); }); return s; }
+  function inList(arr, cands) { for (var i = 0; i < cands.length; i++) if (arr.indexOf(cands[i]) >= 0) return true; return false; }
+  function renderGallery(gid, t, key) {
+    var g = G[gid], cands = nameSet(t, key), hit = -1, out = "";
+    g.items.forEach(function (it, i) { if (hit < 0 && inList(it.names, cands)) hit = i; });
+    if (hit < 0) return "";
+    g.items.forEach(function (it, i) {
+      out += '<div class="vkg-cell' + (i === hit ? " on" : "") + '">' + svg(g.w, g.h, it[1]) + "<span>" + esc(it[0]) + "</span></div>";
+    });
+    return '<div class="vkg-gal" style="--cols:' + g.cols + '">' + out + "</div>";
+  }
+  function renderParts(did, t, key) {
+    var d = L[did], cands = nameSet(t, key), hit = false, body = "", labs = "";
+    d.parts.forEach(function (p) { if (inList(p.k, cands)) hit = true; });
+    if (!hit) return "";
+    d.parts.forEach(function (p) {
+      var on = inList(p.k, cands);
+      body += '<g class="vkg-part' + (on ? " on" : "") + '">' + p.svg + "</g>";
+      var tw = p.label.length * 5.2, tl = p.lab[2] === "start" ? p.lab[0] : p.lab[2] === "end" ? p.lab[0] - tw : p.lab[0] - tw / 2, tr = tl + tw, ex, ey;
+      if (p.pt[0] >= tl - 2 && p.pt[0] <= tr + 2) { ex = p.pt[0]; ey = p.pt[1] < p.lab[1] - 3 ? p.lab[1] - 10 : p.lab[1] + 3; }
+      else { ex = p.pt[0] < tl ? tl - 3 : tr + 3; ey = p.lab[1] - 3.5; }
+      labs += '<g class="vkg-lab' + (on ? " on" : "") + '"><line x1="' + p.pt[0] + '" y1="' + p.pt[1] + '" x2="' + ex.toFixed(1) + '" y2="' + ey.toFixed(1) + '"/><text x="' + p.lab[0] + '" y="' + p.lab[1] + '" text-anchor="' + p.lab[2] + '">' + esc(p.label) + "</text></g>";
+    });
+    return '<div class="vkg-dia">' + svg(d.w, d.h, '<g class="vkg-shapes">' + body + "</g>" + labs, "vkg-svg vkg-big") + "</div>";
+  }
+  function diagramFor(t) {
+    var tag = t.diag, id = tag.split("/")[0], key = tag.split("/")[1] || "";
+    if (id) {
+      if (G[id]) return renderGallery(id, t, key);
+      var did = DIAGMAP[id]; if (did && L[did]) return renderParts(did, t, key);
+      return "";
+    }
+    var i, r;
+    for (i = 0; i < GAL.length; i++) { r = renderGallery(GAL[i], t, ""); if (r) return r; }
+    var ks = Object.keys(L);
+    for (i = 0; i < ks.length; i++) { r = renderParts(ks[i], t, ""); if (r) return r; }
+    return "";
+  }
+
+  /* ---------- pop-up ---------- */
+  var pop = null, stack = [];
+  function closePop() { if (pop) { pop.remove(); pop = null; } stack = []; }
+  function showTerm(name, fromBack) {
+    var t = BYKEY[norm(name)]; if (!t) return;
+    if (!fromBack) { if (!stack.length || stack[stack.length - 1] !== t.name) stack.push(t.name); }
+    var also = t.names.slice(1);
+    var def = termify(esc(t.def), t.name);
+    var h = '<div class="vkg-card" role="dialog" aria-modal="true" aria-label="' + esc(t.name) + '">' +
+      '<div class="vkg-bar">' + (stack.length > 1 ? '<button type="button" class="vkg-back" aria-label="Back">&#8592;</button>' : "") +
+      '<span class="vkg-grp">' + esc(t.group) + '</span><button type="button" class="vkg-close" aria-label="Close">&#10005;</button></div>' +
+      '<div class="vkg-body"><div class="vkg-name">' + esc(t.name) + "</div>" +
+      (also.length ? '<div class="vkg-also">also: ' + esc(also.join(", ")) + "</div>" : "") +
+      '<p class="vkg-def">' + def + "</p>" + diagramFor(t) +
+      '<p class="vkg-src">Schematic diagrams; definitions written for Flora Survey.</p></div></div>';
+    if (!pop) { pop = document.createElement("div"); pop.className = "vkg-pop"; document.body.appendChild(pop); }
+    pop.innerHTML = h;
+    var body = pop.querySelector(".vkg-body"); if (body) body.scrollTop = 0;
+  }
+  function popBack() { stack.pop(); var n = stack[stack.length - 1]; if (n) showTerm(n, true); else closePop(); }
+
+  /* ---------- glossary list ---------- */
+  var list = null;
+  function closeList() { if (list) { list.remove(); list = null; } }
+  function openList() {
+    if (list) return;
+    list = document.createElement("div"); list.className = "vkg-list";
+    list.innerHTML = '<div class="vkg-lhead"><b>Glossary</b><button type="button" class="vkg-lclose" aria-label="Close glossary">&#10005;</button></div>' +
+      '<div class="vkg-lsearch"><input type="search" id="vkgQ" placeholder="Search ' + TERMS.length + ' botanical terms" autocomplete="off" autocapitalize="off" spellcheck="false"></div><div class="vkg-lbody" id="vkgL"></div>';
+    document.body.appendChild(list);
+    var q = list.querySelector("#vkgQ"), box = list.querySelector("#vkgL");
+    function draw() {
+      var s = norm(q.value), h = "", last = "";
+      var rows = TERMS.filter(function (t) { return !s || t.names.some(function (n) { return norm(n).indexOf(s) >= 0; }) || (s.length > 3 && norm(t.def).indexOf(s) >= 0); });
+      rows.sort(function (a, b) { return a.name.localeCompare(b.name); });
+      rows.forEach(function (t) {
+        var L0 = t.name.charAt(0).toUpperCase();
+        if (L0 !== last) { h += '<div class="vkg-az">' + esc(L0) + "</div>"; last = L0; }
+        h += '<button type="button" class="vkg-row" data-t="' + esc(t.name) + '"><b>' + esc(t.name) + "</b><span>" + esc(t.def) + "</span></button>";
+      });
+      box.innerHTML = h || '<div class="vkg-none">No matching terms.</div>';
+    }
+    q.addEventListener("input", draw); draw();
+  }
+
+  /* ---------- events ---------- */
+  function activate(el) { showTerm(el.getAttribute("data-t")); }
+  document.addEventListener("click", function (e) {
+    var tg = e.target;
+    if (!tg || !tg.closest) return;
+    var term = tg.closest(".vk-term");
+    if (term) { e.preventDefault(); e.stopPropagation(); activate(term); return; }
+    if (pop) {
+      if (tg.closest(".vkg-close")) { closePop(); return; }
+      if (tg.closest(".vkg-back")) { popBack(); return; }
+      if (tg === pop) { closePop(); return; }
+    }
+    var row = tg.closest(".vkg-row"); if (row) { e.stopPropagation(); showTerm(row.getAttribute("data-t")); return; }
+    if (tg.closest(".vkg-lclose")) { closeList(); return; }
+    if (tg.closest(".vk-gl")) { e.stopPropagation(); openList(); return; }
+  }, true);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { if (pop) { closePop(); e.stopPropagation(); } else if (list) { closeList(); e.stopPropagation(); } return; }
+    if ((e.key === "Enter" || e.key === " ") && e.target && e.target.classList && e.target.classList.contains("vk-term")) { e.preventDefault(); activate(e.target); }
+  }, true);
+
+  window.VKGloss = { termify: termify, show: showTerm, openList: openList, closeAll: function () { closePop(); closeList(); }, count: TERMS.length, _terms: TERMS };
+})();
+
+</script>
+<script>
 /* VicKey: compare two species, genera or families using VicFlora.
    - Names, classification and descriptions come from the VicFlora GraphQL API.
    - Identification keys come from KeyBase (the key engine behind VicFlora), which
@@ -1794,7 +2209,8 @@ window.FHFuzzy = (function () {
     return s.replace(/\s+/g, " ").trim();
   }
   function inline(s) {
-    return esc(s).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\*([^*]+)\*/g, "<i>$1</i>").replace(/_([^_]+)_/g, "<i>$1</i>");
+    var h = esc(s).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\*([^*]+)\*/g, "<i>$1</i>").replace(/_([^_]+)_/g, "<i>$1</i>");
+    return window.VKGloss ? window.VKGloss.termify(h) : h;
   }
 
   // Botanical categories, in the order a flora description is usually read.
@@ -2084,7 +2500,7 @@ window.FHFuzzy = (function () {
     root.setAttribute("role", "dialog");
     root.setAttribute("aria-label", "VicKey");
     root.innerHTML =
-      '<div class="vk-head"><b>VicKey<small>Compare taxa, read keys, or use a multi-access key, from VicFlora</small></b><button type="button" class="vk-x" aria-label="Close VicKey">&#10005;</button></div>' +
+      '<div class="vk-head"><b>VicKey<small>Compare taxa, read keys, or use a multi-access key, from VicFlora</small></b><button type="button" class="vk-gl" aria-label="Open botanical glossary">Glossary</button><button type="button" class="vk-x" aria-label="Close VicKey">&#10005;</button></div>' +
       '<div class="vk-tabs" role="tablist">' + TABS.map(function (t) { return '<button type="button" class="vk-tab" role="tab" data-mode="' + t[0] + '">' + t[1] + '</button>'; }).join("") + '</div>' +
       '<div class="vk-body" id="vkBody"></div>';
     document.body.appendChild(root);
@@ -2100,6 +2516,7 @@ window.FHFuzzy = (function () {
   function teardown() {
     if (!root) return;
     runId++;
+    if (window.VKGloss) window.VKGloss.closeAll();
     root.remove(); root = null;
     document.body.style.overflow = "";
   }
@@ -4316,7 +4733,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-08.10";
+  const BUILD_VERSION = "2026-10-08.11";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive

@@ -2,6 +2,13 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## VicKey glossary: tap a bold term (2026-10-08, v.11)
+- Botanical terms in VicKey (descriptions in Comparison, key steps in Species Key) now show **bold with a dotted underline**. Tap one to open a pop-up with its definition and, where there is one, a diagram with the term highlighted (leaf shapes, apices, bases, margins, arrangement, compound leaves, inflorescences, ovary position, flower, leaf parts, daisy head, grass leaf, spikelet, eucalypt bud, wattle, orchid).
+- Terms inside a definition are tappable too; the arrow goes back.
+- New **Glossary** button in the VicKey header: a searchable A-Z list of about 450 terms.
+- Very common words (flower, leaf, tree, seed and similar) are not bolded in text, but are in the Glossary list.
+- Definitions are written for this app (VicFlora's glossary could not be fetched) and the diagrams are schematic, so check against VicFlora's glossary for anything critical.
+
 ## VicKey: View photos on iNaturalist (2026-10-08, v.10)
 - A **View photos** button now sits at the bottom of every comparison result (one for each of the two species, genera or families), under each open taxon in the MultiAccess Key, and under a genus's Species Key. It opens iNaturalist's observations for that name, photos only, in your browser (needs a connection).
 
