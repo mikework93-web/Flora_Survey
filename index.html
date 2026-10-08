@@ -2052,17 +2052,19 @@ window.FHFuzzy = (function () {
 
   /* ---------- UI ---------- */
   var MODES = {
-    species: { tab: "Species", rank: "SPECIES", one: "Species", intro: "Pick a species, then another species from the same genus. You get their VicFlora descriptions side by side and the step in the genus key where they separate.", ph: "Search species, e.g. Carex appressa", child: "SPECIES", up: "GENUS", second: "Compare with (same genus)" },
-    genus: { tab: "Genus", rank: "GENUS", one: "Genus", intro: "Pick a genus, then another genus from the same family. You get the family key step where they separate.", ph: "Search genus, e.g. Carex", child: "GENUS", up: "FAMILY", second: "Compare with (same family)" },
-    key: { tab: "Genus key", rank: "GENUS", keyMode: true },
-    multi: { tab: "Multi-key", rank: "GENUS", multiMode: true },
-    family: { tab: "Family", rank: "FAMILY", one: "Family", intro: "Pick two families. You get their VicFlora descriptions side by side and the step in the families key where they separate.", ph: "Search family, e.g. Cyperaceae", child: null, up: null, second: "Compare with (any family)" }
+    species: { tab: "Sp. Comp", rank: "SPECIES", one: "Species", intro: "Type a species, then type a second species (any genus). You get their VicFlora descriptions side by side and where a key separates them: the genus key if they are in the same genus, or the family key (genus against genus) if they are in different genera of one family.", ph: "Search species, e.g. Carex appressa", child: "SPECIES", up: "GENUS", second: "Compare with (any species)" },
+    genus: { tab: "G Comp", rank: "GENUS", one: "Genus", intro: "Pick a genus, then another genus from the same family. You get the family key step where they separate.", ph: "Search genus, e.g. Carex", child: "GENUS", up: "FAMILY", second: "Compare with (same family)" },
+    key: { tab: "Key", rank: "GENUS", keyMode: true },
+    multi: { tab: "MA Key", rank: "GENUS", multiMode: true },
+    family: { tab: "F Comp", rank: "FAMILY", one: "Family", intro: "Pick two families. You get their VicFlora descriptions side by side and the step in the families key where they separate.", ph: "Search family, e.g. Cyperaceae", child: null, up: null, second: "Compare with (any family)" }
   };
 
   var root = null, guard = false, mode = "species", S = null, runId = 0;
 
-  function resetState() { S = { a: null, b: null, tA: null, opts: null }; K = { keys: [], key: null, view: "bracket", stack: [], genus: null }; MA = null; MG = ["Austrostipa", "Rytidosperma"]; }
-  var MA = null, MG = ["Austrostipa", "Rytidosperma"];
+  function resetState() { S = { a: null, b: null, tA: null, opts: null }; K = { keys: [], key: null, view: "bracket", stack: [], genus: null }; MA = null; applyKeyset(MKS); }
+  var MA = null, MG = [], MKS = "senecio";
+  function keysetById(id) { return KEYSETS.filter(function (k) { return k.id === id; })[0] || KEYSETS[0]; }
+  function applyKeyset(id) { var ks = keysetById(id); MKS = ks.id; MG = ks.genera.slice(); setProfile(ks.profile); }
   var K = { keys: [], key: null, view: "bracket", stack: [], genus: null };
 
   function open() {
@@ -2145,14 +2147,15 @@ window.FHFuzzy = (function () {
       '<div class="vk-pick">' +
       '<div class="vk-col"><label for="vkA">' + M.one + '</label><input id="vkA" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="' + esc(M.ph) + '"><div class="vk-list" id="vkListA"></div></div>' +
       '<div class="vk-col"><label for="vkB">' + esc(M.second) + '</label>' +
-      (mode === "family"
-        ? '<input id="vkB" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search family" disabled><div class="vk-list" id="vkListB"></div>'
+      (mode === "family" || mode === "species"
+        ? '<input id="vkB" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="' + (mode === "species" ? "Search a second species" : "Search family") + '" disabled><div class="vk-list" id="vkListB"></div>'
         : '<select id="vkB" disabled><option>Pick the first one</option></select>') +
       '</div></div>' +
       '<div id="vkOut"></div>';
     offLine();
     typeahead(body.querySelector("#vkA"), body.querySelector("#vkListA"), [M.rank], pickA);
     if (mode === "family") typeahead(body.querySelector("#vkB"), body.querySelector("#vkListB"), ["FAMILY"], pickB);
+    else if (mode === "species") typeahead(body.querySelector("#vkB"), body.querySelector("#vkListB"), ["SPECIES"], pickB);
     else body.querySelector("#vkB").addEventListener("change", function (e) {
       var i = e.target.value;
       if (i === "") return;
@@ -2262,13 +2265,14 @@ window.FHFuzzy = (function () {
   var MA_Q_PRF = "query($id:ID!){taxonConcept(id:$id){currentProfile{profile}}}";
   var MC = {};   // genus name -> parsed taxa (this session)
 
-  var ORGANS = [
+  var GR_ORGANS = [
     ["culm", /\b(?:culms?|plants?|stems?)\b/gi], ["blade", /\b(?:leaf blades?|blades?|leaves|leaf)\b/gi],
     ["ligule", /\bligules?\b/gi], ["panicle", /\b(?:panicles?|inflorescences?)\b/gi],
     ["spikelet", /\bspikelets?\b/gi], ["glume", /\bglumes?\b/gi], ["lemma", /\blemmas?\b/gi],
     ["callus", /\bcallus\b/gi], ["awn", /\b(?:awns?|columns?)\b/gi], ["palea", /\bpaleas?\b/gi],
     ["lobe", /\b(?:lateral )?lobes?\b/gi]
   ];
+  var ORGANS = GR_ORGANS, NUMC, CATC;
   var SKIP_BEFORE = /\b(?:beyond|exceed(?:s|ed|ing)?|above|below|than|equal(?:s|ling)?|surpass(?:es|ing)?|from|between|enclos\w+|including|of)\s+(?:the\s+|their\s+|its\s+|a\s+)?(?:[\w-]+\s+){0,2}$/i;
   // Split a description into pieces, one per organ it talks about.
   function organSegments(raw) {
@@ -2278,11 +2282,14 @@ window.FHFuzzy = (function () {
       var re = new RegExp(o[1].source, "gi"), m;
       while ((m = re.exec(t))) {
         if (SKIP_BEFORE.test(t.slice(Math.max(0, m.index - 40), m.index))) continue;
+        if (o[2] && o[2].test(t.slice(Math.max(0, m.index - 60), m.index))) continue;
         marks.push({ i: m.index, o: o[0] });
       }
     });
     marks.sort(function (a, b) { return a.i - b.i; });
     var seg = {};
+    // Text before the first organ word (e.g. "Erect annual to 150 cm high; stems ...") describes the plant as a whole.
+    if (marks.length && marks[0].i > 0) seg[ORGANS[0][0]] = [t.slice(0, Math.min(marks[0].i, 240))];
     marks.forEach(function (mk, k) {
       var end = Math.min(k + 1 < marks.length ? marks[k + 1].i : t.length, mk.i + 240);
       (seg[mk.o] = seg[mk.o] || []).push(t.slice(mk.i, end));
@@ -2304,7 +2311,8 @@ window.FHFuzzy = (function () {
     return out;
   }
   function numFor(seg, organ, dim) {
-    var arr = seg[organ] || [];
+    var arr = [];
+    (Array.isArray(organ) ? organ : [organ]).forEach(function (o) { arr = arr.concat(seg[o] || []); });
     for (var i = 0; i < arr.length; i++) {
       var ms = measures(arr[i]);
       for (var j = 0; j < ms.length; j++) if (ms[j].dim === dim) return { lo: ms[j].lo, hi: ms[j].hi };
@@ -2329,10 +2337,16 @@ window.FHFuzzy = (function () {
     var re2 = new RegExp("\\b" + NM + "\\b", "gi");
     while ((r = re2.exec(used))) { var q = monthIdx(r[1]); if (q >= 0) set.add(MONTHS[q]); }
     if (!set.size && /throughout the year|all year|year[- ]round|any time/i.test(s)) { for (var k = 0; k < 12; k++) set.add(MONTHS[k]); }
+    if (!set.size) {
+      // No month names: fall back on seasons (spring Sep-Nov, summer Dec-Feb, autumn Mar-May, winter Jun-Aug).
+      var SEAS = { spring: [8, 9, 10], summer: [11, 0, 1], autumn: [2, 3, 4], winter: [5, 6, 7] }, sm;
+      var sre = /\b(spring|summer|autumn|winter)\b/gi;
+      while ((sm = sre.exec(s))) SEAS[sm[1].toLowerCase()].forEach(function (i) { set.add(MONTHS[i]); });
+    }
     return set;
   }
   // Numeric characters (values held in mm; "f" converts the unit shown to the user).
-  var NUMC = [
+  var GR_NUMC = [
     { id: "height", group: "Plant", label: "Plant (culm) height", unit: "cm", f: 10, organ: "culm", dim: "L" },
     { id: "blen", group: "Leaves", label: "Leaf blade length", unit: "cm", f: 10, organ: "blade", dim: "L" },
     { id: "bwid", group: "Leaves", label: "Leaf blade width", unit: "mm", f: 1, organ: "blade", dim: "W" },
@@ -2348,7 +2362,7 @@ window.FHFuzzy = (function () {
     { id: "alen", group: "Awn", label: "Awn (or column plus awn) length", unit: "mm", f: 1, organ: "awn", dim: "L" }
   ];
   // Feature characters: each state is a regex tested on that organ's piece of the description.
-  var CATC = [
+  var GR_CATC = [
     { id: "life", group: "Plant", label: "Life form", organ: "culm", states: [["Perennial", /perennial/i], ["Annual", /\bannual/i]], whole: true },
     { id: "habit", group: "Plant", label: "Growth habit", whole: true, states: [["Tufted (tussock)", /tufted|tussock|caespitose|clump/i], ["Spreading or rhizomatous", /rhizomat|stolon|spreading|mat-forming|creeping|decumbent/i]] },
     { id: "bform", group: "Leaves", label: "Leaf blade form", organ: "blade", states: [["Flat", /\bflat\b/i], ["Folded or channelled", /channel|folded|conduplicate|grooved/i], ["Inrolled or thread-like", /inrolled|rolled|involute|convolute|terete|filiform|setaceous|thread|needle/i]] },
@@ -2369,10 +2383,106 @@ window.FHFuzzy = (function () {
     { id: "origin", group: "Other", label: "Origin in Victoria", origin: true, states: [["Native", /./], ["Introduced", /./]] },
     { id: "months", group: "Other", label: "Months seen in flower", months: true, states: MONTHS.map(function (m) { return [m, /./]; }) }
   ];
-  var MCH = {};
-  NUMC.forEach(function (c) { c.kind = "num"; MCH[c.id] = c; });
-  CATC.forEach(function (c) { c.kind = "cat"; MCH[c.id] = c; });
-  var MGROUPS = ["Plant", "Leaves", "Inflorescence", "Spikelet", "Glumes", "Lemma and floret", "Awn", "Other"];
+  var GR_GROUPS = ["Plant", "Leaves", "Inflorescence", "Spikelet", "Glumes", "Lemma and floret", "Awn", "Other"];
+
+  /* ---- Senecio (Asteraceae): the same method with daisy terms: heads (capitula), involucre,
+     phyllaries (involucral bracts), calyculus, ray and disc florets, achene (cypsela), pappus. ---- */
+  var NOTUNIT = "(?!\\d|\\.\\d|[\\u2013\\-]|\\s*(?:mm|cm)\\b)";
+  // A count that follows a label, e.g. "ray florets 0 or 5-8" -> {lo:0, hi:8}; "absent" -> 0.
+  function countAfter(text, labelSrc, zeroWords) {
+    var re = new RegExp("(?:" + labelSrc + ")[\\s:,]*(?:c\\.\\s*|about |usually |mostly )?((?:\\d+(?:\\s*(?:or|to|\\u2013|-|\\u2014|,)\\s*)?)+)" + NOTUNIT, "i");
+    var m = text.match(re);
+    if (m) {
+      var ns = (m[1].match(/\d+/g) || []).map(Number);
+      if (ns.length) return { lo: Math.min.apply(null, ns), hi: Math.max.apply(null, ns) };
+    }
+    if (zeroWords && new RegExp("(?:" + labelSrc + ")[\\s:,]+(?:are |is )?(?:absent|lacking|none|nil)|\\b(?:without|lacking|no)\\s+(?:" + labelSrc + ")|\\brayless\\b", "i").test(text) && /ray/.test(labelSrc)) return { lo: 0, hi: 0 };
+    return null;
+  }
+  var SE_ORGANS = [
+    ["stem", /\b(?:stems?|plants?|herbs?|shrubs?|subshrubs?|undershrubs?|climbers?)\b/gi],
+    ["leaf", /\b(?:leaves|leaf|leaflets?|lobes? of the leaf)\b/gi],
+    ["inflo", /\b(?:corymbs?|panicles?|racemes?|inflorescences?|cymes?)\b/gi],
+    ["head", /\b(?:capitul(?:um|a)|(?:flower )?heads?)\b/gi],
+    ["involucre", /\binvolucres?\b/gi],
+    ["phyllary", /\b(?:involucral bracts?|phyllaries|phyllary|bracts?)\b/gi, /calycul\w*[^.;]{0,50}$/i],
+    ["calyculus", /\bcalycul(?:us|i)\b/gi],
+    ["ray", /\b(?:ray florets?|rays?|ligules?|ligulate florets?)\b/gi],
+    ["disc", /\b(?:disc florets?|disc corollas?|disk florets?|tubular florets?)\b/gi],
+    ["achene", /\b(?:achenes?|cypselas?|fruits?)\b/gi],
+    ["pappus", /\bpappus\b/gi]
+  ];
+  var SE_NUMC = [
+    { id: "height", group: "Plant", label: "Plant height", unit: "cm", f: 10, organ: "stem", dim: "L" },
+    { id: "llen", group: "Leaves", label: "Leaf length", unit: "cm", f: 10, organ: "leaf", dim: "L" },
+    { id: "lwid", group: "Leaves", label: "Leaf width", unit: "mm", f: 1, organ: "leaf", dim: "W" },
+    { id: "hdiam", group: "Flower heads", label: "Head (capitulum) diameter", unit: "mm", f: 1, organ: ["head", "inflo"], dim: "W" },
+    { id: "ilen", group: "Involucre and bracts", label: "Involucre length", unit: "mm", f: 1, organ: "involucre", dim: "L" },
+    { id: "iwid", group: "Involucre and bracts", label: "Involucre width", unit: "mm", f: 1, organ: "involucre", dim: "W" },
+    { id: "nphy", group: "Involucre and bracts", label: "Number of phyllaries (involucral bracts)", unit: "", f: 1, custom: function (t) { return countAfter(t, "involucral bracts?|phyllaries|phyllary|bracts", false); } },
+    { id: "phylen", group: "Involucre and bracts", label: "Phyllary length", unit: "mm", f: 1, organ: "phyllary", dim: "L" },
+    { id: "cal", group: "Involucre and bracts", label: "Calyculus bract length", unit: "mm", f: 1, organ: "calyculus", dim: "L" },
+    { id: "nray", group: "Florets", label: "Number of ray florets (0 if rayless)", unit: "", f: 1, custom: function (t) { return countAfter(t, "ray florets?|rays?|ligulate florets?", true); } },
+    { id: "raylen", group: "Florets", label: "Ray (ligule) length", unit: "mm", f: 1, organ: "ray", dim: "L" },
+    { id: "ndisc", group: "Florets", label: "Number of disc florets", unit: "", f: 1, custom: function (t) { return countAfter(t, "disc florets?|disk florets?|tubular florets?", false); } },
+    { id: "disclen", group: "Florets", label: "Disc corolla length", unit: "mm", f: 1, organ: "disc", dim: "L" },
+    { id: "achlen", group: "Fruit", label: "Achene length", unit: "mm", f: 1, organ: "achene", dim: "L" },
+    { id: "paplen", group: "Fruit", label: "Pappus hair length", unit: "mm", f: 1, organ: "pappus", dim: "L" }
+  ];
+  var SE_CATC = [
+    { id: "life", group: "Plant", label: "Life form", organ: "stem", whole: true, states: [["Annual", /\bannual/i], ["Biennial", /biennial/i], ["Perennial", /perennial/i]] },
+    { id: "habit", group: "Plant", label: "Habit", whole: true, states: [["Erect", /\berect/i], ["Ascending, decumbent or prostrate", /ascending|decumbent|prostrate|procumbent|sprawling|spreading|creeping/i], ["Shrub or subshrub", /shrub|woody/i], ["Climber or scrambler", /climb|scrambl|twin|straggl/i], ["Rosette-forming", /rosette/i]] },
+    { id: "stemsurf", group: "Plant", label: "Stem surface", organ: "stem", states: [["Glabrous", /glabrous|hairless|smooth/i], ["Hairy", /\bhair|pilose|pubescent|villous|hispid|strigose|puberulous/i], ["Cobwebby or woolly", /cobweb|arachnoid|woolly|tomentose|lanate|felted/i], ["Glandular", /glandular/i], ["Fleshy", /fleshy|succulent/i]] },
+    { id: "lshape", group: "Leaves", label: "Leaf shape", organ: "leaf", states: [["Linear or narrow", /linear|narrow|filiform|terete|needle|thread/i], ["Lanceolate, oblong or elliptic", /lanceolate|oblong|elliptic|oblanceolate/i], ["Ovate, obovate or spathulate", /\bovate|obovate|spathulate|spatulate|orbicular|cordate|rounded|deltoid/i]] },
+    { id: "lmarg", group: "Leaves", label: "Leaf margin and division", organ: "leaf", states: [["Entire", /\bentire|undivided|not lobed/i], ["Toothed or serrate", /tooth|serrat|dentate|crenate|denticulate|sinuate/i], ["Lobed, pinnatifid or pinnatisect", /lobed|pinnatifid|pinnatisect|pinnatilobed|pinnate|deeply divided|divided/i], ["Twice divided (bipinnatisect)", /bipinnat|twice|2-pinnat/i]] },
+    { id: "lrev", group: "Leaves", label: "Leaf margin rolled under", organ: "leaf", states: [["Revolute (margins rolled under)", /revolute|recurved|rolled|inrolled|involute/i]] },
+    { id: "lattach", group: "Leaves", label: "Leaf attachment", organ: "leaf", states: [["Sessile", /sessile/i], ["Petiolate (stalked)", /petiol|stalked/i], ["Stem-clasping or with basal lobes", /clasp|auricle|auricul|amplexicaul|stem-clasping/i]] },
+    { id: "lsurf", group: "Leaves", label: "Leaf surface", organ: "leaf", states: [["Glabrous", /glabrous|hairless|smooth/i], ["Hairy", /\bhair|pilose|pubescent|villous|hispid|strigose|puberulous/i], ["Cobwebby or woolly (often paler beneath)", /cobweb|arachnoid|woolly|tomentose|lanate|felted/i], ["Scabrous (rough)", /scabrous|scabrid|rough/i], ["Fleshy or succulent", /fleshy|succulent/i], ["Glandular", /glandular|sticky/i]] },
+    { id: "infl", group: "Flower heads", label: "How the heads are arranged", organ: "inflo", extra: "head", states: [["Single (solitary) head", /solitary|single|one head/i], ["Flat-topped cluster (corymb)", /corymb|flat-topped|cyme|cymose/i], ["Panicle or raceme", /panicle|paniculate|raceme|spike/i], ["Many heads in a dense cluster", /dense|crowded|numerous|many/i]] },
+    { id: "ishape", group: "Involucre and bracts", label: "Involucre shape", organ: "involucre", states: [["Cylindrical", /cylindri|tubular|narrow/i], ["Bell-shaped or hemispherical", /campanulate|bell|hemispheric|cup|broad/i], ["Ovoid, conical or urn-shaped", /ovoid|obconic|conic|ovate|urceolate|urn/i]] },
+    { id: "phytip", group: "Involucre and bracts", label: "Phyllary tips", organ: "phyllary", states: [["Black or dark-tipped", /black|dark|blackish|brownish/i], ["Green, pale or straw (not black-tipped)", /\bgreen|pale|straw|yellow|translucent/i, /black|dark/i]] },
+    { id: "phyhair", group: "Involucre and bracts", label: "Phyllary surface", organ: "phyllary", states: [["Glabrous", /glabrous|hairless|smooth/i], ["Hairy or woolly", /\bhair|woolly|cobweb|tomentose|pubescent|ciliate|arachnoid/i]] },
+    { id: "calyc", group: "Involucre and bracts", label: "Calyculus (short outer bracts)", organ: "calyculus", states: [["Present", /./, /absent|lacking|none|\bno\b|inconspicuous|without/i], ["Absent or inconspicuous", /absent|lacking|none|\bno\b|inconspicuous|without/i]] },
+    { id: "rays", group: "Florets", label: "Ray florets", whole: true, custom: function (t) {
+        var n = countAfter(t, "ray florets?|rays?|ligulate florets?", true), out = [];
+        if (!n) return out;
+        if (n.lo === 0) out.push("Absent (rayless)");
+        if (n.hi > 0) out.push("Present");
+        return out;
+      }, states: [["Present", /./], ["Absent (rayless)", /./]] },
+    { id: "raycol", group: "Florets", label: "Ray colour", organ: "ray", states: [["Yellow", /yellow/i], ["Orange", /orange/i], ["Cream or white", /white|cream/i]] },
+    { id: "raycurl", group: "Florets", label: "Rays at maturity", organ: "ray", states: [["Spreading", /spreading|horizontal|patent|erect/i], ["Recurved or coiled", /recurv|revolute|curl|coil|reflex/i]] },
+    { id: "disccol", group: "Florets", label: "Disc floret colour", organ: "disc", states: [["Yellow", /yellow/i], ["Orange", /orange/i], ["Purplish or reddish", /purpl|red|brown/i]] },
+    { id: "achsurf", group: "Fruit", label: "Achene surface", organ: "achene", states: [["Glabrous", /glabrous|hairless|smooth/i], ["Hairy (on the ribs or all over)", /\bhair|pubescent|pilose|strigose|papillose|puberulous|velvety/i], ["Ribbed or grooved", /\brib|ridge|groove|furrow|striate/i]] },
+    { id: "pappus", group: "Fruit", label: "Pappus (fluffy hairs on the fruit)", organ: "pappus", states: [["Present", /./, /absent|lacking|none|\bno\b/i], ["Absent", /absent|lacking|none|\bno\b/i]] },
+    { id: "origin", group: "Other", label: "Origin in Victoria", origin: true, states: [["Native", /./], ["Introduced", /./]] },
+    { id: "months", group: "Other", label: "Months seen in flower", months: true, states: MONTHS.map(function (m) { return [m, /./]; }) }
+  ];
+  var SE_GROUPS = ["Plant", "Leaves", "Flower heads", "Involucre and bracts", "Florets", "Fruit", "Other"];
+
+  var MCH = {}, MPROF = "grass";
+  var PROFILES = {
+    grass: { organs: GR_ORGANS, numc: GR_NUMC, catc: GR_CATC, groups: GR_GROUPS, open: "Plant",
+      intro: "A multi-access key for your specimen: type the measurements you took and tap the features you see, in any order, and the list of possible species narrows. Built from the VicFlora species descriptions, so it works offline once VicFlora is downloaded." },
+    senecio: { organs: SE_ORGANS, numc: SE_NUMC, catc: SE_CATC, groups: SE_GROUPS, open: "Flower heads",
+      intro: "A multi-access key for Senecio (fireweeds and groundsels): type the measurements you took (leaf, head, involucre, phyllaries, ray and disc florets, achene, pappus) and tap the features you see, in any order, and the list of possible species narrows. Built from the VicFlora species descriptions, so it works offline once VicFlora is downloaded." }
+  };
+  // The sets offered in the MA Key drop-down: which genera are keyed together, and which
+  // character set (grass or Senecio terms) they use.
+  var KEYSETS = [
+    { id: "senecio", label: "Senecio", genera: ["Senecio"], profile: "senecio" },
+    { id: "austrostipa", label: "Austrostipa", genera: ["Austrostipa"], profile: "grass" },
+    { id: "rytidosperma", label: "Rytidosperma", genera: ["Rytidosperma"], profile: "grass" }
+  ];
+  function setProfile(name) {
+    var P = PROFILES[name] || PROFILES.grass;
+    MPROF = PROFILES[name] ? name : "grass";
+    ORGANS = P.organs; NUMC = P.numc; CATC = P.catc; MGROUPS = P.groups; MCH = {};
+    NUMC.forEach(function (c) { c.kind = "num"; MCH[c.id] = c; });
+    CATC.forEach(function (c) { c.kind = "cat"; MCH[c.id] = c; });
+  }
+  var MGROUPS = GR_GROUPS;
+  setProfile("grass");
 
   function parseTaxon(id, name, text, em) {
     var sg = organSegments(text || ""), seg = sg.seg, num = {}, cat = {};
@@ -2384,6 +2494,7 @@ window.FHFuzzy = (function () {
       var st = new Set();
       if (c.origin) { if (em) st.add(/^native/i.test(em) ? "Native" : "Introduced"); cat[c.id] = st; return; }
       if (c.months) { floweringMonths(sg.text).forEach(function (m) { st.add(m); }); cat[c.id] = st; return; }
+      if (c.custom) { (c.custom(sg.text) || []).forEach(function (x) { st.add(x); }); cat[c.id] = st; return; }
       var txt = c.whole ? sg.text : ((seg[c.organ] || []).concat(c.extra ? (seg[c.extra] || []) : [])).join(" ");
       if (!txt) { cat[c.id] = st; return; }
       c.states.forEach(function (s) { if (s[1].test(txt) && !(s[2] && s[2].test(txt))) st.add(s[0]); });
@@ -2442,21 +2553,22 @@ window.FHFuzzy = (function () {
     });
   }
   function maGenus(g, onProg) {
-    if (MC[g]) return Promise.resolve(MC[g]);
+    var ck = MPROF + ":" + g;
+    if (MC[ck]) return Promise.resolve(MC[ck]);
     return search(g, ["GENUS"]).then(function (hits) {
       var h = hits.filter(function (x) { return x.name.toLowerCase() === g.toLowerCase(); })[0] || hits[0];
       if (!h) throw new Error("Could not find the genus " + g + " in VicFlora.");
       return maSpecies(h.id, onProg).then(function (list) {
         var out = list.map(function (k) { return parseTaxon(k.id, k.name, k.text, k.em); });
         out.sort(function (a, b) { return a.name.localeCompare(b.name); });
-        MC[g] = out;
+        MC[ck] = out;
         return out;
       });
     });
   }
   function loadMulti() {
     var my = ++runId, names = MG.slice();
-    MA = { taxa: [], entries: {}, tol: 0.1, keepUnknown: true, open: new Set(["Plant"]) };
+    MA = { taxa: [], entries: {}, tol: 0.1, keepUnknown: true, open: new Set([(PROFILES[MPROF] || PROFILES.grass).open]) };
     if (!names.length) { status("Add a genus to start."); return; }
     status("Loading species descriptions for " + names.map(function (n) { return "<i>" + esc(n) + "</i>"; }).join(", ") + "...");
     var all = [];
@@ -2570,28 +2682,18 @@ window.FHFuzzy = (function () {
       if (d.open) MA.open.add(d.dataset.g); else MA.open.delete(d.dataset.g);
     }, true);
   }
-  function chipsHtml() {
-    return MG.map(function (g, i) { return '<span class="vk-chip"><i>' + esc(g) + '</i><button type="button" data-rm="' + i + '" aria-label="Remove ' + esc(g) + '">&#10005;</button></span>'; }).join("");
-  }
   function renderMultiMode() {
-    var body = $b();
+    var body = $b(), ks = keysetById(MKS);
     body.innerHTML =
-      '<p class="vk-intro">A multi-access key for your specimen: type the measurements you took and tap the features you see, in any order, and the list of possible species narrows. Built from the VicFlora species descriptions, so it works offline once VicFlora is downloaded. Add other genera to key them together.</p>' +
+      '<p class="vk-intro" id="vkMaIntro">' + esc(PROFILES[MPROF].intro) + '</p>' +
       '<p class="vk-off" id="vkOff"></p>' +
-      '<div class="vk-chips" id="vkChips">' + chipsHtml() + "</div>" +
-      '<div class="vk-col" style="max-width:520px"><label for="vkA">Add a genus</label><input id="vkA" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search genus, e.g. Poa"><div class="vk-list" id="vkListA"></div></div>' +
+      '<div class="vk-col" style="max-width:520px"><label for="vkKs">Multi-access key for</label><select id="vkKs">' +
+      KEYSETS.map(function (k) { return '<option value="' + k.id + '"' + (k.id === ks.id ? " selected" : "") + ">" + esc(k.label) + "</option>"; }).join("") + '</select></div>' +
       '<div id="vkOut"></div>';
     offLine();
-    typeahead(body.querySelector("#vkA"), body.querySelector("#vkListA"), ["GENUS"], function (r) {
-      if (MG.indexOf(r.name) < 0) MG.push(r.name);
-      body.querySelector("#vkA").value = "";
-      body.querySelector("#vkChips").innerHTML = chipsHtml();
-      loadMulti();
-    });
-    body.querySelector("#vkChips").addEventListener("click", function (e) {
-      var b = e.target.closest("[data-rm]"); if (!b) return;
-      MG.splice(+b.dataset.rm, 1);
-      body.querySelector("#vkChips").innerHTML = chipsHtml();
+    body.querySelector("#vkKs").addEventListener("change", function (e) {
+      applyKeyset(e.target.value);
+      body.querySelector("#vkMaIntro").textContent = PROFILES[MPROF].intro;
       loadMulti();
     });
     loadMulti();
@@ -2611,7 +2713,7 @@ window.FHFuzzy = (function () {
     S.a = r; S.b = null; S.tA = null; S.opts = null;
     var bEl = $b().querySelector("#vkB");
     $b().querySelector("#vkOut").innerHTML = "";
-    if (mode === "family") { bEl.disabled = false; bEl.value = ""; bEl.focus(); return; }
+    if (mode === "family" || mode === "species") { bEl.disabled = false; bEl.value = ""; bEl.focus(); return; }
     bEl.disabled = true; bEl.innerHTML = "<option>Loading " + (mode === "species" ? "species in this genus" : "genera in this family") + "...</option>";
     node(r.id).then(function (t) {
       if (my !== runId) return;
@@ -2636,6 +2738,7 @@ window.FHFuzzy = (function () {
   }
 
   function pickB(r) {
+    if (S.a && r.id === S.a.id) { status("Pick a different taxon to compare with.", true); return; }
     S.b = r;
     compare();
   }
@@ -2648,6 +2751,7 @@ window.FHFuzzy = (function () {
       if (my !== runId) return;
       var tA = res[0], tB = res[1];
       S.tA = tA;
+      if (mode === "species") S.up = ancestorOfRank(tA, "GENUS");
       return locate(tA, tB).then(function (loc) {
         if (my !== runId) return;
         show(tA, tB, loc);
@@ -2662,9 +2766,9 @@ window.FHFuzzy = (function () {
   // the API lists them). Species: the genus key. Genera: the family key. Families:
   // keys on higher groups, following hand-overs to sub-keys.
   var RANKS = ["LIFE","KINGDOM","SUBKINGDOM","PHYLUM","SUBPHYLUM","CLASS","SUBCLASS","SUPERORDER","ORDER","SUBORDER","FAMILY","GENUS","SECTION","SPECIES"];
-  function candidateKeys(tA, tB, own) {
+  function candidateKeys(tA, tB, own, ov) {
     var all = (tA.higherClassification || []).concat(tB.higherClassification || []);
-    var wantRank = { species: ["GENUS"], genus: ["FAMILY"], family: null }[mode];
+    var wantRank = ov ? ov.ranks : { species: ["GENUS"], genus: ["FAMILY"], family: null }[mode];
     all = all.filter(function (a) {
       var i = RANKS.indexOf(a.taxonRank);
       if (wantRank) return wantRank.indexOf(a.taxonRank) >= 0;
@@ -2675,16 +2779,33 @@ window.FHFuzzy = (function () {
     all.forEach(function (a) { (a.identificationKeys || []).forEach(function (k) { if (!seen[k.id]) { seen[k.id] = 1; list.push(k); } }); });
     return list;
   }
+  // Two species in different genera: the species themselves are not in any key together, so the
+  // key that separates them is the family key (genus against genus), or, across families, a key
+  // on a higher group (family against family).
+  function crossGenusContext(tA, tB) {
+    if (mode !== "species") return null;
+    var gA = ancestorOfRank(tA, "GENUS"), gB = ancestorOfRank(tB, "GENUS");
+    if (!gA || !gB || gA.id === gB.id) return null;
+    var fA = ancestorOfRank(tA, "FAMILY"), fB = ancestorOfRank(tB, "FAMILY");
+    if (!fA || !fB) return null;
+    var gn = function (x) { return x.taxonName && x.taxonName.fullName || x.name || ""; };
+    if (fA.id === fB.id) return { ranks: ["FAMILY"], A: { id: gA.id, name: gn(gA) }, B: { id: gB.id, name: gn(gB) }, expand: false, la: gn(gA), lb: gn(gB), level: "genus", family: gn(fA) };
+    return { ranks: null, A: { id: fA.id, name: gn(fA) }, B: { id: fB.id, name: gn(fB) }, expand: true, la: gn(fA), lb: gn(fB), level: "family" };
+  }
   function locate(tA, tB) {
+    var cx = crossGenusContext(tA, tB);
+    if (cx) {
+      return locate2(cx.A, cx.B, candidateKeys(tA, tB, null, cx), cx.expand).then(function (loc) { loc.ctx = cx; return loc; });
+    }
     var A = { id: tA.id, name: nm(tA) }, B = { id: tB.id, name: nm(tB) };
     var cands = candidateKeys(tA, tB);
     var pre = (cands.length || mode === "family" || !S.up) ? Promise.resolve(cands)
       : node(S.up.id).then(function (t) { return t.identificationKeys || []; }).catch(function () { return []; });
     return pre.then(function (c2) { return locate2(A, B, c2); });
   }
-  function locate2(A, B, cands) {
+  function locate2(A, B, cands, ex) {
     if (!cands.length) return Promise.resolve({ reason: "nokey", cands: cands });
-    var expand = mode === "family";
+    var expand = typeof ex === "boolean" ? ex : mode === "family";
     var chain = Promise.resolve(null), anyLoaded = false;
     cands.slice(0, 8).forEach(function (c) {
       chain = chain.then(function (hit) {
@@ -2734,6 +2855,8 @@ window.FHFuzzy = (function () {
     }
 
     h += '<div class="vk-h">Where the key separates them</div>';
+    var cA = loc.ctx ? loc.ctx.la : nA, cB = loc.ctx ? loc.ctx.lb : nB;
+    if (loc.ctx) h += '<p class="vk-foot">These are in different ' + (loc.ctx.level === "genus" ? 'genera of <i>' + esc(loc.ctx.family) + '</i>' : 'families') + ', so no single key lists both species. This shows where the ' + (loc.ctx.level === "genus" ? "family" : "higher-level") + ' key separates <i>' + esc(cA) + '</i> from <i>' + esc(cB) + '</i>.</p>';
     if (loc.reason) {
       var links = (loc.cands || []).slice(0, 4).map(function (c) { return '<a href="' + VF + 'key/' + esc(c.id) + '" target="_blank" rel="noopener">' + esc(c.title) + "</a>"; }).join(", ");
       var msg = loc.reason === "nokey" ? "VicFlora has no identification key covering these two."
@@ -2745,11 +2868,11 @@ window.FHFuzzy = (function () {
     } else {
       var sp = loc.sp;
       h += '<p class="vk-keyline"><a href="' + VF + "key/" + esc(sp.a.keyId) + '" target="_blank" rel="noopener">' + esc(sp.a.keyTitle) + '</a> &middot; they part ways at <b>Step ' + (sp.a.no || "?") + "</b></p>";
-      h += '<div class="vk-tablewrap"><table class="vk-table vk-split"><thead><tr><th>Step</th><th>' + esc(nA) + '</th><th>' + esc(nB) + '</th></tr></thead><tbody>' +
+      h += '<div class="vk-tablewrap"><table class="vk-table vk-split"><thead><tr><th>Step</th><th>' + esc(cA) + '</th><th>' + esc(cB) + '</th></tr></thead><tbody>' +
         '<tr class="diff"><th class="stepcell" scope="row"><span class="vk-stepno">Step ' + (sp.a.no || "?") + "</span></th><td>" + inline(sp.a.text) + "</td><td>" + inline(sp.b.text) + "</td></tr></tbody></table></div>";
       if (sp.shared.length) h += '<details class="vk-path"><summary>Steps they share before this (' + sp.shared.length + ")</summary><ol>" + stepList(loc.pa, 0).split("</li>").slice(0, sp.shared.length).join("</li>") + "</li></ol></details>";
-      if (loc.pa.length > sp.index + 1) h += '<details class="vk-path"><summary>Rest of the route to ' + esc(nA) + "</summary><ol>" + stepList(loc.pa, sp.index + 1) + "</ol></details>";
-      if (loc.pb.length > sp.index + 1) h += '<details class="vk-path"><summary>Rest of the route to ' + esc(nB) + "</summary><ol>" + stepList(loc.pb, sp.index + 1) + "</ol></details>";
+      if (loc.pa.length > sp.index + 1) h += '<details class="vk-path"><summary>Rest of the route to ' + esc(cA) + "</summary><ol>" + stepList(loc.pa, sp.index + 1) + "</ol></details>";
+      if (loc.pb.length > sp.index + 1) h += '<details class="vk-path"><summary>Rest of the route to ' + esc(cB) + "</summary><ol>" + stepList(loc.pb, sp.index + 1) + "</ol></details>";
     }
     if (!loc.reason && loc.sp && loc.multi) h += '<p class="vk-foot">One of these is keyed in more than one place. This shows the earliest step that separates them.</p>';
     h += '<p class="vk-foot">Descriptions and keys: VicFlora, Royal Botanic Gardens Victoria. Keys are served by KeyBase.</p>';
@@ -4173,7 +4296,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-08.4";
+  const BUILD_VERSION = "2026-10-08.7";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -6932,7 +7055,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       if(polyLayer){ if(map) map.removeLayer(polyLayer); polyLayer=null; }
       vertexMarkers.forEach(m=>{ if(map) map.removeLayer(m); }); vertexMarkers=[];
       overlay.querySelector("#mmTitle").textContent = "Survey Map";
-      overlay.querySelector("#mmHint").textContent = "Tap a point or polygon to view it, or draw a new polygon.";
+      overlay.querySelector("#mmHint").textContent = "Tap a point or polygon to view it, or add a new point or polygon.";
       footForOverview();
       showCrosshair(false);
       renderOverviewLayers();
@@ -7395,7 +7518,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     function footForOverview(){
       showConfirmFab(false);
       const foot = overlay.querySelector("#mmFoot");
-      foot.innerHTML = '<button type="button" class="btn light" id="mmAddPoly" title="Tap to draw by hand — press and hold to walk the boundary with GPS"><svg class="poly-ico" viewBox="0 0 32 20" aria-hidden="true"><path d="M3 8 L12 2.8 L29 5.5 L27.5 16 L10 17.5Z" fill="currentColor" fill-opacity=".18" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><g fill="currentColor"><circle cx="3" cy="8" r="1.9"/><circle cx="12" cy="2.8" r="1.9"/><circle cx="29" cy="5.5" r="1.9"/><circle cx="27.5" cy="16" r="1.9"/><circle cx="10" cy="17.5" r="1.9"/></g></svg>Add Polygon</button>';
+      foot.innerHTML = '<button type="button" class="btn light" id="mmAddPoly" title="Tap to draw by hand — press and hold to walk the boundary with GPS"><svg class="poly-ico" viewBox="0 0 32 20" aria-hidden="true"><path d="M3 8 L12 2.8 L29 5.5 L27.5 16 L10 17.5Z" fill="currentColor" fill-opacity=".18" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><g fill="currentColor"><circle cx="3" cy="8" r="1.9"/><circle cx="12" cy="2.8" r="1.9"/><circle cx="29" cy="5.5" r="1.9"/><circle cx="27.5" cy="16" r="1.9"/><circle cx="10" cy="17.5" r="1.9"/></g></svg>Add Polygon</button>'
+        + '<button type="button" class="btn light" id="mmAddPt" title="Drop a point on the map and name the species there"><span class="fi">&#128205;</span>Add Point</button>';
+      foot.querySelector("#mmAddPt").addEventListener("click", startAddingPoint);
       // A tap draws by hand; holding the button instead starts "walk a
       // polygon" (see wireHoldToWalk/openAddPolygonFlow in the outer app code).
       wireHoldToWalk(foot.querySelector("#mmAddPoly"),
@@ -7416,6 +7541,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     function confirmCurrentLocation(){
       if(!map){ FHKit.toast("The map hasn't loaded yet — see the message above."); return; }
       const [lat,lon] = centerLatLon();
+      if(state.addingPoint){ showPointSpeciesSheet(lat, lon); return; }
       if(state.movingPoint){
         const moving = state.movingPoint;
         if(state.onMovePoint) state.onMovePoint(moving.recordId, moving.pointId, lat, lon);
@@ -7493,6 +7619,57 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         state.overviewMarkers.push(marker);
       });
     }
+    // "Add Point" from the overview: pan the map under the crosshair (or use GPS), save the spot,
+    // then name the species found there. The point is saved as a Significant record of that species.
+    function startAddingPoint(){
+      if(!map){ FHKit.toast("The map hasn't loaded yet — see the message above."); return; }
+      if(!state.onAddPoint){ FHKit.toast("Adding points isn't available here"); return; }
+      state.addingPoint = true;
+      showCrosshair(true);
+      showConfirmFab(true);
+      footForAddPoint();
+      setStatus("Pan the map so the crosshair sits on the spot, or tap “Use GPS”, then tap Save Point.");
+    }
+    function footForAddPoint(){
+      const foot = overlay.querySelector("#mmFoot");
+      foot.innerHTML = '<button type="button" class="btn" id="mmSave"><span class="fi">✓</span>Save Point</button>'
+        + '<button type="button" class="ghost" id="mmCancelAdd">Cancel</button>';
+      foot.querySelector("#mmSave").addEventListener("click", confirmCurrentLocation);
+      foot.querySelector("#mmCancelAdd").addEventListener("click", cancelAddingPoint);
+    }
+    function cancelAddingPoint(){
+      if(!state) return;
+      state.addingPoint = false;
+      closeInfoSheet();
+      showCrosshair(false);
+      footForOverview();
+      renderOverviewLayers();
+      setStatus("Tap a point or polygon to view it, or draw a new polygon.");
+    }
+    function showPointSpeciesSheet(lat, lon){
+      const scrim = overlay.querySelector("#mmSheetScrim");
+      const sheet = overlay.querySelector("#mmSheet");
+      sheet.innerHTML = '<div class="map-sheet-grip"></div>'
+        + '<div class="map-sheet-head">Species at this point</div>'
+        + '<div class="map-sheet-sub">'+lat.toFixed(5)+', '+lon.toFixed(5)+' &middot; search and pick, or type several names separated by commas.</div>'
+        + '<div class="map-sheet-body"><div id="mmSheetSpeciesHost"></div></div>'
+        + '<div class="map-sheet-foot"><button type="button" class="ghost" id="mmPtCancel">Cancel</button>'
+        + '<button type="button" class="btn" id="mmPtDone" style="margin-left:8px" disabled>Save point</button></div>';
+      state.sheetSpecies = [];
+      const done = sheet.querySelector("#mmPtDone");
+      mountSpeciesChips(sheet.querySelector("#mmSheetSpeciesHost"), [], arr=>{ if(state){ state.sheetSpecies = arr; done.disabled = !arr.length; } }, true);
+      scrim.classList.add("show"); sheet.classList.add("show");
+      currentSheetDismiss = cancelAddingPoint;
+      sheet.querySelector("#mmPtCancel").addEventListener("click", cancelAddingPoint);
+      done.addEventListener("click", ()=>{
+        const names = (state.sheetSpecies||[]).slice();
+        if(!names.length){ FHKit.toast("Pick at least one species"); return; }
+        const cb = state.onAddPoint;
+        state.addingPoint = false;
+        closeInfoSheet(); showCrosshair(false); showConfirmFab(false);
+        Promise.resolve(cb ? cb(lat, lon, names) : null).then(()=>{ if(state) returnToOverview(); });
+      });
+    }
     function startMovingPoint(pt){
       if(!map) return;
       state.movingPoint = { recordId: pt.recordId, pointId: pt.pointId };
@@ -7531,7 +7708,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         mode: opts.mode,
         vertices: (opts.mode==="polygon" ? (opts.existing||[]).map(v=>v.slice()) : []),
         onSave: opts.onSave, onCancel: opts.onCancel,
-        getOverviewData: opts.getOverviewData, onMovePoint: opts.onMovePoint, onRequestAddPolygon: opts.onRequestAddPolygon,
+        getOverviewData: opts.getOverviewData, onMovePoint: opts.onMovePoint, onRequestAddPolygon: opts.onRequestAddPolygon, onAddPoint: opts.onAddPoint,
         onEditPolygonSpecies: opts.onEditPolygonSpecies, onDeletePolygon: opts.onDeletePolygon, onAdjustPolygon: opts.onAdjustPolygon,
         movingPoint: null, overviewMarkers: [], overviewPolyLayers: [],
         promptSpeciesOnFinish: !!opts.promptSpeciesOnFinish, pendingVertices: null,
@@ -7630,6 +7807,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // listed (matched on scientific or common name) is added as an ordinary record, without the
   // GPS prompt a "Significant" species normally triggers. Done one at a time so the same name
   // twice in one go can't be added twice.
+  // Full details (type, conservation status...) of species picked from a list, keyed by lower-case
+  // name, so species added on behalf of a polygon or map point keep them (chips hold names only).
+  const pickedMeta = new Map();
   let polyListBusy = Promise.resolve();
   function ensureNamesInList(names){
     const list = Array.from(new Set((names||[]).map(n=>String(n||"").replace(/\s+/g," ").trim()).filter(Boolean)));
@@ -7639,12 +7819,39 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         const k = nm.toLowerCase();
         if(rows.some(r=> (r.sci||"").toLowerCase()===k || (r.common||"").toLowerCase()===k)) continue;
         const SP = window.FH_SPECIES || [];
-        const known = SP.find(s=> (s.sci||"").toLowerCase()===k || (s.common||"").toLowerCase()===k);
+        const known = pickedMeta.get(k) || SP.find(s=> (s.sci||"").toLowerCase()===k || (s.common||"").toLowerCase()===k);
         const sp = known ? Object.assign({}, known) : { sci:nm, common:nm, lf:"", type:"invasive", free:true };
         try{ await add(sp, { quiet:true }); }catch(e){}
       }
     }).catch(()=>{});
     return polyListBusy;
+  }
+  // Add Point on the survey map: each named species gets this location. A species already on the
+  // list gains an extra point (and is flagged Significant, which is what holds points); a new one
+  // is added as a Significant record with the point already set.
+  async function addPointWithSpecies(lat, lon, names){
+    if(!requireName(()=>addPointWithSpecies(lat, lon, names))) return;
+    const SP = window.FH_SPECIES || [];
+    const seen = new Set();
+    let added = 0;
+    for(const nm0 of (names||[])){
+      const nm = String(nm0||"").replace(/\s+/g," ").trim(), k = nm.toLowerCase();
+      if(!nm || seen.has(k)) continue; seen.add(k);
+      const cur = rows.find(r=> (r.sci||"").toLowerCase()===k || (r.common||"").toLowerCase()===k);
+      if(cur){
+        cur.points = cur.points || [];
+        cur.points.push({ id:makePointId(), lat, lon });
+        cur.significant = true;
+        render(); autosave();
+        liveSyncField(cur, { significant:true, pointsJson: encodePointsField(cur.points) });
+        added++;
+        continue;
+      }
+      const known = pickedMeta.get(k) || SP.find(s=> (s.sci||"").toLowerCase()===k || (s.common||"").toLowerCase()===k);
+      const sp = known ? Object.assign({}, known) : { sci:nm, common:nm, lf:"", type:"invasive", free:true };
+      try{ await add(sp, { quiet:true, point:{ lat, lon } }); added++; }catch(e){}
+    }
+    if(added) FHKit.toast(added===1 ? "Point added" : added+" species added at this point");
   }
   async function add(sp, opts){
     opts = opts || {};
@@ -7663,6 +7870,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     // stays as a plain checklist entry with no location prompt.
     const auto = !!FHKit.consLabel(sp.ffg, sp.epbc);
     const row = { id:makeRecordId(), sci:sp.sci, common:sp.common||sp.sci, type:sp.type||"indigenous", lf:sp.lf||"", ffg:sp.ffg||"", epbc:sp.epbc||"", fieldNotes:"", free:!!sp.free, uncertain:false, significant:auto, photos:[], points:[], addedBy:userName() };
+    if(opts.point){ row.points = [{ id:makePointId(), lat:opts.point.lat, lon:opts.point.lon }]; row.significant = true; }
     if(live.active){
       // Create this record's own shared doc, keyed by its own record id — a
       // second surveyor logging the same species gets a different id, so this
@@ -7787,6 +7995,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     FHKit.buildPicker(host.querySelector("input"), host.querySelector(".pick-list"), sp=>{
       const name = (sp.sci || sp.common || "").trim(); if(!name) return;
       if(items.some(n=>n.toLowerCase()===name.toLowerCase())){ FHKit.toast(name+" is already in this polygon"); return; }
+      pickedMeta.set(name.toLowerCase(), Object.assign({}, sp));
       items.push(name); draw(); onChange(items.slice());
     }, ()=> items);
     draw();
@@ -8484,7 +8693,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   function overviewCallbacks(){
     return {
       getOverviewData: () => ({
-        points: rows.filter(r=>r.significant).flatMap(r=>(r.points||[]).map(p=>(
+        points: rows.filter(r=>r.significant || (r.points||[]).length).flatMap(r=>(r.points||[]).map(p=>(
           { recordId:r.id, pointId:p.id, lat:p.lat, lon:p.lon, label:(r.common||r.sci) }
         ))),
         polygons: polygons.map(pg=>({ id:pg.id, vertices:pg.vertices||[], species:pg.species||[], notes:pg.notes||"" }))
@@ -8499,6 +8708,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         liveSyncField(cur, { pointsJson: encodePointsField(cur.points) });
       },
       onRequestAddPolygon: openAddPolygonFlow,
+      onAddPoint: addPointWithSpecies,
       onEditPolygonSpecies: (id, species) => {
         const pg = polygons.find(p=>p.id===id); if(!pg) return;
         pg.species = species; renderPolygons(); autosave();
