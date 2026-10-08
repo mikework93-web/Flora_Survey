@@ -2,6 +2,10 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## VicKey simplified to three tabs (2026-10-08, v.9)
+- **Comparison** replaces the separate Sp. Comp, G Comp and F Comp tabs. A **Compare** drop-down at the top switches between Species, Genera and Families (it remembers your choice when you move between tabs).
+- **Species Key** (was Key) and **MultiAccess Key** (was MA Key) keep their contents.
+
 ## Team Sync: 20-minute checks, nothing downloaded on reopen (2026-10-08, v.8)
 - **Checks every 20 minutes** (changed records only), replacing the 1-minute check from v.4. Tap **Sync now** to check immediately (that does a full download, so deletions by teammates come through).
 - **Reopening the app costs no reads.** The app no longer checks when you switch back to it or when signal returns. After a reload it picks up where it left off using the position saved on the phone, so the only thing it asks the server for is the survey's own record (1 read). Species and polygons already on the phone are trusted as synced; anything still waiting to upload stays in the offline queue and is sent as usual.

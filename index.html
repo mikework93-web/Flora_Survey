@@ -2060,6 +2060,12 @@ window.FHFuzzy = (function () {
   };
 
   var root = null, guard = false, mode = "species", S = null, runId = 0;
+  // Three tabs on screen. "Comparison" covers species, genera and families, chosen with a drop-down;
+  // `mode` is still the underlying kind (species | genus | family | key | multi).
+  var TABS = [["cmp", "Comparison"], ["key", "Species Key"], ["multi", "MultiAccess Key"]];
+  var CMP_KINDS = [["species", "Species"], ["genus", "Genera"], ["family", "Families"]];
+  var cmpMode = "species";
+  function tabOf(m) { return (m === "key" || m === "multi") ? m : "cmp"; }
 
   function resetState() { S = { a: null, b: null, tA: null, opts: null }; K = { keys: [], key: null, view: "bracket", stack: [], genus: null }; MA = null; applyKeyset(MKS); }
   var MA = null, MG = [], MKS = "senecio";
@@ -2069,14 +2075,14 @@ window.FHFuzzy = (function () {
 
   function open() {
     if (root) return;
-    resetState(); mode = "species";
+    resetState(); mode = "species"; cmpMode = "species";
     root = document.createElement("div");
     root.className = "vk-overlay";
     root.setAttribute("role", "dialog");
     root.setAttribute("aria-label", "VicKey");
     root.innerHTML =
       '<div class="vk-head"><b>VicKey<small>Compare taxa, read keys, or use a multi-access key, from VicFlora</small></b><button type="button" class="vk-x" aria-label="Close VicKey">&#10005;</button></div>' +
-      '<div class="vk-tabs" role="tablist">' + Object.keys(MODES).map(function (m) { return '<button type="button" class="vk-tab" role="tab" data-mode="' + m + '">' + MODES[m].tab + '</button>'; }).join("") + '</div>' +
+      '<div class="vk-tabs" role="tablist">' + TABS.map(function (t) { return '<button type="button" class="vk-tab" role="tab" data-mode="' + t[0] + '">' + t[1] + '</button>'; }).join("") + '</div>' +
       '<div class="vk-body" id="vkBody"></div>';
     document.body.appendChild(root);
     document.body.style.overflow = "hidden";
@@ -2084,7 +2090,7 @@ window.FHFuzzy = (function () {
     root.querySelector(".vk-x").onclick = close;
     root.querySelector(".vk-tabs").addEventListener("click", function (e) {
       var b = e.target.closest("[data-mode]");
-      if (b) { mode = b.dataset.mode; resetState(); render(); }
+      if (b) { mode = b.dataset.mode === "cmp" ? cmpMode : b.dataset.mode; resetState(); render(); }
     });
     render();
   }
@@ -2138,10 +2144,12 @@ window.FHFuzzy = (function () {
 
   function render() {
     var M = MODES[mode], body = $b();
-    root.querySelectorAll(".vk-tab").forEach(function (t) { t.setAttribute("aria-selected", t.dataset.mode === mode ? "true" : "false"); });
+    root.querySelectorAll(".vk-tab").forEach(function (t) { t.setAttribute("aria-selected", t.dataset.mode === tabOf(mode) ? "true" : "false"); });
     if (M.keyMode) { renderKeyMode(); return; }
     if (M.multiMode) { renderMultiMode(); return; }
     body.innerHTML =
+      '<div class="vk-col" style="max-width:520px;margin-bottom:10px"><label for="vkKind">Compare</label><select id="vkKind">' +
+      CMP_KINDS.map(function (k) { return '<option value="' + k[0] + '"' + (k[0] === mode ? " selected" : "") + ">" + k[1] + "</option>"; }).join("") + '</select></div>' +
       '<p class="vk-intro">' + esc(M.intro) + '</p>' +
       '<p class="vk-off" id="vkOff"></p>' +
       '<div class="vk-pick">' +
@@ -2153,6 +2161,7 @@ window.FHFuzzy = (function () {
       '</div></div>' +
       '<div id="vkOut"></div>';
     offLine();
+    body.querySelector("#vkKind").addEventListener("change", function (e) { mode = cmpMode = e.target.value; resetState(); render(); });
     typeahead(body.querySelector("#vkA"), body.querySelector("#vkListA"), [M.rank], pickA);
     if (mode === "family") typeahead(body.querySelector("#vkB"), body.querySelector("#vkListB"), ["FAMILY"], pickB);
     else if (mode === "species") typeahead(body.querySelector("#vkB"), body.querySelector("#vkListB"), ["SPECIES"], pickB);
@@ -4296,7 +4305,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-08.8";
+  const BUILD_VERSION = "2026-10-08.9";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
