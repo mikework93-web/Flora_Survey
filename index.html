@@ -859,6 +859,25 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
 .vk-taxon a{color:inherit}
 .vk-ind{margin-left:10px;padding-left:10px;border-left:2px solid var(--line-soft)}
 .vk-il{padding-top:2px}
+.vk-chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+.vk-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 4px 2px 10px;border:1px solid var(--border);border-radius:14px;background:var(--field);font-size:13.5px}
+.vk-chip button{border:0;background:transparent;color:var(--muted);min-width:32px;min-height:32px;font-size:13px;cursor:pointer}
+.vk-mhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 6px;font-size:15px}
+.vk-mhead b{font-size:20px}
+.vk-mbtns{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.vk-remlist{display:flex;flex-wrap:wrap;gap:4px 12px;padding:0 12px 12px;font-size:13px}
+.vk-remlist a{color:var(--gold-dark)}
+.vk-hn{font-weight:400;color:var(--muted);font-size:11.5px}
+.vk-ch{margin:0 0 10px;padding:8px;border:1px solid var(--border);border-radius:3px;background:var(--field)}
+.vk-ch.on{border-color:var(--gold-dark);background:var(--cream)}
+.vk-chh{font-size:11.5px;font-weight:800;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px}
+.vk-chh small{font-weight:400;text-transform:none;letter-spacing:0}
+.vk-st{display:block;width:100%;text-align:left;margin:0 0 5px;padding:9px 11px;min-height:44px;border:1px solid var(--border);border-radius:3px;background:var(--card);color:var(--ink);font:14px/1.4 var(--sans);cursor:pointer}
+.vk-st[aria-pressed="true"]{background:var(--gold-dark);color:var(--on-gold);border-color:var(--gold-dark)}
+.vk-st:disabled{opacity:.45;cursor:default}
+.vk-n{float:right;margin-left:8px;font-weight:800;font-size:12px;opacity:.75}
+.vk-status.ok{border-color:var(--gold-dark)}
+@media(max-width:480px){.vk-tab{font-size:12.5px;padding:0 2px}}
 .vk-foot{margin:22px 0 0;font-size:11.5px;color:var(--muted)}
 .vk-foot a{color:var(--gold-dark)}
 
@@ -2015,12 +2034,14 @@ window.FHFuzzy = (function () {
     species: { tab: "Species", rank: "SPECIES", one: "Species", intro: "Pick a species, then another species from the same genus. You get their VicFlora descriptions side by side and the step in the genus key where they separate.", ph: "Search species, e.g. Carex appressa", child: "SPECIES", up: "GENUS", second: "Compare with (same genus)" },
     genus: { tab: "Genus", rank: "GENUS", one: "Genus", intro: "Pick a genus, then another genus from the same family. You get the family key step where they separate.", ph: "Search genus, e.g. Carex", child: "GENUS", up: "FAMILY", second: "Compare with (same family)" },
     key: { tab: "Genus key", rank: "GENUS", keyMode: true },
+    multi: { tab: "Multi-key", rank: "GENUS", multiMode: true },
     family: { tab: "Family", rank: "FAMILY", one: "Family", intro: "Pick two families. You get their VicFlora descriptions side by side and the step in the families key where they separate.", ph: "Search family, e.g. Cyperaceae", child: null, up: null, second: "Compare with (any family)" }
   };
 
   var root = null, guard = false, mode = "species", S = null, runId = 0;
 
-  function resetState() { S = { a: null, b: null, tA: null, opts: null }; K = { keys: [], key: null, view: "bracket", stack: [], genus: null }; }
+  function resetState() { S = { a: null, b: null, tA: null, opts: null }; K = { keys: [], key: null, view: "bracket", stack: [], genus: null }; MA = null; MG = ["Austrostipa", "Rytidosperma"]; }
+  var MA = null, MG = ["Austrostipa", "Rytidosperma"];
   var K = { keys: [], key: null, view: "bracket", stack: [], genus: null };
 
   function open() {
@@ -2031,7 +2052,7 @@ window.FHFuzzy = (function () {
     root.setAttribute("role", "dialog");
     root.setAttribute("aria-label", "VicKey");
     root.innerHTML =
-      '<div class="vk-head"><b>VicKey<small>Compare species, genera and families, or read a genus key, using VicFlora</small></b><button type="button" class="vk-x" aria-label="Close VicKey">&#10005;</button></div>' +
+      '<div class="vk-head"><b>VicKey<small>Compare taxa, read keys, or use a multi-access key, from VicFlora</small></b><button type="button" class="vk-x" aria-label="Close VicKey">&#10005;</button></div>' +
       '<div class="vk-tabs" role="tablist">' + Object.keys(MODES).map(function (m) { return '<button type="button" class="vk-tab" role="tab" data-mode="' + m + '">' + MODES[m].tab + '</button>'; }).join("") + '</div>' +
       '<div class="vk-body" id="vkBody"></div>';
     document.body.appendChild(root);
@@ -2096,6 +2117,7 @@ window.FHFuzzy = (function () {
     var M = MODES[mode], body = $b();
     root.querySelectorAll(".vk-tab").forEach(function (t) { t.setAttribute("aria-selected", t.dataset.mode === mode ? "true" : "false"); });
     if (M.keyMode) { renderKeyMode(); return; }
+    if (M.multiMode) { renderMultiMode(); return; }
     body.innerHTML =
       '<p class="vk-intro">' + esc(M.intro) + '</p>' +
       '<p class="vk-off" id="vkOff"></p>' +
@@ -2204,6 +2226,166 @@ window.FHFuzzy = (function () {
     };
     var sel = out.querySelector("#vkKeySel");
     if (sel) sel.onchange = function () { K.stack = []; loadKey(sel.value, my); };
+  }
+
+
+  /* ---------- Multi-access key ----------
+     Built from the published VicFlora dichotomous keys (KeyBase). Every couplet of a key
+     becomes a character; each of its statements keeps the set of taxa beneath it. Pick any
+     statements, in any order: choosing one rules out only the taxa that sit under the
+     other statements of that same couplet. Nothing here is guessed from descriptions. */
+  function genusKeyId(name) {
+    return search(name, ["GENUS"]).then(function (hits) {
+      var h = hits.filter(function (x) { return x.name.toLowerCase() === name.toLowerCase(); })[0] || hits[0];
+      if (!h) return null;
+      return node(h.id).then(function (t) {
+        var ks = (t && t.identificationKeys) || [];
+        var pick = ks.filter(function (k) { return /species/i.test(k.title || ""); })[0] || ks[0];
+        return pick ? pick.id : null;
+      });
+    });
+  }
+  function expandKey(key, depth, out) {
+    var order = out.nKeys++;
+    function leaf(name, url) { if (!out.meta[name]) out.meta[name] = { url: url || "" }; return new Set([name]); }
+    function walk(nodeId) {
+      var kids = key.byParent[nodeId] || [], sets = [], chain = Promise.resolve();
+      kids.forEach(function (l, i) {
+        chain = chain.then(function () {
+          if (l.item) {
+            var it = key.items[l.item] || {}, nm0 = it.item_name || "";
+            if (it.to_key && depth < 3) {
+              return getKey(it.to_key).then(function (sub) { return sub ? expandKey(sub, depth + 1, out) : leaf(nm0 + " (see its key)", it.url); });
+            }
+            return leaf(nm0, it.url);
+          }
+          return walk(l.lead_id);
+        }).then(function (st) { sets[i] = st; });
+      });
+      return chain.then(function () {
+        if (kids.length > 1) out.chars.push({ id: key.id + ":" + nodeId, ord: order, no: key.number[nodeId] || 0, keyTitle: key.title, leads: kids.map(function (l, i) { return { text: cleanText(l.lead_text), taxa: sets[i] || new Set() }; }) });
+        var u = new Set();
+        sets.forEach(function (st) { if (st) st.forEach(function (x) { u.add(x); }); });
+        return u;
+      });
+    }
+    return walk(key.root);
+  }
+  function loadMulti() {
+    var my = ++runId, names = MG.slice();
+    MA = { chars: [], meta: {}, nKeys: 1, chosen: {}, byId: {}, all: new Set(), showAll: false, order: "split" };
+    if (!names.length) { status("Add a genus to start.", false); return; }
+    status("Loading the key" + (names.length > 1 ? "s" : "") + " for " + names.map(function (n) { return "<i>" + esc(n) + "</i>"; }).join(", ") + "...");
+    var parts = [];
+    names.reduce(function (chain, g) {
+      return chain.then(function () {
+        if (my !== runId) throw new Error("stale");
+        return genusKeyId(g).then(function (kid) {
+          if (!kid) throw new Error("VicFlora has no species key for " + g + ".");
+          keyFetches = 0;
+          return getKey(kid).then(function (key) {
+            if (!key) throw new Error("Could not load the key for " + g + " (" + (VFOffline.keyErrors().slice(-3).join("; ") || "not saved on this device") + "). Download VicFlora for offline use to keep every key on this device.");
+            return expandKey(key, 0, MA).then(function (st) { parts.push({ g: g, taxa: st }); });
+          });
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      if (my !== runId) return;
+      if (parts.length > 1) MA.chars.push({ id: "genus", ord: -1, no: 0, keyTitle: "", leads: parts.map(function (p) { return { text: "Genus *" + p.g + "*", taxa: p.taxa }; }) });
+      parts.forEach(function (p) { p.taxa.forEach(function (t) { MA.all.add(t); }); });
+      MA.chars.sort(function (a, b) { return a.ord - b.ord || a.no - b.no; });
+      MA.chars.forEach(function (c) { MA.byId[c.id] = c; });
+      showMulti();
+    }).catch(function (e) {
+      if (my !== runId || (e && e.message === "stale")) return;
+      status(esc((e && e.message) || "Could not load the key.") , true);
+    });
+  }
+  function maRemaining(skipId) {
+    var rem = new Set(MA.all);
+    Object.keys(MA.chosen).forEach(function (id) {
+      if (id === skipId) return;
+      var c = MA.byId[id], keep = c.leads[MA.chosen[id]].taxa;
+      c.leads.forEach(function (l) { l.taxa.forEach(function (t) { if (!keep.has(t)) rem.delete(t); }); });
+    });
+    return rem;
+  }
+  function cnt(set, rem) { var n = 0; set.forEach(function (t) { if (rem.has(t)) n++; }); return n; }
+  function chHtml(c, rem, on) {
+    var h = '<div class="vk-ch' + (on ? " on" : "") + '"><div class="vk-chh">' + (c.no ? "Step " + c.no : "Which genus") + " <small>" + esc(c.keyTitle) + "</small></div>";
+    c.leads.forEach(function (l, i) {
+      var n = cnt(l.taxa, rem), sel = on && MA.chosen[c.id] === i;
+      h += '<button type="button" class="vk-st" data-c="' + esc(c.id) + '" data-l="' + i + '" aria-pressed="' + sel + '"' + (n === 0 && !sel ? " disabled" : "") + ">" + inline(l.text) + ' <span class="vk-n">' + n + "</span></button>";
+    });
+    return h + "</div>";
+  }
+  function showMulti() {
+    var out = $b().querySelector("#vkOut"), body = $b(), top = body.scrollTop;
+    var rem = maRemaining(null), total = MA.all.size, chosenIds = Object.keys(MA.chosen);
+    var h = '<div class="vk-mhead"><b>' + rem.size + "</b> of " + total + " taxa remain" +
+      '<span class="vk-mbtns">' + (chosenIds.length ? '<button type="button" class="vk-sub" data-reset="1">Start again</button>' : "") +
+      '<button type="button" class="vk-sub" data-order="1">' + (MA.order === "split" ? "Order: best split first" : "Order: key order") + "</button></span></div>" +
+      '<div class="vo-bar"><i style="width:' + Math.round(100 * rem.size / Math.max(1, total)) + '%"></i></div>';
+    var names = Array.from(rem).sort();
+    h += '<details class="vk-path vk-rem"' + (rem.size <= 14 ? " open" : "") + "><summary>Taxa still possible (" + rem.size + ")</summary><div class=\"vk-remlist\">" +
+      (names.length ? names.map(function (n) { var u = MA.meta[n] && MA.meta[n].url; return "<span>" + (u && /^https?:/.test(u) ? '<a href="' + esc(u) + '" target="_blank" rel="noopener"><i>' + esc(n) + "</i></a>" : "<i>" + esc(n) + "</i>") + "</span>"; }).join("") : "<em>Nothing matches. Remove a selection.</em>") + "</div></details>";
+    if (rem.size === 1) h += '<div class="vk-status ok">One taxon left: <b><i>' + esc(names[0]) + "</i></b>. Check it against the VicFlora description before relying on it.</div>";
+    if (chosenIds.length) {
+      h += '<div class="vk-h">Your selections</div>';
+      chosenIds.forEach(function (id) { h += chHtml(MA.byId[id], maRemaining(id), true); });
+    }
+    var avail = MA.chars.filter(function (c) {
+      if (c.id in MA.chosen) return false;
+      var live = c.leads.filter(function (l) { return cnt(l.taxa, rem) > 0; }).length;
+      return live >= 2;
+    });
+    avail.forEach(function (c) { c._w = Math.max.apply(null, c.leads.map(function (l) { return cnt(l.taxa, rem); })); });
+    if (MA.order === "split") avail.sort(function (a, b) { return a._w - b._w || a.ord - b.ord || a.no - b.no; });
+    h += '<div class="vk-h">' + (chosenIds.length ? "Narrow it further" : "Choose what you can see") + ' <small class="vk-hn">(' + avail.length + " characters; the number is how many taxa have that feature)</small></div>";
+    if (!avail.length) h += '<div class="vk-status">No further characters separate the taxa that are left.</div>';
+    var lim = MA.showAll ? avail.length : 25;
+    avail.slice(0, lim).forEach(function (c) { h += chHtml(c, rem, false); });
+    if (avail.length > lim) h += '<button type="button" class="vk-sub" data-more="1">Show all ' + avail.length + " characters</button>";
+    h += '<p class="vk-foot">Built from the VicFlora keys (KeyBase). Choosing a statement only rules out taxa the key places under the other statement of that same couplet. Photos and full descriptions: open the taxon in VicFlora.</p>';
+    out.innerHTML = h;
+    body.scrollTop = top;
+    out.onclick = function (e) {
+      var b;
+      if ((b = e.target.closest("[data-c]"))) {
+        var id = b.dataset.c, i = +b.dataset.l;
+        if (MA.chosen[id] === i) delete MA.chosen[id]; else MA.chosen[id] = i;
+        showMulti(); return;
+      }
+      if (e.target.closest("[data-reset]")) { MA.chosen = {}; showMulti(); return; }
+      if (e.target.closest("[data-order]")) { MA.order = MA.order === "split" ? "key" : "split"; showMulti(); return; }
+      if (e.target.closest("[data-more]")) { MA.showAll = true; showMulti(); }
+    };
+  }
+  function chipsHtml() {
+    return MG.map(function (g, i) { return '<span class="vk-chip"><i>' + esc(g) + '</i><button type="button" data-rm="' + i + '" aria-label="Remove ' + esc(g) + '">&#10005;</button></span>'; }).join("");
+  }
+  function renderMultiMode() {
+    var body = $b();
+    body.innerHTML =
+      '<p class="vk-intro">A multi-access key: pick any features you can see, in any order, and the list of possible taxa narrows. Built from the VicFlora species keys, so it works offline once VicFlora is downloaded. Add more genera to key them together.</p>' +
+      '<p class="vk-off" id="vkOff"></p>' +
+      '<div class="vk-chips" id="vkChips">' + chipsHtml() + "</div>" +
+      '<div class="vk-col" style="max-width:520px"><label for="vkA">Add a genus</label><input id="vkA" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search genus, e.g. Poa"><div class="vk-list" id="vkListA"></div></div>' +
+      '<div id="vkOut"></div>';
+    offLine();
+    typeahead(body.querySelector("#vkA"), body.querySelector("#vkListA"), ["GENUS"], function (r) {
+      if (MG.indexOf(r.name) < 0) MG.push(r.name);
+      body.querySelector("#vkA").value = "";
+      body.querySelector("#vkChips").innerHTML = chipsHtml();
+      loadMulti();
+    });
+    body.querySelector("#vkChips").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-rm]"); if (!b) return;
+      MG.splice(+b.dataset.rm, 1);
+      body.querySelector("#vkChips").innerHTML = chipsHtml();
+      loadMulti();
+    });
+    loadMulti();
   }
 
   function offLine() {
@@ -3744,7 +3926,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-07.1";
+  const BUILD_VERSION = "2026-10-08.1";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
