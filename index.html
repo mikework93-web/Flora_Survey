@@ -2901,9 +2901,10 @@ window.FHKit = (function(){
           + consBadge(s.ffg, s.epbc) + '</div>';
       }).join("");
       if((q||"").trim()){
-        const nm = esc(input.value.trim());
-        html += '<div class="pick-opt" data-free="1"><span class="cn">Add &ldquo;'+nm+'&rdquo;</span>'
-          + '<span class="sci">not in list — added as free text</span></div>';
+        const parts = String(input.value||"").split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);
+        const nm = parts.length>1 ? parts.map(x=>"&ldquo;"+esc(x)+"&rdquo;").join(", ") : "&ldquo;"+esc(input.value.trim())+"&rdquo;";
+        html += '<div class="pick-opt" data-free="1"><span class="cn">Add '+nm+'</span>'
+          + '<span class="sci">'+(parts.length>1 ? parts.length+' species — separated by commas' : 'not in list — added as free text')+'</span></div>';
       } else if(!current.length){
         html += '<div class="pick-note" '+noteStyle+'>Type at least 2 letters to search VicFlora…</div>';
       }
@@ -2947,11 +2948,35 @@ window.FHKit = (function(){
     // (e.g. picking a second species right after the first) by the time this
     // fires, don't yank the list closed out from under that new interaction.
     input.addEventListener("blur", ()=>{ setTimeout(()=>{ if(document.activeElement !== input) list.classList.remove("open"); }, 160); });
+    // Typed text can hold several species separated by commas ("Poa labillardierei, Carex
+    // appressa"): each piece becomes its own species. A piece that exactly matches a name in
+    // the reference list uses that entry; anything else is added as free text.
+    function typedNames(){
+      const seen = new Set(), out = [];
+      String(input.value||"").split(/[,;\n]+/).forEach(x=>{
+        const nm = x.replace(/\s+/g," ").trim(), k = nm.toLowerCase();
+        if(nm && !seen.has(k)){ seen.add(k); out.push(nm); }
+      });
+      return out;
+    }
+    function pickTyped(){
+      const SP = window.FH_SPECIES || [];
+      typedNames().forEach(nm=>{
+        const k = nm.toLowerCase();
+        const known = SP.find(s=> (s.sci||"").toLowerCase()===k || (s.common||"").toLowerCase()===k);
+        if(known) onPick(Object.assign({}, known));
+        else onPick({ sci:nm, common:nm, lf:"", type:"invasive", free:true });
+      });
+    }
+    input.addEventListener("keydown", e=>{
+      if(e.key==="Enter" && /[,;]/.test(input.value) && input.value.trim()){
+        e.preventDefault(); pickTyped(); input.value=""; list.classList.remove("open");
+      }
+    });
     list.addEventListener("click", e=>{
       const opt = e.target.closest(".pick-opt"); if(!opt) return;
       if(opt.dataset.free){
-        const nm = input.value.trim();
-        if(nm) onPick({ sci:nm, common:nm, lf:"", type:"invasive", free:true });
+        pickTyped();
       } else if(opt.dataset.i !== undefined){
         const s = current[+opt.dataset.i];
         if(s) onPick(Object.assign({}, s));
@@ -4148,7 +4173,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-08.3";
+  const BUILD_VERSION = "2026-10-08.4";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -4910,6 +4935,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
     live.pg.at = r.startedAt; if(r.full) live.pg.full = r.startedAt;
     renderPolygons();
+    if(remoteDocs.length || r.full){ try{ MapModal.refreshOverview(); }catch(e){} }
   }
   // Changed-records-only sync. Every poll used to download EVERY record in the survey, and
   // each downloaded record counts as one Firestore read against the project's daily free quota
@@ -5000,7 +5026,10 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // enough that the device has likely gone offline or left the survey —
   // see PRESENCE_STALE_MS, defined below alongside the polling cadence it's
   // derived from.
+  let lastPresenceAt = 0;
   async function syncTeamPresence(){
+    if(Date.now() - lastPresenceAt < LIVE_PRESENCE_MS) return;
+    lastPresenceAt = Date.now();
     try{
       await FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/devices/"+deviceId(),
         { name:userName()||"", appVersion:BUILD_VERSION, updatedAt:new Date().toISOString() });
@@ -5043,7 +5072,11 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // other's finds, and keeps a survey well clear of that quota even left
   // running for a full day. See the visibilitychange listener below for the
   // other lever: not polling at all while the tab is backgrounded.
-  const LIVE_POLL_MS = 10*60*1000;
+  const LIVE_POLL_MS = 10*60*1000;   // slow clock: reconnect retry, give-up and "teammate gone quiet" thresholds
+  // How often a phone asks the server what changed. Cheap now that only changed records are
+  // downloaded (a quiet check is ~2 reads), so teammates' species and polygons show up within a minute.
+  const LIVE_SYNC_MS = 60*1000;
+  const LIVE_PRESENCE_MS = 5*60*1000;   // presence heartbeat + devices listing, throttled to save reads/writes
   // A complete listing (needed to notice teammates' deletions) is only taken this often during
   // normal polling; everything in between asks for changed records only. See fetchRemoteDocs().
   const LIVE_FULL_PULL_MS = 2*60*60*1000;
@@ -5051,7 +5084,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // poll to catch phones whose clocks run a little slow.
   const LIVE_PULL_OVERLAP_MS = 15*60*1000;
   // Coming back to the app triggers a catch-up pull, but not if one just happened.
-  const LIVE_RESUME_MIN_MS = 3*60*1000;
+  const LIVE_RESUME_MIN_MS = 30*1000;
   // Give up (show the sticky "disconnected — tap Rejoin" banner) after
   // roughly two missed scheduled syncs in a row, rather than a fixed wall-
   // clock time — that scales sensibly whatever LIVE_POLL_MS is set to.
@@ -5084,7 +5117,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         if((Date.now() - (live.lastSyncOk||Date.now())) > LIVE_GIVE_UP_MS){ handleLiveDropped(); return; }
       }
       flushLiveQueue().catch(()=>{});
-    }, LIVE_POLL_MS);
+    }, LIVE_SYNC_MS);
   }
   function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
   // Firestore reads are only free up to that daily quota, and a backgrounded
@@ -7589,11 +7622,33 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         }
       }, 0);
     }
-    return { open, close };
+    function refreshOverview(){ try{ if(state && state.mode==="overview" && map) renderOverviewLayers(); }catch(e){} }
+    return { open, close, refreshOverview };
   })();
 
-  async function add(sp){
-    if(!requireName(()=>add(sp))) return;   // no anonymous records
+  // Species named in a polygon also belong on the survey's species list. Any name not already
+  // listed (matched on scientific or common name) is added as an ordinary record, without the
+  // GPS prompt a "Significant" species normally triggers. Done one at a time so the same name
+  // twice in one go can't be added twice.
+  let polyListBusy = Promise.resolve();
+  function ensureNamesInList(names){
+    const list = Array.from(new Set((names||[]).map(n=>String(n||"").replace(/\s+/g," ").trim()).filter(Boolean)));
+    if(!list.length) return polyListBusy;
+    polyListBusy = polyListBusy.then(async ()=>{
+      for(const nm of list){
+        const k = nm.toLowerCase();
+        if(rows.some(r=> (r.sci||"").toLowerCase()===k || (r.common||"").toLowerCase()===k)) continue;
+        const SP = window.FH_SPECIES || [];
+        const known = SP.find(s=> (s.sci||"").toLowerCase()===k || (s.common||"").toLowerCase()===k);
+        const sp = known ? Object.assign({}, known) : { sci:nm, common:nm, lf:"", type:"invasive", free:true };
+        try{ await add(sp, { quiet:true }); }catch(e){}
+      }
+    }).catch(()=>{});
+    return polyListBusy;
+  }
+  async function add(sp, opts){
+    opts = opts || {};
+    if(!requireName(()=>add(sp, opts))) return;   // no anonymous records
     // Species can be logged more than once on purpose — e.g. two surveyors
     // independently spot the same species, or you want a second record for a
     // different individual/location. Each add gets its own record id and its
@@ -7623,6 +7678,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     rows.push(row);
     sortRows(row.id);   // newest species to the top, everything else alphabetical
     render(); autosave();
+    if(opts.quiet) return;   // added on behalf of a polygon: no GPS prompt, no scrolling
     if(auto) captureLocation(rows.indexOf(row));
     else {
       // Bring the new row into view so you can see where it landed.
@@ -7755,6 +7811,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       mountSpeciesChips(host, pg.species, arr=>{
         pg.species = arr; autosave();
         liveSyncPolygonFieldDebounced(pg, { speciesJson: encodePointsField(pg.species) });
+        ensureNamesInList(arr);
       });
     });
     $("polyCount").textContent = polygons.length ? polygons.length : "";
@@ -8446,6 +8503,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         const pg = polygons.find(p=>p.id===id); if(!pg) return;
         pg.species = species; renderPolygons(); autosave();
         liveSyncPolygonField(pg, { speciesJson: encodePointsField(pg.species) });
+        ensureNamesInList(species);
       },
       onDeletePolygon: (id) => {
         const pg = polygons.find(p=>p.id===id);
@@ -8479,6 +8537,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         }
         polygons.push(pg);
         renderPolygons(); autosave();
+        ensureNamesInList(pg.species);
       }
     });
   }

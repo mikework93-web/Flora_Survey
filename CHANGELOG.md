@@ -2,6 +2,11 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## Polygons reach teammates faster; polygon species join the species list (2026-10-08, v.4)
+- **Polygons (and species) now appear on teammates' phones within about a minute.** The previous release only checked every 10 minutes, so a polygon drawn on one phone looked missing on the others. Because checks now download changed records only, checking every minute costs about 2 reads per phone per check, far less than the old 20-minute full downloads. The presence heartbeat is throttled to every 5 minutes, and returning to the app re-checks after 30 seconds away. An open overview map redraws when a teammate's polygon arrives.
+- **Polygon species are added to the species list.** Any species named in a polygon (drawn on the map, edited in the polygon list, or typed in) that is not already listed is added as a normal species record. It does not trigger the GPS prompt. Names are matched on scientific or common name, so nothing is duplicated.
+- **Comma-separated species.** Type several names separated by commas (for example `Poa labillardierei, Carex appressa`) in any species box and tap the "Add ..." option (or press Enter) to add each one as its own species. Names that match the reference list use its details; others are added as free text.
+
 ## Team Sync: changed records only (2026-10-08)
 - **Much lighter on the Firebase free quota (fixes the "RESOURCE_EXHAUSTED" error).** Team Sync used to re-download every species and polygon in the survey on each check, so reads grew with survey size x devices x time. It now asks the server only for records changed since the last check (with a 15-minute overlap to tolerate clock differences), so a quiet survey costs about zero reads.
 - A complete download still happens when you join or rejoin, when you tap **Sync now**, and every 2 hours, because deletions can only be seen in a complete list. A record deleted by a teammate can therefore take up to 2 hours (or a Sync now) to disappear on your device.
