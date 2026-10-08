@@ -818,6 +818,9 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
 .vk-status{margin:18px 0;padding:14px;border:1px solid var(--border);border-radius:3px;background:var(--cream);font-size:13.5px;color:var(--ink)}
 .vk-status.err{border-color:var(--red-line);background:var(--red-bg)}
 .vk-h{margin:22px 0 8px;font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--gold-dark)}
+.vk-photorow{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 4px}
+.vk-photos{flex:1 1 200px;display:block;box-sizing:border-box;min-height:44px;padding:10px 12px;border:1px solid var(--border);border-radius:3px;background:var(--field);color:var(--ink);font:700 13px var(--sans);text-decoration:none;text-align:center;overflow-wrap:anywhere}
+.vk-photos i{font-weight:700}
 .vk-vs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0 4px}
 .vk-vs a{display:block;padding:10px 12px;border:1px solid var(--border);border-top:3px solid var(--gold-dark);border-radius:3px;background:var(--card);color:var(--ink);font-style:italic;font-weight:700;font-size:15px;text-decoration:none;overflow-wrap:anywhere}
 .vk-vs a small{display:block;font-style:normal;font-weight:400;font-size:11.5px;color:var(--muted)}
@@ -2142,6 +2145,12 @@ window.FHFuzzy = (function () {
     document.addEventListener("click", function (e) { if (root && !input.parentNode.contains(e.target)) hide(); });
   }
 
+  // "View photos": iNaturalist observations of that name that have photos (species, genus or family).
+  function inatUrl(name) { return "https://www.inaturalist.org/observations?photos=true&taxon_name=" + encodeURIComponent(String(name || "").replace(/<[^>]+>/g, "").trim()); }
+  function photoBtn(name, label) {
+    if (!name) return "";
+    return '<a class="vk-photos" href="' + inatUrl(name) + '" target="_blank" rel="noopener">&#128247; ' + (label || "View photos") + ' <i>' + esc(name) + '</i> on iNaturalist</a>';
+  }
   function render() {
     var M = MODES[mode], body = $b();
     root.querySelectorAll(".vk-tab").forEach(function (t) { t.setAttribute("aria-selected", t.dataset.mode === tabOf(mode) ? "true" : "false"); });
@@ -2242,6 +2251,7 @@ window.FHFuzzy = (function () {
     h += '<div class="vk-vw">' + (K.stack.length ? '<button type="button" class="vk-sub" id="vkKeyBack">&larr; Back</button>' : "") +
       '<button type="button" data-view="bracket" aria-pressed="' + (K.view === "bracket") + '">Bracketed</button><button type="button" data-view="indent" aria-pressed="' + (K.view === "indent") + '">Indented</button></div>';
     h += '<div class="vk-keybody ' + (K.view === "indent" ? "ind" : "brk") + '">' + (K.view === "indent" ? indentHtml(key, key.root) : bracketHtml(key)) + "</div>";
+    if (K.genus && K.genus.name) h += '<div class="vk-photorow">' + photoBtn(K.genus.name) + '</div>';
     h += '<p class="vk-foot">Key: VicFlora / KeyBase, Royal Botanic Gardens Victoria.</p>';
     out.innerHTML = h;
     var my = runId;
@@ -2636,7 +2646,7 @@ window.FHFuzzy = (function () {
     if (!rem.length) h += '<div class="vk-status">Nothing fits. Loosen the tolerance or clear a feature.</div>';
     h += '<div class="vk-txlist">' + rem.slice(0, 80).map(function (r) {
       return '<details class="vk-tx"><summary><i>' + esc(r.t.name) + "</i>" + (r.e.unknown ? ' <small class="vk-unk">' + r.e.unknown + " not stated</small>" : "") + (!r.t.hasText ? ' <small class="vk-unk">no description</small>' : "") + "</summary>" +
-        evidence(r.t) + '<p class="vk-foot"><a href="' + VF + "taxon/" + esc(r.t.id) + '" target="_blank" rel="noopener">Open in VicFlora</a></p></details>';
+        evidence(r.t) + '<p class="vk-foot"><a href="' + VF + "taxon/" + esc(r.t.id) + '" target="_blank" rel="noopener">Open in VicFlora</a></p><div class="vk-photorow">' + photoBtn(r.t.name) + '</div></details>';
     }).join("") + "</div>";
     h += '<div class="vk-h">Enter your specimen <small class="vk-hn">(leave blank what you can\'t see or measure)</small></div>';
     MGROUPS.forEach(function (gname) {
@@ -2884,7 +2894,8 @@ window.FHFuzzy = (function () {
       if (loc.pb.length > sp.index + 1) h += '<details class="vk-path"><summary>Rest of the route to ' + esc(cB) + "</summary><ol>" + stepList(loc.pb, sp.index + 1) + "</ol></details>";
     }
     if (!loc.reason && loc.sp && loc.multi) h += '<p class="vk-foot">One of these is keyed in more than one place. This shows the earliest step that separates them.</p>';
-    h += '<p class="vk-foot">Descriptions and keys: VicFlora, Royal Botanic Gardens Victoria. Keys are served by KeyBase.</p>';
+    h += '<div class="vk-photorow">' + photoBtn(nA) + photoBtn(nB) + '</div>';
+    h += '<p class="vk-foot">Descriptions and keys: VicFlora, Royal Botanic Gardens Victoria. Keys are served by KeyBase. Photos: iNaturalist (opens in your browser).</p>';
     out.innerHTML = h;
     var tog = out.querySelector("#vkDiffOnly");
     if (tog) tog.addEventListener("change", function () {
@@ -4305,7 +4316,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-08.9";
+  const BUILD_VERSION = "2026-10-08.10";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive

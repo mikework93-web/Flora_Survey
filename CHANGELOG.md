@@ -2,6 +2,9 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## VicKey: View photos on iNaturalist (2026-10-08, v.10)
+- A **View photos** button now sits at the bottom of every comparison result (one for each of the two species, genera or families), under each open taxon in the MultiAccess Key, and under a genus's Species Key. It opens iNaturalist's observations for that name, photos only, in your browser (needs a connection).
+
 ## VicKey simplified to three tabs (2026-10-08, v.9)
 - **Comparison** replaces the separate Sp. Comp, G Comp and F Comp tabs. A **Compare** drop-down at the top switches between Species, Genera and Families (it remembers your choice when you move between tabs).
 - **Species Key** (was Key) and **MultiAccess Key** (was MA Key) keep their contents.
