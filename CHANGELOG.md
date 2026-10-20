@@ -2,6 +2,11 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## MultiAccess Key: fixed wrongly ruled-out species (2026-10-20, v.14)
+- When VicFlora writes "blade to 70 cm long and 7 mm broad", the app read the length as "up to 70 cm" but the width as exactly 7 mm, so a 6 mm blade ruled out *Austrostipa flavescens*. The "to" now covers both, so the width reads as "up to 7 mm".
+- Other descriptions written the same way ("to X cm long and Y mm wide") are fixed too.
+- If a species is still ruled out wrongly, open it in the candidates list to see exactly what was read from its description. Raising the measurement tolerance also helps for values VicFlora gives as a single figure.
+
 ## VicKey: LGA crop fix (2026-10-09, v.13)
 - Fixed "VicFlora returned no species for <LGA>". The app was guessing how VicFlora stores LGA names. It now asks VicFlora's index for its exact filter for the chosen LGA (the one VicFlora search itself uses) and then lists the species with that.
 - If it still fails, the message now says why, for example the LGA isn't in the index, the filter matched nothing, or the records weren't species. Please send me that text if you see it.
