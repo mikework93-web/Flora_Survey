@@ -2,6 +2,11 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## Search: tap an already-added species to open it (2026-10-20, v.15)
+- In the main species search, a species that is already on your list (green, "Added") no longer creates a duplicate when you tap it. Tapping it scrolls to the existing record, opens it if it was collapsed, and flashes it, so you can edit it or use **+ Add another point** there.
+- Each green result also has a small **+ New** button for the occasional case where you do want a second record of the same species (a different individual, say).
+- If the species has more than one record, the newest is shown.
+
 ## MultiAccess Key: fixed wrongly ruled-out species (2026-10-20, v.14)
 - When VicFlora writes "blade to 70 cm long and 7 mm broad", the app read the length as "up to 70 cm" but the width as exactly 7 mm, so a 6 mm blade ruled out *Austrostipa flavescens*. The "to" now covers both, so the width reads as "up to 7 mm".
 - Other descriptions written the same way ("to X cm long and Y mm wide") are fixed too.

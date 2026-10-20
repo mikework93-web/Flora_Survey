@@ -980,6 +980,9 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
 .pick-opt.picked{background:var(--ok-bg);box-shadow:inset 3px 0 0 var(--ok)}
 .pick-opt.picked .picked-tag{flex:none;font-size:10.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--ok);border:1px solid var(--ok);border-radius:3px;padding:1px 6px}
 .pick-opt.picked .cn{color:var(--ok)}
+.pick-opt .newrec{flex:none;font-size:11px;font-weight:700;color:var(--muted);background:var(--field);border:1px solid var(--border);border-radius:3px;padding:2px 7px;cursor:pointer}
+.row-flash{animation:rowflash 1.8s ease-out}
+@keyframes rowflash{0%,40%{box-shadow:0 0 0 3px var(--gold);background:rgba(204,167,53,.18)}100%{box-shadow:0 0 0 0 transparent}}
 </style>
 <!-- Aerial imagery map (for precise point placement/adjustment and polygon
      drawing — see MapModal). Loaded with no integrity/crossorigin hash: a
@@ -3593,7 +3596,7 @@ window.FHKit = (function(){
   /* species picker: type-ahead sourced from the VicFlora API (with the bundled
      FH_SPECIES list as an instant + offline fallback). */
   const noteStyle = 'style="padding:7px 12px;font-size:11px;color:var(--text-dim,#888)"';
-  function buildPicker(input, list, onPick, getSelected){
+  function buildPicker(input, list, onPick, getSelected, onExisting){
     let current = [];   // objects currently shown in the dropdown
     let seq = 0;        // guards against out-of-order async responses
     let timer = null;
@@ -3648,7 +3651,7 @@ window.FHKit = (function(){
         return '<div class="pick-opt'+(isPicked?' picked':'')+'" data-i="'+i+'">'
           + '<span class="cn">'+esc(s.common||s.sci)+'</span>'
           + '<span class="sci">'+esc(s.sci)+'</span>'
-          + (isPicked ? '<span class="picked-tag">&#10003; Added</span>' : '')
+          + (isPicked ? '<span class="picked-tag">&#10003; Added</span>' + (onExisting ? '<button type="button" class="newrec" data-new="1">+ New</button>' : '') : '')
           + '<span class="badge '+(inv?"inv":"ind")+'">'+(inv?"Invasive":"Indigenous")+'</span>'
           + consBadge(s.ffg, s.epbc) + '</div>';
       }).join("");
@@ -3727,6 +3730,12 @@ window.FHKit = (function(){
     });
     list.addEventListener("click", e=>{
       const opt = e.target.closest(".pick-opt"); if(!opt) return;
+      // A species that is already on the list: tapping its green row opens the existing record
+      // (edit it, add a point) instead of creating a duplicate. "+ New" still makes a second record.
+      if(onExisting && opt.classList.contains("picked") && opt.dataset.i !== undefined && !e.target.closest("[data-new]")){
+        const ex = current[+opt.dataset.i];
+        if(ex){ onExisting(Object.assign({}, ex)); input.value=""; list.classList.remove("open"); return; }
+      }
       if(opt.dataset.free){
         pickTyped();
       } else if(opt.dataset.i !== undefined){
@@ -4925,7 +4934,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-20.14";
+  const BUILD_VERSION = "2026-10-20.15";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -9595,7 +9604,21 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     // "updated" needs no toast — showUpdateBanner() puts up its own.
   });
 
-  FHKit.buildPicker($("pick"), $("pickList"), add, ()=> rows.map(r=>r.sci));
+  FHKit.buildPicker($("pick"), $("pickList"), add, ()=> rows.map(r=>r.sci), openExisting);
+  // Jump to the record already logged for a species picked from the search list.
+  function openExisting(sp){
+    const k = String(sp.sci||"").toLowerCase();
+    const r = rows.find(x=> String(x.sci||"").toLowerCase()===k);
+    if(!r){ add(sp); return; }
+    if(rows.indexOf(r)===0) collapsedTop.delete(r.id); else expandedRows.add(r.id);
+    render();
+    try{ $("pick").blur(); }catch(e){}
+    document.body.classList.remove("picking");
+    const el = $("tbody").querySelector('[data-row-id="'+CSS.escape(r.id)+'"]');
+    if(el){ setTimeout(()=>{ scrollUnderBar(el, 60); el.classList.add("row-flash"); setTimeout(()=>el.classList.remove("row-flash"), 1800); }, 60); }
+    const n = rows.filter(x=> String(x.sci||"").toLowerCase()===k).length;
+    FHKit.toast(n>1 ? "Already added ("+n+" records): showing the newest" : "Already added: opened it so you can edit or add a point");
+  }
   $("startSurveyBtn").addEventListener("click", startSurvey);
   $("homeList").addEventListener("click", e=>{
     if(e.target.closest("[data-home-all]")){ homeShowAll = true; renderHome(); return; }
