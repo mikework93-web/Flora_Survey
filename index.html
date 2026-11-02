@@ -1632,7 +1632,7 @@ window.FHFuzzy = (function () {
       var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
       var to = ctrl && setTimeout(function () { ctrl.abort(); }, 12000);
       return fetch(src.url, { headers: { "Accept": "application/json" }, signal: ctrl ? ctrl.signal : undefined })
-        .then(function (r) { var st = r.status; return r.text().then(function (t) { var j = null; try { j = JSON.parse(t); } catch (e) { } return src.name + ": HTTP " + st + (j && j.leads ? ", key OK" : ", not a key (" + esc(t.slice(0, 50).replace(/\s+/g, " ")) + ")"); }); })
+        .then(function (r) { var st = r.status; return r.text().then(function (t) { var j = null; try { j = JSON.parse(t); } catch (e) { } return src.name + ": HTTP " + st + (j && j.leads ? ", key OK" : ", not a key (" + t.slice(0, 50).replace(/\s+/g, " ") + ")"); }); })
         .catch(function (e) { return src.name + ": " + ((e && e.name === "AbortError") ? "timed out" : (e && e.message === "Failed to fetch" ? "blocked or offline" : (e && e.message) || "failed")); })
         .then(function (m) { if (to) clearTimeout(to); return m; });
     })).then(function (r) { testOut = "Key " + id + " ... " + r.join("; "); emit(); });
