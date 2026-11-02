@@ -61,7 +61,7 @@ Propose big structural moves before doing them.
 
 ## Offline VicFlora
 - `VFOffline` (own script block before VicKey). IndexedDB `fh_vicflora_offline`: stores taxa (light record with parent, rank, names, keys), profiles (description text), keys (KeyBase JSON), meta (resume state).
-- Download walks the classification top down with GraphQL `children` (genus requests include species and infraspecific children), then fetches each key from KeyBase (direct, `/api/key/<id>` relay, public relays). Resumable via meta.queue / meta.seenKeys.
+- Download walks the classification top down with GraphQL `children` (genus requests include species and infraspecific children), then fetches each key from KeyBase (direct, `/api/key/<id>` relay, public relays). Resumable via meta.queue / meta.seenKeys. Key fetching (`fetchKeyRemote(id, bulk)`) tracks per-source health and skips dead sources; `functions/api/key/[id].js` is the server-side relay. Run replacement uses a `gen` counter; `resumeIfNeeded()` restarts on visibility/online/pageshow/load when `localStorage.fh_vo_auto` is set; screen Wake Lock is held while running. Browsers suspend page JS in the background, so true background download is not possible without a native app.
 - When finished, `FHVicFlora.search` and VicKey read from it first and fall back to online. Photos are never stored.
 - Untested against the full live dataset (the build sandbox cannot reach VicFlora). The service worker saves the app page on first visit, so open the app once online before going into the field.
 

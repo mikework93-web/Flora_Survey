@@ -1436,6 +1436,9 @@ window.FHFuzzy = (function () {
 
   var db = null, idx = null, meta = null, running = false, stopFlag = false, listeners = [];
   var byId = {}, kids = {}, names = [];
+  // Keep-going state: gen changes whenever a download run is replaced, so an older run
+  // whose requests died in the background stops quietly instead of fighting the new one.
+  var AUTO = "fh_vo_auto", gen = 0, walked = {}, lastProgress = Date.now(), wake = null, stoppedAt = 0, pill = null;
 
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
 
@@ -1575,16 +1578,31 @@ window.FHFuzzy = (function () {
     ];
   }
   var keyErrors = [];
-  function fetchKeyRemote(id) {
+  var srcHealth = {};   // per key source: ok = keys it has returned, bad = failures in a row
+  function health(n) { return srcHealth[n] || (srcHealth[n] = { ok: 0, bad: 0 }); }
+  // bulk = the offline download. There a source that keeps failing and has never worked is
+  // skipped for the rest of the run, and the one that works is tried first, so a blocked
+  // source no longer costs a timeout on every single key.
+  function fetchKeyRemote(id, bulk) {
+    var list = keySources(id);
+    if (bulk) {
+      var live = list.filter(function (x) { var h = health(x.name); return h.ok > 0 || h.bad < 5; });
+      list = (live.length ? live : list).sort(function (x, y) { return health(y.name).ok - health(x.name).ok; });
+    }
     var chain = Promise.reject(new Error("start"));
-    keySources(id).forEach(function (src) {
+    list.forEach(function (src) {
       chain = chain.catch(function () {
         var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
-        var to = ctrl && setTimeout(function () { ctrl.abort(); }, 12000);
+        var to = ctrl && setTimeout(function () { ctrl.abort(); }, bulk ? 9000 : 12000);
         return fetch(src.url, { headers: { "Accept": "application/json" }, signal: ctrl ? ctrl.signal : undefined })
           .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-          .then(function (j) { if (!j || !j.leads) throw new Error("not a key"); return j; })
-          .catch(function (e) { keyErrors.push(src.name + ": " + (e && e.message === "Failed to fetch" ? "blocked or offline" : (e && e.message) || "failed")); throw e; })
+          .then(function (j) { if (!j || !j.leads) throw new Error("not a key"); var h = health(src.name); h.ok++; h.bad = 0; return j; })
+          .catch(function (e) {
+            if (!document.hidden) health(src.name).bad++;
+            keyErrors.push(src.name + ": " + (e && e.message === "Failed to fetch" ? "blocked or offline" : (e && e.message) || "failed"));
+            if (keyErrors.length > 40) keyErrors.splice(0, keyErrors.length - 40);
+            throw e;
+          })
           .finally(function () { if (to) clearTimeout(to); });
       });
     });
@@ -1620,12 +1638,16 @@ window.FHFuzzy = (function () {
       });
     });
   }
-  function status(text, done, total) { run.state = { text: text, done: done || 0, total: total || 0 }; emit(); }
+  function status(text, done, total) { run.state = { text: text, done: done || 0, total: total || 0 }; lastProgress = Date.now(); emit(); }
   var run = { state: { text: "", done: 0, total: 0 } };
 
-  function startDownload(fresh) {
-    if (running) return Promise.resolve();
-    running = true; stopFlag = false;
+  function uniq(a) { var o = {}; return (a || []).filter(function (x) { if (o[x]) return false; o[x] = 1; return true; }); }
+  function startDownload(fresh, force) {
+    if (running && !force) return Promise.resolve();
+    var myGen = ++gen;
+    running = true; stopFlag = false; stoppedAt = 0; srcHealth = {}; lastProgress = Date.now();
+    if (fresh) walked = {};
+    setAuto(true); lockOn(); keepStorage();
     var p = Promise.resolve();
     if (fresh || !meta || !meta.queue) {
       p = clearAll().then(function () {
@@ -1645,35 +1667,41 @@ window.FHFuzzy = (function () {
         });
       });
     }
-    if (!fresh && meta && meta.queue) { meta.queue = (meta.queue || []).concat(meta.inflight || [], meta.skipped || []); meta.inflight = []; meta.skipped = []; meta.tries = {}; meta.consec = 0; }
-    return p.then(treePhase).then(profilePhase).then(keyPhase).then(function () {
+    if (!fresh && meta && meta.queue) { meta.queue = uniq((meta.queue || []).concat(meta.inflight || [], meta.skipped || [])); meta.inflight = []; meta.skipped = []; meta.tries = {}; meta.consec = 0; }
+    return p.then(function () { return treePhase(myGen); }).then(function () { return profilePhase(myGen); }).then(function () { return keyPhase(myGen); }).then(function () {
+      if (myGen !== gen) return;   // replaced by a newer run
       if (stopFlag) { status("Paused. Open this again and tap Resume to continue."); return; }
       meta.finished = new Date().toISOString();
+      setAuto(false);
       return saveMeta().then(function () { return getAll("taxa"); }).then(function (l) { buildIndex(l); status("Done"); });
     }).catch(function (e) {
-      status("Stopped: " + ((e && e.message) || "error") + ". Progress is saved. Wait a minute or two, then tap Resume.");
-    }).then(function () { running = false; emit(); });
+      if (myGen !== gen) return;
+      stoppedAt = Date.now();
+      status("Stopped: " + ((e && e.message) || "error") + ". Progress is saved. It will try again by itself, or tap Resume.");
+    }).then(function () { if (myGen !== gen) return; running = false; lockOff(); emit(); });
   }
   function clearAll() {
     return open().then(function () { return tx(["taxa", "profiles", "keys", "meta"], "readwrite", function (t) { ["taxa", "profiles", "keys", "meta"].forEach(function (s) { t.objectStore(s).clear(); }); }); });
   }
 
-  function pool(n, nextFn) {
+  function pool(n, nextFn, g) {
     var workers = [];
     for (var i = 0; i < n; i++) workers.push((function loop() {
-      var job = stopFlag ? null : nextFn();
+      var job = (stopFlag || g !== gen) ? null : nextFn();
       if (!job) return Promise.resolve();
       return job.then(loop);
     })());
     return Promise.all(workers);
   }
   function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-  function treePhase() {
+  function treePhase(g) {
     var since = 0;
     meta.consec = 0; meta.tries = meta.tries || {}; meta.skipped = meta.skipped || [];
     return pool(2, function () {
-      if (!meta.queue.length) return null;
+      // Queue empty but another request is still out: wait, its children may be about to arrive.
+      if (!meta.queue.length) return (meta.inflight || []).length ? delay(400) : null;
       var id = meta.queue.shift();
+      if (walked[id]) return Promise.resolve();   // already done (a replaced run finished it)
       var node = byId[id];
       var q = node && node.rank === "GENUS" ? Q_GENUS : Q_UP;
       meta.inflight = (meta.inflight || []).concat([id]);
@@ -1703,7 +1731,9 @@ window.FHFuzzy = (function () {
           return retry(function () { return gql(t[0], { id: id }, 90000); }, k === tiers.length - 1 ? 2 : 1).then(function (j) { return handle(j, t[1], t[2]); });
         });
       });
-      return chain.then(function () { meta.consec = 0; delete meta.tries[id]; clean(); return delay(150); }, function (e) {
+      return chain.then(function () { walked[id] = 1; meta.consec = 0; delete meta.tries[id]; clean(); return delay(150); }, function (e) {
+        // Phone asleep, app in the background or no signal: not VicFlora's fault, so just try again later.
+        if (document.hidden || navigator.onLine === false) { meta.queue.push(id); clean(); return delay(3000); }
         run.lastErr = (e && e.message) || "error";
         meta.counts.fail++; meta.consec = (meta.consec || 0) + 1;
         meta.tries[id] = (meta.tries[id] || 0) + 1;
@@ -1712,10 +1742,10 @@ window.FHFuzzy = (function () {
         if (meta.consec >= 12) { stopFlag = true; throw new Error("VicFlora keeps refusing requests (" + run.lastErr + ")"); }
         return delay(Math.min(15000, 1500 * meta.consec));
       });
-    }).then(function () { return saveMeta(); });
+    }, g).then(function () { return saveMeta(); });
   }
-  function profilePhase() {
-    if (stopFlag) return Promise.resolve();
+  function profilePhase(g) {
+    if (stopFlag || g !== gen) return Promise.resolve();
     meta.needProfile = meta.needProfile || [];
     var seen = {}, tries = {}, since = 0, total = 0;
     meta.needProfile = meta.needProfile.filter(function (i) { if (seen[i]) return false; seen[i] = 1; return true; });
@@ -1729,6 +1759,7 @@ window.FHFuzzy = (function () {
         var p = j.data && j.data.taxonConcept && j.data.taxonConcept.currentProfile && j.data.taxonConcept.currentProfile.profile;
         if (p) return tx(["profiles"], "readwrite", function (t) { t.objectStore("profiles").put({ id: id, text: p }); });
       }).catch(function (e) {
+        if (document.hidden || navigator.onLine === false) { meta.needProfile.push(id); return delay(3000); }
         run.lastErr = (e && e.message) || "error";
         tries[id] = (tries[id] || 0) + 1;
         if (tries[id] < 3) meta.needProfile.push(id);   // after 3 tries that description is left out
@@ -1737,32 +1768,91 @@ window.FHFuzzy = (function () {
         doneN++; if (++since % 20 === 0) saveMeta();
         status("Downloading descriptions (" + Math.min(doneN, total) + " of " + total + ")", Math.min(doneN, total), total);
       });
-    }).then(function () { return saveMeta(); });
+    }, g).then(function () { return saveMeta(); });
   }
-  function keyPhase() {
-    if (stopFlag) return Promise.resolve();
+  function keyPhase(g) {
+    if (stopFlag || g !== gen) return Promise.resolve();
     meta.keyQueue = Object.keys(meta.seenKeys).filter(function (k) { return meta.seenKeys[k] !== 1; });
-    var total = Object.keys(meta.seenKeys).length, since = 0;
+    var total = Object.keys(meta.seenKeys).length, since = 0, okRun = 0, badRun = 0, consec = 0, again = {}, blocked = false;
+    meta.keysBlocked = false;
+    function report() {
+      total = Object.keys(meta.seenKeys).length;
+      status("Downloading identification keys (" + meta.counts.keys + " of " + total + (badRun ? ", " + badRun + " unavailable" : "") + ")", Math.min(total, meta.counts.keys + badRun), total);
+    }
+    report();
     return pool(4, function () {
+      if (blocked) return null;
       var id = null;
       while (meta.keyQueue.length) { var c = meta.keyQueue.shift(); if (meta.seenKeys[c] !== 1) { id = c; break; } }
       if (!id) return null;
-      return retry(function () { return fetchKeyRemote(id); }, 1).then(function (j) {
+      return fetchKeyRemote(id, true).then(function (j) {
         var title = j.key_title || "";
-        meta.seenKeys[id] = 1; meta.counts.keys++;
+        meta.seenKeys[id] = 1; meta.counts.keys++; okRun++; consec = 0;
         (j.items || []).forEach(function (it) { if (it.to_key && meta.seenKeys[it.to_key] === undefined) { meta.seenKeys[it.to_key] = 0; meta.keyQueue.push(String(it.to_key)); } });
         return tx(["keys"], "readwrite", function (t) { t.objectStore("keys").put({ id: String(id), title: title, json: j }); });
-      }).catch(function () { meta.counts.fail++; meta.failedKeys = (meta.failedKeys || 0) + 1; })
-        .then(function () {
-          if (++since % 10 === 0) saveMeta();
-          total = Object.keys(meta.seenKeys).length;
-          status("Downloading identification keys (" + meta.counts.keys + " of " + total + ")", meta.counts.keys, total);
-        });
-    }).then(function () {
+      }).catch(function () {
+        // Asleep or offline: not the key's fault. Put it back and wait.
+        if (document.hidden || navigator.onLine === false) { meta.keyQueue.push(id); return delay(3000); }
+        consec++;
+        if (!again[id]) { again[id] = 1; meta.keyQueue.push(id); }   // one more go, after the rest
+        else { badRun++; meta.counts.fail++; meta.failedKeys = (meta.failedKeys || 0) + 1; }
+        // Nothing at all has worked: stop wasting time on every key and say so at the end.
+        if (okRun === 0 && consec >= 12) blocked = true;
+      }).then(function () {
+        if (++since % 10 === 0) saveMeta();
+        report();
+      });
+    }, g).then(function () {
       var missing = Object.keys(meta.seenKeys).filter(function (k) { return meta.seenKeys[k] !== 1; });
-      if (!stopFlag) meta.missingKeys = missing;   // unreachable keys are listed, they do not block finishing
+      if (!stopFlag && g === gen) { meta.missingKeys = missing; meta.keysBlocked = blocked; }   // unreachable keys are listed, they do not block finishing
       return saveMeta();
     });
+  }
+
+  /* ---------- keep going when the app goes to the background ---------- */
+  function setAuto(on) { try { if (on) localStorage.setItem(AUTO, "1"); else localStorage.removeItem(AUTO); } catch (e) { } }
+  function wantsDownload() { try { return localStorage.getItem(AUTO) === "1"; } catch (e) { return false; } }
+  function lockOn() {
+    try {
+      if (navigator.wakeLock && !wake) navigator.wakeLock.request("screen").then(function (w) {
+        wake = w; w.addEventListener("release", function () { if (wake === w) wake = null; });
+      }).catch(function () { });
+    } catch (e) { }
+  }
+  function lockOff() { try { if (wake) { wake.release(); wake = null; } } catch (e) { } }
+  function keepStorage() { try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { } }
+  // Called when the app comes back to the front, the network returns, or the page loads.
+  function resumeIfNeeded() {
+    if (!meta || meta.finished || !wantsDownload() || document.hidden || navigator.onLine === false) return;
+    srcHealth = {};
+    if (running) {
+      lockOn();
+      // Requests started before the phone slept usually never come back: start a fresh run from the saved progress.
+      if (Date.now() - lastProgress > 20000) startDownload(false, true);
+      return;
+    }
+    if (stoppedAt && Date.now() - stoppedAt < 60000) return;
+    startDownload(false);
+    emit();
+  }
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) resumeIfNeeded(); });
+  window.addEventListener("pageshow", resumeIfNeeded);
+  window.addEventListener("focus", resumeIfNeeded);
+  window.addEventListener("online", resumeIfNeeded);
+  // A run that has made no progress for a long time while the app is open is stuck: restart it from saved progress.
+  setInterval(function () {
+    if (running && !document.hidden && Date.now() - lastProgress > 150000) startDownload(false, true);
+  }, 15000);
+  function updatePill() {
+    if (!running || ov) { if (pill) { pill.remove(); pill = null; } return; }
+    if (!pill) {
+      pill = document.createElement("div");
+      pill.style.cssText = "position:fixed;left:10px;bottom:10px;z-index:9998;background:#2b2b2b;color:#fff;font:12px/1.3 system-ui,sans-serif;padding:7px 11px;box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;max-width:70vw";
+      pill.onclick = function () { openUI(); };
+      document.body.appendChild(pill);
+    }
+    var st = run.state;
+    pill.textContent = "VicFlora download" + (st.total ? ": " + Math.min(100, Math.round(100 * st.done / st.total)) + "%" : "...") + " (tap)";
   }
 
   /* ---------- UI ---------- */
@@ -1774,7 +1864,7 @@ window.FHFuzzy = (function () {
     var h = "";
     if (running) {
       var pct = st.total ? Math.min(100, Math.round(100 * st.done / st.total)) : 0;
-      h += '<p class="vo-line"><b>Downloading.</b> Keep this screen open and stay on Wi-Fi if you can.</p>' +
+      h += '<p class="vo-line"><b>Downloading.</b> Stay on Wi-Fi if you can. The screen is kept awake while this runs. If you switch apps or lock the phone it pauses, and carries on by itself when you come back.</p>' +
         '<p class="vo-line">' + esc(st.text) + "</p>" +
         (run.lastErr ? '<p class="vo-line muted">Some requests are being retried (last error: ' + esc(run.lastErr) + '). This is normal if it is brief.</p>' : "") +
         (st.total ? '<div class="vo-bar"><i style="width:' + pct + '%"></i></div>' : '<div class="vo-bar ind"><i></i></div>') +
@@ -1783,7 +1873,7 @@ window.FHFuzzy = (function () {
       if (s && s.finished) {
         h += '<p class="vo-line"><b>Ready for offline use.</b> ' + s.taxa.toLocaleString() + " taxa and " + s.keys.toLocaleString() + " keys saved on this device (" + esc(fmtDate(s.finished)) + ").</p>" +
           '<p class="vo-line muted">Species search, descriptions and VicKey now work with no signal. Photos are not saved.</p>' +
-          ((meta.missingKeys && meta.missingKeys.length) || (meta.skipped && meta.skipped.length) ? '<p class="vo-line"><b>Not everything came down:</b> ' + ((meta.missingKeys || []).length ? (meta.missingKeys.length + " keys ") : "") + ((meta.skipped || []).length ? ((meta.skipped.length) + " groups of taxa ") : "") + 'could not be fetched. <button type="button" class="btn light" id="voRetry">Retry the missing parts</button></p>' : "") +
+          ((meta.missingKeys && meta.missingKeys.length) || (meta.skipped && meta.skipped.length) ? '<p class="vo-line"><b>Not everything came down:</b> ' + ((meta.missingKeys || []).length ? (meta.missingKeys.length + " keys ") : "") + ((meta.skipped || []).length ? ((meta.skipped.length) + " groups of taxa ") : "") + 'could not be fetched' + (meta.keysBlocked ? " (the key service could not be reached from this connection" + (keyErrors.length ? ": " + esc(keyErrors.slice(-2).join("; ")) : "") + ")" : "") + '. <button type="button" class="btn light" id="voRetry">Retry the missing parts</button></p>' : "") +
           '<div class="vo-btns"><button type="button" class="btn" id="voUpdate">Update data</button><button type="button" class="btn light" id="voRemove">Remove from this device</button></div>';
       } else if (s && s.partial) {
         h += '<p class="vo-line"><b>Download paused.</b> ' + s.taxa.toLocaleString() + ' taxa saved so far. Offline features turn on when it finishes.</p>' +
@@ -1791,7 +1881,7 @@ window.FHFuzzy = (function () {
           '<div class="vo-btns"><button type="button" class="btn" id="voGo">Resume</button><button type="button" class="btn light" id="voRemove">Start over</button></div>';
       } else {
         h += '<p class="vo-line">Save all of VicFlora (names, descriptions and identification keys, no photos) on this device so species search and VicKey work with no signal.</p>' +
-          '<p class="vo-line muted">This is a large download that can take a while. Use Wi-Fi and keep this screen open. If it stops, reopen this and tap Resume.</p>' +
+          '<p class="vo-line muted">This is a large download that can take a while. Use Wi-Fi. If you leave the app it pauses and carries on by itself when you come back.</p>' +
           (st.text ? '<p class="vo-line">' + esc(st.text) + "</p>" : "") +
           '<div class="vo-btns"><button type="button" class="btn" id="voGo">Download for offline use</button></div>';
       }
@@ -1802,9 +1892,10 @@ window.FHFuzzy = (function () {
     if ((b = body.querySelector("#voGo"))) b.onclick = function () { startDownload(false); render(); };
     if ((b = body.querySelector("#voRetry"))) b.onclick = function () { startDownload(false); render(); };
     if ((b = body.querySelector("#voUpdate"))) b.onclick = function () { startDownload(true); render(); };
-    if ((b = body.querySelector("#voStop"))) b.onclick = function () { stopFlag = true; b.disabled = true; b.textContent = "Pausing..."; };
+    if ((b = body.querySelector("#voStop"))) b.onclick = function () { stopFlag = true; setAuto(false); b.disabled = true; b.textContent = "Pausing..."; };
     if ((b = body.querySelector("#voRemove"))) b.onclick = function () {
       if (!confirm("Remove the offline VicFlora data from this device?")) return;
+      setAuto(false); stopFlag = true; gen++; running = false; lockOff();
       clearAll().then(function () { meta = { id: "state", finished: null, queue: null, keyQueue: null, counts: { taxa: 0, keys: 0, fail: 0 }, seenKeys: {} }; buildIndex([]); run.state = { text: "", done: 0, total: 0 }; emit(); });
     };
   }
@@ -1814,17 +1905,19 @@ window.FHFuzzy = (function () {
     ov.className = "fh-modal";
     ov.innerHTML = '<div class="fh-modal-card"><h3>Offline VicFlora data</h3><div class="vo-body" style="padding:14px 16px"></div><div class="fh-modal-foot"><button class="ghost" data-close="1">Close</button></div></div>';
     document.body.appendChild(ov);
-    ov.addEventListener("click", function (e) { if (e.target === ov || e.target.closest("[data-close]")) { ov.remove(); ov = null; } });
-    render();
+    ov.addEventListener("click", function (e) { if (e.target === ov || e.target.closest("[data-close]")) { ov.remove(); ov = null; updatePill(); } });
+    render(); updatePill();
   }
   listeners.push(render);
+  listeners.push(updatePill);
 
   window.VFOffline = {
     init: init, ready: ready, summary: summary, openUI: openUI, onChange: function (f) { listeners.push(f); },
     searchNames: searchNames, searchSurvey: searchSurvey, searchFuzzy: searchFuzzy, node: node, children: children, keyJson: keyJson,
     fetchKeyRemote: fetchKeyRemote, keyErrors: function () { return keyErrors; }
   };
-  init();
+  // If a download was under way when the app was closed or the phone slept, carry on once the page is back.
+  init().then(function () { setTimeout(resumeIfNeeded, 2500); });
 })();
 
 </script>
@@ -4934,7 +5027,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-10-20.15";
+  const BUILD_VERSION = "2026-11-02.1";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive

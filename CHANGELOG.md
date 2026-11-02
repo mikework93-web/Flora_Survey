@@ -2,6 +2,17 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## Offline VicFlora: no longer stalls at the keys, keeps going in the background (2026-11-02, v.2026-11-02.1)
+- **Stuck at the keys:** the key step tried four sources for every key (KeyBase directly, the app's own relay, two public relays) and waited up to 12 seconds on each blocked one, so with hundreds of keys it looked frozen. It now remembers which source works and tries that one first, skips sources that keep failing, and gives each source 9 seconds. A key that fails is tried once more at the end instead of straight away.
+- **Progress shows failures:** the counter now reads "x of y, n unavailable", so it visibly moves even when some keys cannot be reached.
+- **Nothing reachable:** if no key can be fetched at all, the download stops trying after a dozen attempts, finishes the names and descriptions, and tells you the key service could not be reached. Use "Retry the missing parts" later or on another connection.
+- **Key relay added:** `functions/api/key/[id].js` was described in the notes but was not in the repo. It is now. It fetches keys from KeyBase on the server, which is the reliable route. Keep the `functions` folder next to `index.html` when you push.
+- **Background:** the screen is kept awake while downloading. If you switch apps or lock the phone the download pauses (phones do not let web pages run in the background), and it carries on by itself from where it stopped as soon as you come back, when signal returns, or when you reopen the app. Requests that died while the phone slept are detected and restarted.
+- **Pause and Remove** switch the automatic continuing off. Tapping Update data or Resume switches it on.
+- A small "VicFlora download: 42% (tap)" pill shows at the bottom left while a download runs and the window is closed.
+- Asks the browser to keep the saved VicFlora data from being cleared when storage is tight.
+- Tested with mock VicFlora and KeyBase responses (key source working, key source blocked, app backgrounded with requests hanging, app closed and reopened mid-download). Not tested against live VicFlora.
+
 ## Search: tap an already-added species to open it (2026-10-20, v.15)
 - In the main species search, a species that is already on your list (green, "Added") no longer creates a duplicate when you tap it. Tapping it scrolls to the existing record, opens it if it was collapsed, and flashes it, so you can edit it or use **+ Add another point** there.
 - Each green result also has a small **+ New** button for the occasional case where you do want a second record of the same species (a different individual, say).
