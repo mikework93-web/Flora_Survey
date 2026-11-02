@@ -1599,6 +1599,7 @@ window.FHFuzzy = (function () {
           .then(function (j) { if (!j || !j.leads) throw new Error("not a key"); var h = health(src.name); h.ok++; h.bad = 0; return j; })
           .catch(function (e) {
             if (!document.hidden) health(src.name).bad++;
+            health(src.name).last = (e && e.name === "AbortError") ? "timed out" : (e && e.message === "Failed to fetch" ? "blocked or offline" : (e && e.message) || "failed");
             keyErrors.push(src.name + ": " + (e && e.message === "Failed to fetch" ? "blocked or offline" : (e && e.message) || "failed"));
             if (keyErrors.length > 40) keyErrors.splice(0, keyErrors.length - 40);
             throw e;
@@ -1613,6 +1614,28 @@ window.FHFuzzy = (function () {
       if (n <= 0) throw e;
       return new Promise(function (r) { setTimeout(r, 1500 * (4 - n)); }).then(function () { return retry(fn, n - 1); });
     });
+  }
+
+  function sourceReport() {
+    return ["direct", "relay", "corsproxy", "allorigins"].map(function (n) {
+      var h = srcHealth[n];
+      return n + ": " + (h ? (h.ok ? h.ok + " fetched" : (h.last || "not tried")) : "not tried");
+    }).join("; ");
+  }
+  var testOut = "";
+  // Tries one missing key on every route separately and shows what each one says.
+  function testKeys() {
+    var id = ((meta && meta.missingKeys) || [])[0] || "1";
+    testOut = "Testing key " + id + "...";
+    emit();
+    return Promise.all(keySources(id).map(function (src) {
+      var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      var to = ctrl && setTimeout(function () { ctrl.abort(); }, 12000);
+      return fetch(src.url, { headers: { "Accept": "application/json" }, signal: ctrl ? ctrl.signal : undefined })
+        .then(function (r) { var st = r.status; return r.text().then(function (t) { var j = null; try { j = JSON.parse(t); } catch (e) { } return src.name + ": HTTP " + st + (j && j.leads ? ", key OK" : ", not a key (" + esc(t.slice(0, 50).replace(/\s+/g, " ")) + ")"); }); })
+        .catch(function (e) { return src.name + ": " + ((e && e.name === "AbortError") ? "timed out" : (e && e.message === "Failed to fetch" ? "blocked or offline" : (e && e.message) || "failed")); })
+        .then(function (m) { if (to) clearTimeout(to); return m; });
+    })).then(function (r) { testOut = "Key " + id + " ... " + r.join("; "); emit(); });
   }
 
   /* ---------- download ---------- */
@@ -1873,7 +1896,7 @@ window.FHFuzzy = (function () {
       if (s && s.finished) {
         h += '<p class="vo-line"><b>Ready for offline use.</b> ' + s.taxa.toLocaleString() + " taxa and " + s.keys.toLocaleString() + " keys saved on this device (" + esc(fmtDate(s.finished)) + ").</p>" +
           '<p class="vo-line muted">Species search, descriptions and VicKey now work with no signal. Photos are not saved.</p>' +
-          ((meta.missingKeys && meta.missingKeys.length) || (meta.skipped && meta.skipped.length) ? '<p class="vo-line"><b>Not everything came down:</b> ' + ((meta.missingKeys || []).length ? (meta.missingKeys.length + " keys ") : "") + ((meta.skipped || []).length ? ((meta.skipped.length) + " groups of taxa ") : "") + 'could not be fetched' + (meta.keysBlocked ? " (the key service could not be reached from this connection" + (keyErrors.length ? ": " + esc(keyErrors.slice(-2).join("; ")) : "") + ")" : "") + '. <button type="button" class="btn light" id="voRetry">Retry the missing parts</button></p>' : "") +
+          ((meta.missingKeys && meta.missingKeys.length) || (meta.skipped && meta.skipped.length) ? '<p class="vo-line"><b>Not everything came down:</b> ' + ((meta.missingKeys || []).length ? (meta.missingKeys.length + " keys ") : "") + ((meta.skipped || []).length ? ((meta.skipped.length) + " groups of taxa ") : "") + 'could not be fetched' + (meta.keysBlocked ? " (the key service could not be reached from this connection" + (": " + esc(sourceReport())) + ")" : "") + '. <button type="button" class="btn light" id="voRetry">Retry the missing parts</button> <button type="button" class="btn light" id="voTest">Test the key service</button></p>' + (testOut ? '<p class="vo-line muted">' + esc(testOut) + "</p>" : "") : "") +
           '<div class="vo-btns"><button type="button" class="btn" id="voUpdate">Update data</button><button type="button" class="btn light" id="voRemove">Remove from this device</button></div>';
       } else if (s && s.partial) {
         h += '<p class="vo-line"><b>Download paused.</b> ' + s.taxa.toLocaleString() + ' taxa saved so far. Offline features turn on when it finishes.</p>' +
@@ -1890,6 +1913,7 @@ window.FHFuzzy = (function () {
     body.innerHTML = h;
     var b;
     if ((b = body.querySelector("#voGo"))) b.onclick = function () { startDownload(false); render(); };
+    if ((b = body.querySelector("#voTest"))) b.onclick = function () { b.disabled = true; testKeys(); };
     if ((b = body.querySelector("#voRetry"))) b.onclick = function () { startDownload(false); render(); };
     if ((b = body.querySelector("#voUpdate"))) b.onclick = function () { startDownload(true); render(); };
     if ((b = body.querySelector("#voStop"))) b.onclick = function () { stopFlag = true; setAuto(false); b.disabled = true; b.textContent = "Pausing..."; };
@@ -5027,7 +5051,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-02.1";
+  const BUILD_VERSION = "2026-11-02.2";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive

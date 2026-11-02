@@ -9,6 +9,7 @@ Changes made to this copy of the app (started from your `Flora_Survey`). Plain-E
 - **Key relay added:** `functions/api/key/[id].js` was described in the notes but was not in the repo. It is now. It fetches keys from KeyBase on the server, which is the reliable route. Keep the `functions` folder next to `index.html` when you push.
 - **Background:** the screen is kept awake while downloading. If you switch apps or lock the phone the download pauses (phones do not let web pages run in the background), and it carries on by itself from where it stopped as soon as you come back, when signal returns, or when you reopen the app. Requests that died while the phone slept are detected and restarted.
 - **Pause and Remove** switch the automatic continuing off. Tapping Update data or Resume switches it on.
+- When keys cannot be fetched, the message now lists what each route (direct, relay, corsproxy, allorigins) said, and a **Test the key service** button tries one key on every route and shows the result. (v.2026-11-02.2)
 - A small "VicFlora download: 42% (tap)" pill shows at the bottom left while a download runs and the window is closed.
 - Asks the browser to keep the saved VicFlora data from being cleared when storage is tight.
 - Tested with mock VicFlora and KeyBase responses (key source working, key source blocked, app backgrounded with requests hanging, app closed and reopened mid-download). Not tested against live VicFlora.
