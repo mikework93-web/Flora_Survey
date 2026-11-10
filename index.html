@@ -998,6 +998,8 @@ body.t-roadside .only-flora,body.t-tree .only-flora,body.t-roadside .not-road,bo
 .rd-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin:0 0 10px}
 .rd-photo input{width:100%;margin-top:4px;font-size:12px}
 .rd-pid{font-size:10px;color:var(--muted);margin-top:2px;word-break:break-all}
+.rd-vphotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin:4px 0}
+.rd-nothumb{font-size:11px;color:var(--muted);padding:26px 6px;text-align:center;border:1px dashed var(--border)}
 .rd-sig{margin:8px 0 4px}
 .rd-sig input{width:100%}
 .tr-panel{margin:10px 0 4px;padding:10px;border:1px solid var(--border);background:var(--field);border-radius:3px}
@@ -5114,7 +5116,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-10.2";
+  const BUILD_VERSION = "2026-11-10.3";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -9816,7 +9818,12 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   const TYPE_LABEL = { flora:"Flora Survey", roadside:"Casey Roadside", tree:"Significant Trees" };
   const ROAD_PREPARERS = ["Michael Sommer","Michael Lenten","Glenn Brownfield","Henri Kinkel","Nick Hutcheson","George Collins","Josh McCaig","John Tokmakidis","Liam McCormack","Jake Wearne"];
   const ROAD_PRIORITY = ["Very High","High","Moderate","Low"];
-  function blankValue(){ return { value:"", threat:"", mitigation:"", priority:"" }; }
+  function newValCode(){ return "RV-"+Math.random().toString(36).slice(2,8).toUpperCase(); }
+  function blankValue(){ return { code:newValCode(), value:"", threat:"", mitigation:"", priority:"", photos:[] }; }
+  function normValue(v){ if(!v.code) v.code = newValCode(); if(!Array.isArray(v.photos)) v.photos = []; return v; }
+  // Photo IDs shown in the exported tables: they are also the exported file names (photos/<ID>.jpg).
+  function valPhotoIds(v){ return (v.photos||[]).map(p=>p.label).filter(Boolean); }
+  function rowPhotoIds(r){ const ph = r.photos||[]; return ph.map((p,i)=> ph.length>1 ? (r.id||"species")+"-"+(i+1) : (r.id||"species")); }
   function blankRoadside(){ return { preparedBy:"", preparedOther:"", time:"", values:[blankValue(),blankValue(),blankValue()], commentary:"", photos:[] }; }
   function blankTree(){ return { owner:"", address:"", name2:"", assessment:"", eastWest:"", elbYear:"", fid:0, modNote:"", status:"", health:"", dbh:"", created:"", modAt:"", modBy:"" }; }
   // Significant tree attribute table (the Feature list supplied for Casey).
@@ -9960,13 +9967,19 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   }
   function renderRoadValues(){
     const e = FHKit.esc;
+    roadside.values.forEach(normValue);
     $("rdValues").innerHTML = roadside.values.map((v,i)=>
       '<div class="rd-val"><div class="rd-val-head"><b>'+(i+1)+'</b><button type="button" class="rd-del" data-rd-del="'+i+'">Remove</button></div>'
       + '<label class="detail-label">Ecological value</label><textarea rows="2" data-rdv="'+i+'|value">'+e(v.value)+'</textarea>'
       + '<label class="detail-label">Threatening process(es)</label><textarea rows="2" data-rdv="'+i+'|threat">'+e(v.threat)+'</textarea>'
       + '<label class="detail-label">Mitigation</label><textarea rows="2" data-rdv="'+i+'|mitigation">'+e(v.mitigation)+'</textarea>'
       + '<label class="detail-label">Priority</label><select data-rdv="'+i+'|priority"><option value="">Select</option>'
-      + ROAD_PRIORITY.map(p=>'<option'+(v.priority===p?' selected':'')+'>'+p+'</option>').join("") + '</select></div>'
+      + ROAD_PRIORITY.map(p=>'<option'+(v.priority===p?' selected':'')+'>'+p+'</option>').join("") + '</select>'
+      + '<div class="rd-vphotos">' + (v.photos||[]).map(p=>
+          '<div class="rd-photo"><div class="photo-thumb">'+(p.thumb?'<img src="'+p.thumb+'" alt="Photo for row '+(i+1)+'">':'<div class="rd-nothumb">On another phone</div>')+'<button type="button" class="x" data-rd-vphoto-del="'+e(v.code)+'|'+e(p.id)+'" title="Remove photo">&times;</button></div>'
+          + '<div class="rd-pid">'+e(p.label||"")+'</div></div>').join("") + '</div>'
+      + '<div class="photo-btns"><button type="button" class="btn-out sp-addphoto" data-rd-vcam="'+e(v.code)+'">Take photo</button><button type="button" class="btn-out sp-addphoto" data-rd-vfile="'+e(v.code)+'">Add photos</button></div>'
+      + '<div class="rd-pid">Row ID '+e(v.code)+'</div></div>'
     ).join("");
   }
   function renderRoadPhotos(){
@@ -9994,6 +10007,32 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
     renderRoadPhotos(); autosave();
   }
+  let vPhotoTarget = null;
+  async function addValuePhotos(code, files){
+    if(!requireName(()=>addValuePhotos(code, files))) return;
+    const v = roadside.values.find(x=>x.code===code); if(!v) return;
+    normValue(v);
+    for(const f of Array.from(files||[])){
+      const id = "p_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
+      const nums = v.photos.map(p=>+String(p.label||"").split("-").pop()||0);
+      const label = code+"-"+((nums.length?Math.max(...nums):0)+1);
+      try{
+        const { full, thumb } = await stampImage(f, label);
+        await putPhotoBytes(id, full);
+        v.photos.push({ id, thumb, label, addedAt:new Date().toISOString() });
+        clearStorageWarning("photo");
+      }catch(err){ showStorageWarning("photo", err); FHKit.toast("Couldn't save a photo. Check your device's available storage."); }
+    }
+    renderRoadValues(); autosave(); liveSyncRoadside();
+  }
+  (function mkValInputs(){
+    [["rdValCam",true],["rdValFile",false]].forEach(([id,cam])=>{
+      const inp = document.createElement("input"); inp.type="file"; inp.accept="image/*"; inp.id=id; inp.className="file-hidden"; inp.tabIndex=-1;
+      if(cam) inp.setAttribute("capture","environment"); else inp.multiple = true;
+      inp.addEventListener("change", ev=>{ const files = Array.from(ev.target.files||[]); ev.target.value=""; if(vPhotoTarget) addValuePhotos(vPhotoTarget, files); });
+      document.body.appendChild(inp);
+    });
+  })();
   (function wireRoadside(){
     const card = $("roadCard"), pcard = $("roadPhotoCard");
     if(!card || !pcard) return;
@@ -10012,12 +10051,21 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       else if(t.dataset.rdv){ const [i,k] = t.dataset.rdv.split("|"); const v = roadside.values[+i]; if(v && v[k] !== t.value){ v[k] = t.value; autosave(); liveSyncRoadside(); } }
     });
     card.addEventListener("click", ev=>{
+      const vc = ev.target.closest("[data-rd-vcam]"), vf = ev.target.closest("[data-rd-vfile]");
+      if(vc){ vPhotoTarget = vc.dataset.rdVcam; $("rdValCam").click(); return; }
+      if(vf){ vPhotoTarget = vf.dataset.rdVfile; $("rdValFile").click(); return; }
+      const vd = ev.target.closest("[data-rd-vphoto-del]");
+      if(vd){
+        const [code, pid] = vd.dataset.rdVphotoDel.split("|"); const v = roadside.values.find(x=>x.code===code);
+        if(v){ v.photos = (v.photos||[]).filter(p=>p.id!==pid); renderRoadValues(); autosave(); liveSyncRoadside(); deletePhotoBytes(pid); }
+        return;
+      }
       if(ev.target.closest("#rdAddValue")){ roadside.values.push(blankValue()); renderRoadValues(); autosave(); liveSyncRoadside(); return; }
       const d = ev.target.closest("[data-rd-del]");
       if(d){
         const i = +d.dataset.rdDel, v = roadside.values[i]; if(!v) return;
-        const empty = !(v.value||v.threat||v.mitigation||v.priority);
-        const go = ()=>{ roadside.values.splice(i,1); if(!roadside.values.length) roadside.values.push(blankValue()); renderRoadValues(); autosave(); liveSyncRoadside(); };
+        const empty = !(v.value||v.threat||v.mitigation||v.priority||(v.photos||[]).length);
+        const go = ()=>{ (v.photos||[]).forEach(p=>deletePhotoBytes(p.id)); roadside.values.splice(i,1); if(!roadside.values.length) roadside.values.push(blankValue()); renderRoadValues(); autosave(); liveSyncRoadside(); };
         if(empty) go(); else confirmToast("Remove row "+(i+1)+"?", "Remove", go);
       }
     });
@@ -10062,17 +10110,17 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       push(["Prepared by", prepared]);
       push([]);
       push(["Values and Threats"], "bold");
-      push(["#","Ecological Value","Threatening Process(es)","Mitigation","Priority"], "bold");
-      (rd.values||[]).filter(v=>v.value||v.threat||v.mitigation||v.priority).forEach((v,i)=>{ push([i+1, v.value, v.threat, v.mitigation, v.priority], "wrap"); });
+      push(["#","Ecological Value","Threatening Process(es)","Mitigation","Priority","Row ID","Photo IDs"], "bold");
+      (rd.values||[]).filter(v=>v.value||v.threat||v.mitigation||v.priority||(v.photos||[]).length).forEach((v,i)=>{ push([i+1, v.value, v.threat, v.mitigation, v.priority, v.code||"", valPhotoIds(v).join(", ")], "wrap"); });
       push([]);
       push(["Commentary"], "bold");
       push(["Observations and Recommendation:", rd.commentary||""], "wrap");
       push([]);
       push(["Significant Species Observed"], "bold");
-      push(["#","Scientific Name","Common Name","Significance","Record ID","Points","Coordinates (GDA2020 MGA zone 55)","Uncertain ID","Recorded by","Notes"], "bold");
+      push(["#","Scientific Name","Common Name","Significance","Record ID","Points","Coordinates (GDA2020 MGA zone 55)","Uncertain ID","Recorded by","Notes","Photo IDs"], "bold");
       rowsX.forEach((r,i)=>{
         const coords = (r.points||[]).map(p=>{ try{ const xy = FHKit.xyForSrs(p.lat,p.lon,FHKit.EXPORT_SRS); return Math.round(xy[0])+"E "+Math.round(xy[1])+"N"; }catch(e){ return ""; } }).join("; ");
-        push([i+1, r.sci, r.common||"", r.sigText||"", r.id||"", (r.points||[]).length||"", coords, r.uncertain?"Yes":"", r.addedBy||"", r.fieldNotes||""], (r.free||r.uncertain) ? "red" : "wrap");
+        push([i+1, r.sci, r.common||"", r.sigText||"", r.id||"", (r.points||[]).length||"", coords, r.uncertain?"Yes":"", r.addedBy||"", r.fieldNotes||"", rowPhotoIds(r).join(", ")], (r.free||r.uncertain) ? "red" : "wrap");
       });
       if((rd.photos||[]).length){
         push([]); push(["Photos"], "bold"); push(["Photo ID","Caption"], "bold");
@@ -10082,7 +10130,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         push([]); push(["Field Notes"], "bold");
         D.siteNotes.forEach(n=>{ if((n.text||"").trim()) push([fmtNoteTime(n.ts), n.text], "wrap"); });
       }
-      return [6,30,34,34,18,8,30,12,14,34];
+      return [6,30,34,34,18,22,30,12,14,34,30];
     }
     // trees: one clean attribute table (header on row 1) so it opens straight into GIS
     push(TREE_FIELDS.map(f=>f.k), "bold");
@@ -10122,6 +10170,14 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       for(const p of rp){
         let du = p.dataUrl; if(!du){ try{ du = await getPhotoBytes(p.id); }catch(e){ du = null; } }
         if(du) photoFiles[(p.label || p.id)+".jpg"] = dataUrlToBytes(du);
+      }
+    }
+    if(type==="roadside" && !D.skipPhotos){
+      for(const v of ((D.roadside && D.roadside.values) || [])){
+        for(const p of (v.photos||[])){
+          let du = p.dataUrl; if(!du){ try{ du = await getPhotoBytes(p.id); }catch(e){ du = null; } }
+          if(du && p.label) photoFiles[p.label+".jpg"] = dataUrlToBytes(du);
+        }
       }
     }
     const gisFiles = {}; let geoPoints = [], pointsIncluded = false, polygonsIncluded = false;
@@ -10309,18 +10365,20 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     kv("Prepared by", prepared);
 
     heading("Values and Threats");
-    const vals = (rd.values||[]).filter(v=>v.value||v.threat||v.mitigation||v.priority).map((v,i)=>[String(i+1), v.value, v.threat, v.mitigation, v.priority]);
-    if(vals.length) table([4,24,24,32,12], ["#","Ecological Value","Threatening Process(es)","Mitigation","Priority"], vals);
+    const vals = (rd.values||[]).filter(v=>v.value||v.threat||v.mitigation||v.priority||(v.photos||[]).length).map((v,i)=>[String(i+1), v.value, v.threat, v.mitigation, v.priority, valPhotoIds(v).join(" ")]);
+    if(vals.length) table([4,21,21,26,10,18], ["#","Ecological Value","Threatening Process(es)","Mitigation","Priority","Photo IDs"], vals);
     else para("No values or threats recorded.");
 
     heading("Commentary");
     para(rd.commentary || "No commentary recorded.");
 
     heading("Significant Species Observed");
-    if(rowsX.length) table([4,30,26,40], ["#","Scientific Name","Common Name","Significance"], rowsX.map((r,i)=>[String(i+1), r.sci, r.common||"", r.sigText||""]));
+    if(rowsX.length) table([4,26,22,30,18], ["#","Scientific Name","Common Name","Significance","Photo IDs"], rowsX.map((r,i)=>[String(i+1), r.sci, r.common||"", r.sigText||"", rowPhotoIds(r).join(" ")]));
     else para("No significant species recorded.");
 
-    const ph = (rd.photos||[]).filter(p=>p.thumb);
+    const ph = (rd.photos||[]).filter(p=>p.thumb).slice();
+    (rd.values||[]).forEach((v,vi)=> (v.photos||[]).forEach(p=>{ if(p.thumb) ph.push({ thumb:p.thumb, label:p.label, caption:"Values row "+(vi+1) }); }));
+    rowsX.forEach(r=>{ const ids = rowPhotoIds(r); (r.photos||[]).forEach((p,i)=>{ if(p.thumb) ph.push({ thumb:p.thumb, label:ids[i], caption:r.sci }); }); });
     if(ph.length){
       heading("Photos");
       const colsN = 3, gap = 10, cw = (CW - gap*(colsN-1))/colsN;
@@ -10392,7 +10450,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const f = { type:surveyType };
     if(surveyType==="roadside"){
       f.rdPreparedBy = roadside.preparedBy||""; f.rdPreparedOther = roadside.preparedOther||""; f.rdTime = roadside.time||"";
-      f.rdCommentary = roadside.commentary||""; f.rdValuesJson = JSON.stringify(roadside.values||[]);
+      f.rdCommentary = roadside.commentary||""; f.rdValuesJson = JSON.stringify((roadside.values||[]).map(v=>Object.assign({}, v, { photos:(v.photos||[]).map(p=>({ id:p.id, label:p.label })) })));
       f.rdUpdatedBy = deviceId(); f.rdUpdatedAt = new Date().toISOString();
     }
     return f;
@@ -10414,7 +10472,13 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   function applyRoadMeta(d){
     roadside.preparedBy = d.rdPreparedBy||""; roadside.preparedOther = d.rdPreparedOther||""; roadside.time = d.rdTime||"";
     roadside.commentary = d.rdCommentary||"";
-    try{ const v = JSON.parse(d.rdValuesJson||"[]"); if(Array.isArray(v) && v.length) roadside.values = v.map(x=>Object.assign(blankValue(), x)); }catch(e){}
+    try{
+      const v = JSON.parse(d.rdValuesJson||"[]");
+      if(Array.isArray(v) && v.length){
+        const local = {}; (roadside.values||[]).forEach(o=> (o.photos||[]).forEach(p=>{ local[p.id] = p; }));
+        roadside.values = v.map(x=>{ const o = Object.assign(blankValue(), x); o.photos = (x.photos||[]).map(p=> local[p.id] || { id:p.id, label:p.label, thumb:"" }); return normValue(o); });
+      }
+    }catch(e){}
     renderRoadside();
   }
   // Called when joining: take the survey's type (and roadside form) from the shared record.
