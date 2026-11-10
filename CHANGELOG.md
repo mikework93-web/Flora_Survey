@@ -2,6 +2,25 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## New survey types: Casey Roadside and Significant Trees (2026-11-10, v.2026-11-10.1)
+- **Home page:** three ways to start: Flora Survey (unchanged), Casey Roadside Survey and Significant Tree Survey. Each survey remembers its type, shows it as a tag, and appears with its type in the Open and Saved folder lists. Team Sync, the Summary card and (for roadside) Polygons are only shown for the survey types they apply to.
+- **Casey Roadside (follows the report template):**
+  - Title page: site conducted, date and time, and Prepared by (the staff list from the template, plus Other).
+  - Values and Threats table: ecological value, threatening process(es), mitigation and priority (Very High, High, Moderate, Low). Add as many rows as needed.
+  - Commentary: observations and recommendation.
+  - Significant Species table: search VicFlora (the offline download works here too) and tap a species to add it. It fills the scientific and common name, and the significance is filled from FFG/EPBC status and can be edited. Tick **Mark on map** to drop a point for a high value species, with the same map, adjust, add-another-point and photo functions as the Flora Survey.
+  - Photos: take or choose photos, each stamped with its own ID and with a caption.
+  - Export: one zip with the Excel file (laid out like the template), a PDF of the completed form in Keystone colours (with photos), GIS (GeoPackage in GDA2020 / MGA zone 55) and the photos.
+- **Significant Trees:**
+  - Search a species to add a tree. Searching the same species again adds another tree (no "already added" shortcut).
+  - Set the location on the map first. Once it is confirmed, the attribute form opens on the tree, like a Flora Survey species but with more detail. Easting and Northing (GDA2020 MGA zone 55), Unique_Tree_ID, GISFID, GISCreateDate, GISModDate and GISModName are filled in by the app. Tree_Owner, Address, Common_Name_2, Final_Assessment, East_West, Elb_Year, GISModNote, GISStatus, Tree/Patch Health and DBH are typed. Common_Name and Genus_and_species come from the species picked (use Edit record to change them).
+  - Each tree has its own unique ID (TR-...), stamped on its photos, with the same notes and photos panel as a species.
+  - Polygons work as before.
+  - Export: one zip with the Excel attribute table (the template's fields as columns, header in row 1), a GeoPackage of tree points carrying every attribute, a polygons GeoPackage if any were drawn, and the photos named by tree ID. Large surveys split into several point GeoPackage files automatically.
+- **VicKey** is in the Menu in all three survey types.
+- Not included for the new types yet: Team Sync, and importing an exported survey back in. Export all includes them.
+- Tested with mock data in a browser (form entry, species search, map point, photos, export contents, reload and restore, Flora Survey unchanged). Not tested on a real phone.
+
 ## Offline VicFlora: no longer stalls at the keys, keeps going in the background (2026-11-02, v.2026-11-02.1)
 - **Stuck at the keys:** the key step tried four sources for every key (KeyBase directly, the app's own relay, two public relays) and waited up to 12 seconds on each blocked one, so with hundreds of keys it looked frozen. It now remembers which source works and tries that one first, skips sources that keep failing, and gives each source 9 seconds. A key that fails is tried once more at the end instead of straight away.
 - **Progress shows failures:** the counter now reads "x of y, n unavailable", so it visibly moves even when some keys cannot be reached.
