@@ -983,6 +983,33 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
 .pick-opt .newrec{flex:none;font-size:11px;font-weight:700;color:var(--muted);background:var(--field);border:1px solid var(--border);border-radius:3px;padding:2px 7px;cursor:pointer}
 .row-flash{animation:rowflash 1.8s ease-out}
 @keyframes rowflash{0%,40%{box-shadow:0 0 0 3px var(--gold);background:rgba(204,167,53,.18)}100%{box-shadow:0 0 0 0 transparent}}
+
+/* Survey types (Flora / Casey Roadside / Significant Trees) */
+body.t-roadside .only-flora,body.t-tree .only-flora,body.t-roadside .not-road,body:not(.t-roadside) .only-road{display:none!important}
+.survey-type-tag{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:10px;background:var(--gold);color:var(--on-gold);font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;vertical-align:middle}
+.rd-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rd-two .field,#rdOtherWrap{margin:0 0 10px}
+.rd-two input,.rd-two select,#rdOtherWrap input,#rdComment{width:100%}
+.rd-h{margin:14px 0 8px;font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--gold-dark)}
+.rd-val{border:1px solid var(--border);background:var(--field);border-radius:3px;padding:10px;margin:0 0 10px}
+.rd-val textarea,.rd-val select{width:100%;margin:2px 0 8px}
+.rd-val-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.rd-del{background:none;border:none;color:var(--red);font-size:12px;font-weight:700;cursor:pointer;padding:4px}
+.rd-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin:0 0 10px}
+.rd-photo input{width:100%;margin-top:4px;font-size:12px}
+.rd-pid{font-size:10px;color:var(--muted);margin-top:2px;word-break:break-all}
+.rd-sig{margin:8px 0 4px}
+.rd-sig input{width:100%}
+.tr-panel{margin:10px 0 4px;padding:10px;border:1px solid var(--border);background:var(--field);border-radius:3px}
+.tr-title{font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--gold-dark);margin-bottom:8px}
+.tr-wait{font-size:12.5px;color:var(--muted)}
+.tr-auto{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--line-soft)}
+.tr-ro{display:flex;flex-direction:column;font-size:12px;min-width:0}
+.tr-ro span{font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+.tr-ro b{font-weight:600;word-break:break-all}
+.tr-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+.tr-f input{width:100%}
+@media (max-width:420px){.tr-grid,.tr-auto{grid-template-columns:1fr}}
 </style>
 <!-- Aerial imagery map (for precise point placement/adjustment and polygon
      drawing — see MapModal). Loaded with no integrity/crossorigin hash: a
@@ -1007,7 +1034,9 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
       <h1>Flora Survey</h1>
       <p>Record species, polygons and field notes on site. Everything saves on this phone as you go.</p>
     </div>
-    <button type="button" class="home-tile primary" id="homeStart"><svg class="ht-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.4 6 14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg><span class="ht-txt"><b>Start a new survey</b><small>Set the site and date, then record</small></span><svg class="ht-go" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z"/></svg></button>
+    <button type="button" class="home-tile primary" id="homeStart"><svg class="ht-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.4 6 14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg><span class="ht-txt"><b>Flora Survey</b><small>Species, polygons and field notes</small></span><svg class="ht-go" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z"/></svg></button>
+    <button type="button" class="home-tile primary" id="homeStartRoad"><svg class="ht-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4h2v3h-2zm0 5h2v4h-2zm0 6h2v5h-2zM5 3h2v18H5zM17 3h2v18h-2z"/></svg><span class="ht-txt"><b>Casey Roadside Survey</b><small>Values, threats, significant species, photos</small></span><svg class="ht-go" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z"/></svg></button>
+    <button type="button" class="home-tile primary" id="homeStartTree"><svg class="ht-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 6 10h3l-4 6h5v6h4v-6h5l-4-6h3z"/></svg><span class="ht-txt"><b>Significant Tree Survey</b><small>Tree points with attributes, polygons, photos</small></span><svg class="ht-go" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z"/></svg></button>
     <button type="button" class="home-tile" id="homeOpen" aria-expanded="false"><svg class="ht-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg><span class="ht-txt"><b>Open a saved survey</b><small id="homeOpenSub">Pick up where you left off</small></span><svg class="ht-go ht-toggle" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></button>
     <div class="home-panel" id="homeOpenPanel" hidden>
       <div id="homeList" class="home-list"></div>
@@ -1028,7 +1057,7 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
 
   <div class="card" id="surveyCard">
     <button type="button" class="home-back" id="homeBack"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Home</button>
-    <h2>Survey details <span class="survey-pill" id="surveyPill"><span class="dot"></span>In progress</span></h2>
+    <h2><span id="surveyCardTitle">Survey details</span> <span class="survey-type-tag" id="surveyTypeTag" hidden></span> <span class="survey-pill" id="surveyPill"><span class="dot"></span>In progress</span></h2>
     <div class="row stack">
       <div class="field"><label for="site">Site / location</label><div class="ifield"><svg class="fi" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg><input id="site" placeholder="Enter site or location"></div></div>
       <div class="field"><label for="dateBtn">Date</label><div class="ifield"><svg class="fi" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V9h14v11z"/></svg><input id="date" type="hidden"><button type="button" id="dateBtn" class="date-btn"><span id="dateText">Pick a date</span><svg class="date-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></button></div></div>
@@ -1042,7 +1071,7 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
     </div>
   </div>
 
-  <div class="card" id="liveCard">
+  <div class="card only-flora" id="liveCard">
     <h2>Team Sync <span class="live-pill" id="livePill" hidden></span></h2>
     <div id="liveSetup">
       <div class="field"><label for="userName">Your name</label><div class="ifield"><svg class="fi" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/></svg><input id="userName" autocomplete="name" placeholder="Enter your name"></div></div>
@@ -1074,22 +1103,44 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
     </div>
   </div>
 
+  <div class="card survey-only only-road" id="roadCard">
+    <h2>Roadside report</h2>
+    <div class="rd-two">
+      <div class="field"><label for="rdTime">Time</label><input id="rdTime" type="time"></div>
+      <div class="field"><label for="rdPrep">Prepared by</label><select id="rdPrep"></select></div>
+    </div>
+    <div class="field" id="rdOtherWrap" hidden><label for="rdOther">Other (name)</label><input id="rdOther" type="text" autocomplete="off"></div>
+    <p class="muted" style="margin:6px 0 12px">The site and date are set in Survey details above.</p>
+    <h3 class="rd-h">Values and threats</h3>
+    <div id="rdValues"></div>
+    <button type="button" class="btn light" id="rdAddValue" style="margin-top:4px">+ Add row</button>
+    <h3 class="rd-h">Commentary</h3>
+    <label class="detail-label" for="rdComment">Observations and recommendation</label>
+    <textarea id="rdComment" rows="6" placeholder="Observations and recommendation"></textarea>
+  </div>
+  <div class="card survey-only only-road" id="roadPhotoCard">
+    <h2>Photos <span class="n" id="rdPhotoCount"></span></h2>
+    <div id="rdPhotos" class="rd-photos"></div>
+    <input type="file" accept="image/*" capture="environment" class="file-hidden" tabindex="-1" id="rdCamInput">
+    <input type="file" accept="image/*" multiple class="file-hidden" tabindex="-1" id="rdFileInput">
+    <div class="photo-btns"><button type="button" class="btn-out sp-addphoto" id="rdTakePhoto">Take photo</button><button type="button" class="btn-out sp-addphoto" id="rdChoosePhoto">Choose photos</button></div>
+  </div>
   <div class="card survey-only">
-    <h2>Add species</h2>
+    <h2 id="addCardTitle">Add species</h2>
     <div class="pick">
       <div class="ifield"><svg class="fi" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 9.5 16a6.5 6.5 0 0 0 4.2-1.6l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg><input id="pick" type="text" placeholder="Search species" autocomplete="off"></div>
       <div class="pick-list" id="pickList"></div>
     </div>
-    <p class="muted" style="margin:8px 0 0">Search a species and tap it to record it below. Names not in the reference list are added as free text, tagged invasive, and highlighted red on export (change the origin in the table if needed). Tick <b>Uncertain</b> on any record you're not fully confident of (same red highlight).</p>
+    <p class="muted" id="addCardHelp" style="margin:8px 0 0">Search a species and tap it to record it below. Names not in the reference list are added as free text, tagged invasive, and highlighted red on export (change the origin in the table if needed). Tick <b>Uncertain</b> on any record you're not fully confident of (same red highlight).</p>
   </div>
 
   <div class="card survey-only">
-    <h2>Recorded species <span class="n" id="count"></span></h2>
+    <h2><span id="recCardTitle">Recorded species</span> <span class="n" id="count"></span></h2>
     <div id="tbody" class="species-list"></div>
     <div class="empty" id="empty">No species recorded yet — add some above.</div>
   </div>
 
-  <div class="card survey-only">
+  <div class="card survey-only not-road">
     <h2>Polygons <span class="n" id="polyCount"></span></h2>
     <p class="muted" style="margin:0 0 10px">Draw an area on an aerial map (a habitat patch, a stand, a survey plot) and list the species found within it — separate from the individually-located Significant species above. Polygons are shared with your team the same way species are.</p>
     <div id="polyList"></div>
@@ -1097,7 +1148,7 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
     <p class="muted" style="margin:6px 0 0;font-size:11.5px">Tip: press and hold “+ Add Polygon” to walk the boundary — a corner is added automatically as you move.</p>
   </div>
 
-  <div class="card survey-only">
+  <div class="card survey-only only-flora">
     <h2>Summary</h2>
     <div class="sum tabular">
       <div class="stat"><b id="sTotal">0</b><span>Species</span></div>
@@ -4220,7 +4271,11 @@ window.FHKit = (function(){
       +"identifier TEXT,description TEXT,last_change TEXT NOT NULL,min_x DOUBLE,min_y DOUBLE,max_x DOUBLE,max_y DOUBLE,srs_id INTEGER)";
     const sqlGeomCols = "CREATE TABLE gpkg_geometry_columns (table_name TEXT NOT NULL,column_name TEXT NOT NULL,"
       +"geometry_type_name TEXT NOT NULL,srs_id INTEGER NOT NULL,z TINYINT NOT NULL,m TINYINT NOT NULL)";
-    const sqlFeature = "CREATE TABLE "+tableName+" (fid INTEGER PRIMARY KEY AUTOINCREMENT,"+geomCol+" POINT,"
+    const extraCols = (opts && Array.isArray(opts.columns) && opts.columns.length) ? opts.columns : null;
+    const colSql = c => c.name.replace(/[^A-Za-z0-9_]/g,"_")+" "+(c.type==="int"?"INTEGER":(c.type==="real"?"REAL":"TEXT"));
+    const sqlFeature = extraCols
+      ? "CREATE TABLE "+tableName+" (fid INTEGER PRIMARY KEY AUTOINCREMENT,"+geomCol+" POINT,"+extraCols.map(colSql).join(",")+")"
+      : "CREATE TABLE "+tableName+" (fid INTEGER PRIMARY KEY AUTOINCREMENT,"+geomCol+" POINT,"
       +"record_id TEXT,scientific_name TEXT,common_name TEXT)";
 
     const srsRows = [
@@ -4240,7 +4295,15 @@ window.FHKit = (function(){
     ];
     const featureRows = points.map((p,i)=>({
       rowid: i+1,
-      record: gpkgEncodeRecord([ rid(), {t:"blob", v: gpkgEncodePoint(p.lon, p.lat, srsId)}, t(p.id), t(p.sci), t(p.common) ])
+      record: gpkgEncodeRecord(extraCols
+        ? [ rid(), {t:"blob", v: gpkgEncodePoint(p.lon, p.lat, srsId)} ].concat(extraCols.map((c,j)=>{
+            const v = (p.attrs||[])[j];
+            if(v===null || v===undefined || v==="") return nul();
+            if(c.type==="int"){ const x = Math.round(Number(v)); return isFinite(x) ? n(x) : nul(); }
+            if(c.type==="real"){ const x = Number(v); return isFinite(x) ? rl(x) : nul(); }
+            return t(String(v));
+          }))
+        : [ rid(), {t:"blob", v: gpkgEncodePoint(p.lon, p.lat, srsId)}, t(p.id), t(p.sci), t(p.common) ])
     }));
 
     const tableDefs = [
@@ -5016,7 +5079,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   }
   const live = { setLiveEndpoints, authAnon, authRefresh, fsCreateDoc, fsGetDoc, fsListDocs, fsQueryChanged, fsPatchDoc, fsDeleteDoc };
 
-  return { readZipAsync, esc, today, toast, notice, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, buildGeoPackageBlob, buildGeoPackageBytes, buildPolygonGeoPackageBlob, buildPolygonGeoPackageBytes, triggerDownload, shareFiles, getLastShareDiagnostic, buildPicker, consLabel, consBadge, live, readZip, readXLSXSurvey, readPointsGeoPackage, readPolygonsGeoPackage };
+  return { xyForSrs, EXPORT_SRS, readZipAsync, esc, today, toast, notice, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, buildGeoPackageBlob, buildGeoPackageBytes, buildPolygonGeoPackageBlob, buildPolygonGeoPackageBytes, triggerDownload, shareFiles, getLastShareDiagnostic, buildPicker, consLabel, consBadge, live, readZip, readXLSXSurvey, readPointsGeoPackage, readPolygonsGeoPackage };
 })();
 
 </script>
@@ -5051,7 +5114,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-02.2";
+  const BUILD_VERSION = "2026-11-10.1";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -5133,6 +5196,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   const LIVE_QUEUE_KEY = "fh_"+FH_KEY+"_livequeue"; // ops that couldn't reach the server yet (offline)
   const DEVICE_ID_KEY = "fh_"+FH_KEY+"_deviceid";   // this device's own persistent id — see deviceId()
   let folderKey = makeFolderKey();
+  let surveyType = "flora";          // "flora" | "roadside" | "tree" (see the survey types section)
+  let roadside = blankRoadside();    // Casey Roadside report form (only used when surveyType is "roadside")
   // The reserve/site name the CURRENTLY OPEN survey's rows actually belong
   // to — set when a survey is loaded/restored, and kept in sync with the
   // Site field only while there's no content yet (see the "site" input
@@ -5270,7 +5335,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const d = m.date ? new Date(m.date+"T00:00:00") : null;
       const date = d && !isNaN(d) ? d.toLocaleDateString("en-AU", { weekday:"short", day:"numeric", month:"short", year:"numeric" }) : "No date";
       const nS = (sv.species||[]).length, nP = (sv.polygons||[]).length, nN = (sv.siteNotes||[]).length;
-      const meta = '<span>'+nS+' species</span>'+(nP?'<span>'+nP+' polygon'+(nP===1?'':'s')+'</span>':'')+(nN?'<span>'+nN+' note'+(nN===1?'':'s')+'</span>':'');
+      const meta = (sv.type==='roadside'||sv.type==='tree' ? '<span>'+(sv.type==='roadside'?'Casey Roadside':'Significant Trees')+'</span>' : '')+'<span>'+nS+(sv.type==='tree'?' tree'+(nS===1?'':'s'):' species')+'</span>'+(nP?'<span>'+nP+' polygon'+(nP===1?'':'s')+'</span>':'')+(nN?'<span>'+nN+' note'+(nN===1?'':'s')+'</span>':'');
       return '<button type="button" class="home-item" data-home-open="'+FHKit.esc(k)+'"><span class="hi-main"><b>'+FHKit.esc((m.site||"").trim()||"(no site)")+'</b>'
         + '<span class="hi-date">'+date+'</span><span class="hi-meta">'+meta+'</span></span><span class="hi-open">Open'+OPEN+'</span></button>';
     }).join("")
@@ -6492,7 +6557,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     let id;
     do{
       const rand = Math.random().toString(36).slice(2,8).toUpperCase();
-      id = "FS-"+ymd+"-"+rand;
+      id = (surveyType==="tree" ? "TR-" : (surveyType==="roadside" ? "RS-" : "FS-"))+ymd+"-"+rand;
     }while(used.has(id));
     return id;
   }
@@ -6824,7 +6889,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
           const isOpen = key === folderKey && surveyStarted;
           return '<div class="fh-modal-row'+(isOpen?' current':'')+'"><span><b>'+FHKit.esc(surveyName)+'</b>'
             + (isOpen ? ' <em class="open-tag">Open now</em>' : '')
-            + '<br><small>'+nSp+' species'
+            + '<br><small>'+(s.type==='roadside'?'Casey Roadside · ':(s.type==='tree'?'Significant Trees · ':''))+nSp+(s.type==='tree'?' trees':' species')
             + (nPh?(' &middot; '+nPh+' photo'+(nPh===1?"":"s")):'')+'</small></span>'
             + '<span><button data-load="'+FHKit.esc(key)+'">Load</button>'
             + '<button class="del" data-del="'+FHKit.esc(key)+'">Delete</button></span></div>';
@@ -7181,7 +7246,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
 
 
   function meta(){ return { site:$("site").value, date:$("date").value }; }
-  function snapshot(){ return { folderKey:folderKey, meta:meta(), species:rows.map(r=>{ const o = Object.assign({},r, {photos:(r.photos||[]).map(p=>Object.assign({},p)), points:(r.points||[]).map(p=>Object.assign({},p))}); delete o._liveUpdatedAt; delete o._liveCode; return o; }), siteNotes:siteNotes.map(n=>Object.assign({},n)), polygons:polygons.map(p=>{ const o = Object.assign({},p,{vertices:(p.vertices||[]).map(v=>v.slice()), species:(p.species||[]).slice()}); delete o._liveUpdatedAt; delete o._liveCode; return o; }), tracks:tracks.map(t=>Object.assign({},t,{points:(t.points||[]).map(p=>Object.assign({},p))})), started:surveyStarted, savedAt:new Date().toISOString() }; }
+  function snapshot(){ return { folderKey:folderKey, meta:meta(), species:rows.map(r=>{ const o = Object.assign({},r, {photos:(r.photos||[]).map(p=>Object.assign({},p)), points:(r.points||[]).map(p=>Object.assign({},p))}); delete o._liveUpdatedAt; delete o._liveCode; return o; }), siteNotes:siteNotes.map(n=>Object.assign({},n)), polygons:polygons.map(p=>{ const o = Object.assign({},p,{vertices:(p.vertices||[]).map(v=>v.slice()), species:(p.species||[]).slice()}); delete o._liveUpdatedAt; delete o._liveCode; return o; }), tracks:tracks.map(t=>Object.assign({},t,{points:(t.points||[]).map(p=>Object.assign({},p))})), started:surveyStarted, type:surveyType, roadside:JSON.parse(JSON.stringify(roadside)), savedAt:new Date().toISOString() }; }
   function restore(s){
     if(!s) return; const m = s.meta||{};
     // Loading a different saved survey shouldn't leave an active GPS track
@@ -7189,6 +7254,11 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     // never bleeds from one survey into another.
     stopTracking();
     folderKey = s.folderKey || s.id || makeFolderKey();
+    surveyType = (s.type==="roadside" || s.type==="tree") ? s.type : "flora";
+    roadside = Object.assign(blankRoadside(), s.roadside || {});
+    if(!Array.isArray(roadside.values) || !roadside.values.length) roadside.values = [blankValue()];
+    if(!Array.isArray(roadside.photos)) roadside.photos = [];
+    applyType();
     $("site").value=m.site||""; $("date").value=m.date||FHKit.today();
     // The reserve this loaded survey belongs to, for switchReserveIfNeeded()
     // to compare against later — see its own comment.
@@ -7243,7 +7313,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     tracks = Array.isArray(s.tracks)
       ? s.tracks.map(t=>Object.assign({}, t, { points:(t.points||[]).map(p=>Object.assign({},p)) }))
       : [];
-    render(); renderSiteNotes(); renderPolygons();
+    render(); renderSiteNotes(); renderPolygons(); renderRoadside();
   }
   function suggestName(){ const s=($("site").value||"Site").trim()||"Site"; return s+" — "+($("date").value||FHKit.today()); }
 
@@ -8643,9 +8713,12 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     // Significant the moment it's added — and, same as ticking Significant
     // by hand, gets a first GPS point captured automatically. Anything else
     // stays as a plain checklist entry with no location prompt.
-    const auto = !!FHKit.consLabel(sp.ffg, sp.epbc);
+    const auto = !!FHKit.consLabel(sp.ffg, sp.epbc) || surveyType==="tree";
     const row = { id:makeRecordId(), sci:sp.sci, common:sp.common||sp.sci, type:sp.type||"indigenous", lf:sp.lf||"", ffg:sp.ffg||"", epbc:sp.epbc||"", fieldNotes:"", free:!!sp.free, uncertain:false, significant:auto, photos:[], points:[], addedBy:userName() };
+    if(surveyType==="roadside") row.sigText = FHKit.consLabel(sp.ffg, sp.epbc);
+    if(surveyType==="tree") row.tree = blankTree();
     if(opts.point){ row.points = [{ id:makePointId(), lat:opts.point.lat, lon:opts.point.lon }]; row.significant = true; }
+    if(opts.point && surveyType==="tree") touchTree(row);
     if(live.active){
       // Create this record's own shared doc, keyed by its own record id — a
       // second surveyor logging the same species gets a different id, so this
@@ -8697,6 +8770,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         const cur = rows[i];
         cur.points = cur.points || [];
         cur.points.push({ id:makePointId(), lat, lon });
+        if(surveyType==="tree") touchTree(cur);
         render(); autosave();
         liveSyncField(cur, { pointsJson: encodePointsField(cur.points) });
       }
@@ -8724,6 +8798,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         if(!pp) return;
         pp.lat = lat; pp.lon = lon;
         delete pp.accuracy; // no longer a raw GPS fix — it's been manually placed
+        if(surveyType==="tree") touchTree(cur);
         render(); autosave();
         liveSyncField(cur, { pointsJson: encodePointsField(cur.points) });
       }
@@ -8829,7 +8904,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     return "https://vicflora.rbg.vic.gov.au/flora/search?q="+encodeURIComponent(genus);
   }
   function briefRowHtml(r, i){
-    const badges = (r.type==="invasive"?' <span class="badge inv">INVASIVE</span>':' <span class="badge ind">INDIGENOUS</span>')
+    const badges = (surveyType!=="flora" ? '' : (r.type==="invasive"?' <span class="badge inv">INVASIVE</span>':' <span class="badge ind">INDIGENOUS</span>'))
       + (r.uncertain?' <span class="badge inv" style="background:var(--red-bg);color:var(--red)">UNCERTAIN</span>':'')
       + (r.significant?' <span class="badge sig">SIGNIFICANT</span>':'');
     // The record id is shown here too (not just on the full card) because
@@ -8899,7 +8974,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       // Clicking either "Set location" or "+ Add another point" opens the
       // aerial map modal (captureLocation) — it always opens, even if GPS is
       // denied or unsupported, so a location can still be placed by hand.
-      const actionLine = '<div class="geo-line"><button type="button" data-geo-retry="'+FHKit.esc(r.id)+'">'+(pts.length ? "+ Add another point" : "Set location")+'</button></div>';
+      const actionLine = (surveyType==="tree" && pts.length) ? "" : '<div class="geo-line"><button type="button" data-geo-retry="'+FHKit.esc(r.id)+'">'+(pts.length ? "+ Add another point" : "Set location")+'</button></div>';
       geoLine = (pts.length ? '<div class="geo-points">'+pointLines+'</div>' : '') + actionLine;
     }
     const head = '<div class="sp-head"><div class="sp-title">'
@@ -8911,12 +8986,14 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       + '<div class="sp-controls">'
       // Origin as an app-style two-way switch. Radios fire the same "change"
       // event (with .value) the old <select> did, so the handler is unchanged.
-      + '<div class="origin-field"><span>Origin</span><div class="origin-seg" role="radiogroup" aria-label="Origin">'
+      + (surveyType!=="flora" ? '<div style="display:none">' : '') + '<div class="origin-field"><span>Origin</span><div class="origin-seg" role="radiogroup" aria-label="Origin">'
       +   '<label class="ind'+(r.type!=="invasive"?' on':'')+'"><input type="radio" name="origin-'+FHKit.esc(r.id)+'" value="indigenous" data-origin="'+FHKit.esc(r.id)+'"'+(r.type!=="invasive"?" checked":"")+'>Indigenous</label>'
       +   '<label class="inv'+(r.type==="invasive"?' on':'')+'"><input type="radio" name="origin-'+FHKit.esc(r.id)+'" value="invasive" data-origin="'+FHKit.esc(r.id)+'"'+(r.type==="invasive"?" checked":"")+'>Invasive</label>'
-      + '</div></div>'
-      + '<div class="sp-flags">'+sigField+uncField+'</div>'
+      + '</div></div>' + (surveyType!=="flora" ? '</div>' : '')
+      + '<div class="sp-flags">'+typedFlags(sigField, uncField)+'</div>'
+      + typedRowExtras(r)
       + (geoLine ? '<div class="sp-geo">'+geoLine+'</div>' : '')
+      + typedRowExtrasAfter(r)
       + '</div>'
       + '<div class="sp-tools">'+notesBtn+keyBtn+'</div>';
     const photoThumbs = (r.photos||[]).map(p=>
@@ -9026,13 +9103,15 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
   }
   async function exportSurveyInner(){
-    const parts = await buildSurveyParts({ m:meta(), rows:rows, polygons:polygons, siteNotes:siteNotes });
+    const parts = await buildSurveyParts({ m:meta(), rows:rows, polygons:polygons, siteNotes:siteNotes, type:surveyType, roadside:roadside });
+    if(surveyType!=="flora"){ await exportTypedChooser(parts); return; }
     showExportChooser(parts);
   }
   // Builds every export file for ONE survey from the data passed in (the open
   // survey, or a saved one for Export all). D: { m:{site,date}, rows, polygons,
   // siteNotes, skipPhotos }.
   async function buildSurveyParts(D){
+    if(D.type==="roadside" || D.type==="tree") return buildTypedParts(D);
     const m = D.m, rows = D.rows || [], polygons = D.polygons || [], siteNotes = D.siteNotes || [];
     const sheet = [], styles = [];
     const push = (cells, style) => { sheet.push(cells); styles.push(style||null); };
@@ -9146,7 +9225,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const i = items.findIndex(x=>x.key===live.folderKey);
       if(i>=0) items[i] = { key:live.folderKey, snap:live }; else items.push({ key:live.folderKey, snap:live });
     }
-    const usable = items.filter(x=> x.snap && ((x.snap.species||[]).length || (x.snap.polygons||[]).length || (x.snap.siteNotes||[]).length));
+    const usable = items.filter(x=> x.snap && ((x.snap.species||[]).length || (x.snap.polygons||[]).length || (x.snap.siteNotes||[]).length || (x.snap.type && x.snap.type!=="flora")));
     if(!usable.length){ FHKit.notice("Nothing to export", "There are no saved surveys yet. Save or finish a survey first, then Export all will include it.", "warn"); return; }
     const ov = document.createElement("div"); ov.className="fh-modal";
     ov.innerHTML = '<div class="fh-modal-card"><h3>Export all surveys</h3><div style="padding:16px 18px">'
@@ -9167,11 +9246,12 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         for(const it of usable){
           n++; msg.textContent = "Building "+n+" of "+usable.length+"...";
           const s = it.snap, sm = s.meta || {};
-          const parts = await buildSurveyParts({ m:{ site:sm.site||"", date:sm.date||"" }, rows:s.species||[], polygons:s.polygons||[], siteNotes:s.siteNotes||[], skipPhotos:!withPhotos });
+          const parts = await buildSurveyParts({ m:{ site:sm.site||"", date:sm.date||"" }, rows:s.species||[], polygons:s.polygons||[], siteNotes:s.siteNotes||[], skipPhotos:!withPhotos, type:s.type||"flora", roadside:s.roadside });
           let dir = fileSafe(parts.baseName) || ("Survey "+n), k = 2;
           while(used.has(dir.toLowerCase())) dir = fileSafe(parts.baseName)+" ("+(k++)+")";
           used.add(dir.toLowerCase());
           files[dir+"/"+dir+".xlsx"] = new Uint8Array(await parts.xlsxBlob.arrayBuffer());
+          if(parts.pdfBytes) files[dir+"/"+dir+".pdf"] = parts.pdfBytes;
           Object.keys(parts.gisFiles).forEach(f=>{ files[dir+"/GIS/"+f] = parts.gisFiles[f]; });
           if(withPhotos) Object.keys(parts.photoFiles).forEach(f=>{ files[dir+"/photos/"+f] = parts.photoFiles[f]; });
           parts.geoPoints.forEach(p=> allPts.push(Object.assign({}, p, { sci: p.sci })));
@@ -9199,7 +9279,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const parts = ["Excel file"];
     if(ctx.photoZipBlob) parts.push("photos zip");
     if(ctx.gisBlob) parts.push(gisParts.join(" + ")+" (GeoPackage, in a separate GIS zip)");
-    const filesNote = parts.join(" + ");
+    const filesNote = ctx.filesNote || parts.join(" + ");
     const ov = document.createElement("div"); ov.className="fh-modal";
     ov.innerHTML = '<div class="fh-modal-card"><h3>Export Survey</h3>'
       + '<div style="padding:16px 18px">'
@@ -9221,10 +9301,10 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       close();
     });
     ov.querySelector("#expEmail").addEventListener("click", async ()=>{
-      const items = [{ blob:ctx.xlsxBlob, filename:ctx.xlsxFilename, mime:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }];
+      const items = [{ blob:ctx.xlsxBlob, filename:ctx.xlsxFilename, mime: ctx.xlsxMime || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }];
       if(ctx.photoZipBlob) items.push({ blob:ctx.photoZipBlob, filename:ctx.photoZipFilename, mime:"application/zip" });
       if(ctx.gisBlob) items.push({ blob:ctx.gisBlob, filename:ctx.gisFilename, mime:"application/zip" });
-      const subject = "Flora Survey — "+(ctx.site||"Site")+" — "+(ctx.date||FHKit.today());
+      const subject = (ctx.title||"Flora Survey")+" - "+(ctx.site||"Site")+" - "+(ctx.date||FHKit.today());
       const shared = await FHKit.shareFiles(items, subject, "Attached: "+filesNote+" from the Keystone Conservation Flora Survey tool.");
       close();
       if(shared) return;
@@ -9479,6 +9559,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         const pp = (cur.points||[]).find(x=>x.id===pointId); if(!pp) return;
         pp.lat = lat; pp.lon = lon;
         delete pp.accuracy; // no longer a raw GPS fix — it's been manually placed
+        if(surveyType==="tree") touchTree(cur);
         render(); autosave();
         liveSyncField(cur, { pointsJson: encodePointsField(cur.points) });
       },
@@ -9721,7 +9802,577 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     // "updated" needs no toast — showUpdateBanner() puts up its own.
   });
 
-  FHKit.buildPicker($("pick"), $("pickList"), add, ()=> rows.map(r=>r.sci), openExisting);
+  // ══════════════════════════════════════════════════════════════════════
+  // Survey types: Flora Survey (default), Casey Roadside, Significant Trees.
+  // The type is stored with each survey (snapshot.type) and decides which
+  // cards show, what a species row contains and what the export builds.
+  // ══════════════════════════════════════════════════════════════════════
+  const TYPE_LABEL = { flora:"Flora Survey", roadside:"Casey Roadside", tree:"Significant Trees" };
+  const ROAD_PREPARERS = ["Michael Sommer","Michael Lenten","Glenn Brownfield","Henri Kinkel","Nick Hutcheson","George Collins","Josh McCaig","John Tokmakidis","Liam McCormack","Jake Wearne"];
+  const ROAD_PRIORITY = ["Very High","High","Moderate","Low"];
+  function blankValue(){ return { value:"", threat:"", mitigation:"", priority:"" }; }
+  function blankRoadside(){ return { preparedBy:"", preparedOther:"", time:"", values:[blankValue(),blankValue(),blankValue()], commentary:"", photos:[] }; }
+  function blankTree(){ return { owner:"", address:"", name2:"", assessment:"", eastWest:"", elbYear:"", fid:0, modNote:"", status:"", health:"", dbh:"", created:"", modAt:"", modBy:"" }; }
+  // Significant tree attribute table (the Feature list supplied for Casey).
+  // auto = filled by the app, f = typed by the surveyor. t = GIS column type.
+  const TREE_FIELDS = [
+    { k:"Common_Name", auto:"common" },
+    { k:"Unique_Tree_ID", auto:"id" },
+    { k:"Easting", auto:"easting", t:"real" },
+    { k:"Northing", auto:"northing", t:"real" },
+    { k:"Tree_Owner", f:"owner" },
+    { k:"Address", f:"address" },
+    { k:"Genus_and_species", auto:"sci" },
+    { k:"Common_Name_2", f:"name2" },
+    { k:"Final_Assessment", f:"assessment" },
+    { k:"East_West", f:"eastWest" },
+    { k:"Elb_Year", f:"elbYear", t:"int", num:true },
+    { k:"GISFID", auto:"fid", t:"int" },
+    { k:"GISModDate", auto:"modAt" },
+    { k:"GISModName", auto:"modBy" },
+    { k:"GISModNote", f:"modNote" },
+    { k:"GISStatus", f:"status" },
+    { k:"GISCreateDate", auto:"created" },
+    { k:"Tree/Patch Health", f:"health" },
+    { k:"DBH", f:"dbh", t:"real", num:true }
+  ];
+  function pad2(n){ return String(n).padStart(2,"0"); }
+  function stampNow(){ const d = new Date(); return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())+" "+pad2(d.getHours())+":"+pad2(d.getMinutes())+":"+pad2(d.getSeconds()); }
+  function nextTreeFid(){ return rows.reduce((m,r)=> Math.max(m, (r.tree && r.tree.fid) || 0), 0) + 1; }
+  // Called when a tree's location is confirmed or its attributes change.
+  function touchTree(r){
+    if(!r.tree) r.tree = blankTree();
+    const now = stampNow();
+    if(!r.tree.created){ r.tree.created = now; }
+    if(!r.tree.fid) r.tree.fid = nextTreeFid();
+    r.tree.modAt = now; r.tree.modBy = userName();
+  }
+  function treeEN(r){
+    const p = (r.points||[])[0];
+    if(!p) return [null, null];
+    try{ const xy = FHKit.xyForSrs(p.lat, p.lon, FHKit.EXPORT_SRS); return [Math.round(xy[0]*100)/100, Math.round(xy[1]*100)/100]; }catch(e){ return [null, null]; }
+  }
+  function treeVal(r, f){
+    const t = r.tree || blankTree();
+    if(f.f) return t[f.f] == null ? "" : t[f.f];
+    switch(f.auto){
+      case "common": return r.common || r.sci || "";
+      case "id": return r.id || "";
+      case "sci": return r.sci || "";
+      case "easting": return treeEN(r)[0];
+      case "northing": return treeEN(r)[1];
+      case "fid": return t.fid || "";
+      case "modAt": return t.modAt || "";
+      case "modBy": return t.modBy || "";
+      case "created": return t.created || "";
+    }
+    return "";
+  }
+  function typedFlags(sigField, uncField){
+    if(surveyType==="tree") return uncField;
+    if(surveyType==="roadside") return sigField.replace(" Significant</label>", " Mark on map</label>") + uncField;
+    return sigField + uncField;
+  }
+  function typedRowExtras(r){
+    if(surveyType!=="roadside") return "";
+    const e = FHKit.esc;
+    return '<div class="rd-sig"><label class="detail-label" for="sg_'+e(r.id)+'">Significance</label>'
+      + '<input id="sg_'+e(r.id)+'" type="text" data-sigtext="'+e(r.id)+'" value="'+e(r.sigText||"")+'" placeholder="e.g. FFG listed, EPBC Endangered, locally rare" autocomplete="off"></div>';
+  }
+  function typedRowExtrasAfter(r){
+    if(surveyType!=="tree") return "";
+    const e = FHKit.esc;
+    if(!(r.points||[]).length) return '<div class="tr-panel"><div class="tr-wait">Set the tree location on the map. Its attributes open here once the location is confirmed.</div></div>';
+    const t = r.tree || blankTree();
+    const ro = (label, val) => '<div class="tr-ro"><span>'+e(label)+'</span><b>'+e(val===null||val===undefined||val===""?"-":val)+'</b></div>';
+    const en = treeEN(r);
+    const inputs = TREE_FIELDS.filter(f=>f.f).map(f=>
+      '<div class="tr-f"><label class="detail-label" for="tr_'+e(r.id)+'_'+f.f+'">'+e(f.k)+'</label>'
+      + '<input id="tr_'+e(r.id)+'_'+f.f+'" type="text"'+(f.num?' inputmode="decimal"':'')+' data-tree="'+e(r.id)+'|'+f.f+'" value="'+e(t[f.f]||"")+'" autocomplete="off"></div>'
+    ).join("");
+    return '<div class="tr-panel"><div class="tr-title">Tree attributes</div>'
+      + '<div class="tr-auto">'
+      + ro("Unique_Tree_ID", r.id) + ro("Common_Name", r.common||r.sci) + ro("Genus_and_species", r.sci)
+      + ro("Easting", en[0]) + ro("Northing", en[1]) + ro("GISFID", t.fid)
+      + ro("GISCreateDate", t.created) + ro("GISModDate", t.modAt) + ro("GISModName", t.modBy)
+      + '</div><div class="tr-grid">'+inputs+'</div></div>';
+  }
+  function applyType(){
+    const t = surveyType;
+    const b = document.body;
+    b.classList.remove("t-flora","t-roadside","t-tree"); b.classList.add("t-"+t);
+    const orig = (id, prop) => { const el = $(id); if(!el) return null; if(el.dataset["o"+prop]===undefined) el.dataset["o"+prop] = prop==="ph" ? (el.placeholder||"") : el.textContent; return el; };
+    const T = {
+      roadside:{ card:"Roadside survey details", site:"Site conducted", add:"Significant species", ph:"Search significant species",
+        help:"Search VicFlora (offline data works too) and tap a species to add it to the Significant Species table. Tick Mark on map to drop a point for a high value species. Photos and notes can be added to each species.",
+        rec:"Significant species observed", empty:"No significant species yet. Search above to add one." },
+      tree:{ card:"Significant tree survey details", site:"Site / location", add:"Add tree", ph:"Search tree species",
+        help:"Search the tree species and tap it to add a tree. Set its location on the map, then fill in its attributes. Each tree has its own unique ID, which is stamped on its photos. Searching the same species again adds another tree.",
+        rec:"Trees", empty:"No trees yet. Search a species above to add one." }
+    }[t] || null;
+    const setT = (id, key, val) => { const el = orig(id, key); if(!el) return; const o = el.dataset["o"+key]; if(key==="ph") el.placeholder = val==null ? o : val; else el.textContent = val==null ? o : val; };
+    setT("surveyCardTitle","t", T && T.card);
+    setT("addCardTitle","t", T && T.add);
+    setT("addCardHelp","t", T && T.help);
+    setT("recCardTitle","t", T && T.rec);
+    setT("empty","t", T && T.empty);
+    setT("pick","ph", T && T.ph);
+    const siteLab = document.querySelector('label[for="site"]');
+    if(siteLab){ if(siteLab.dataset.ot===undefined) siteLab.dataset.ot = siteLab.textContent; siteLab.textContent = (T && T.site) || siteLab.dataset.ot; }
+    const h1 = document.querySelector(".home-hello h1");
+    const tag = $("surveyTypeTag"); if(tag){ tag.textContent = t==="flora" ? "" : TYPE_LABEL[t]; tag.hidden = (t==="flora"); }
+    document.title = t==="flora" ? "Flora Survey" : "Flora Survey - "+TYPE_LABEL[t];
+  }
+  function chooseType(t){
+    surveyType = t; roadside = blankRoadside(); applyType(); renderRoadside();
+    document.body.classList.add("starting");
+    window.scrollTo({ top:0, behavior:"smooth" });
+    setTimeout(()=>{ try{ $("site").focus(); }catch(e){} }, 350);
+  }
+
+  // ── Casey Roadside form ──────────────────────────────────────────────
+  function prepName(){ return roadside.preparedBy==="__other" ? (roadside.preparedOther||"") : (roadside.preparedBy||""); }
+  function renderRoadside(){
+    if(!$("roadCard")) return;
+    const rd = roadside;
+    const prep = $("rdPrep");
+    prep.innerHTML = '<option value="">Select one</option>' + ROAD_PREPARERS.map(n=>'<option value="'+FHKit.esc(n)+'">'+FHKit.esc(n)+'</option>').join("") + '<option value="__other">Other</option>';
+    prep.value = rd.preparedBy || "";
+    $("rdOtherWrap").hidden = rd.preparedBy !== "__other";
+    $("rdOther").value = rd.preparedOther || "";
+    $("rdTime").value = rd.time || "";
+    $("rdComment").value = rd.commentary || "";
+    renderRoadValues(); renderRoadPhotos();
+  }
+  function renderRoadValues(){
+    const e = FHKit.esc;
+    $("rdValues").innerHTML = roadside.values.map((v,i)=>
+      '<div class="rd-val"><div class="rd-val-head"><b>'+(i+1)+'</b><button type="button" class="rd-del" data-rd-del="'+i+'">Remove</button></div>'
+      + '<label class="detail-label">Ecological value</label><textarea rows="2" data-rdv="'+i+'|value">'+e(v.value)+'</textarea>'
+      + '<label class="detail-label">Threatening process(es)</label><textarea rows="2" data-rdv="'+i+'|threat">'+e(v.threat)+'</textarea>'
+      + '<label class="detail-label">Mitigation</label><textarea rows="2" data-rdv="'+i+'|mitigation">'+e(v.mitigation)+'</textarea>'
+      + '<label class="detail-label">Priority</label><select data-rdv="'+i+'|priority"><option value="">Select</option>'
+      + ROAD_PRIORITY.map(p=>'<option'+(v.priority===p?' selected':'')+'>'+p+'</option>').join("") + '</select></div>'
+    ).join("");
+  }
+  function renderRoadPhotos(){
+    const host = $("rdPhotos"); if(!host) return;
+    const e = FHKit.esc;
+    host.innerHTML = roadside.photos.map(p=>
+      '<div class="rd-photo"><div class="photo-thumb"><img src="'+(p.thumb||"")+'" alt="Roadside photo"><button type="button" class="x" data-rd-photo-del="'+e(p.id)+'" title="Remove photo">&times;</button></div>'
+      + '<input type="text" data-rdcap="'+e(p.id)+'" value="'+e(p.caption||"")+'" placeholder="Caption" autocomplete="off"><div class="rd-pid">'+e(p.label||"")+'</div></div>'
+    ).join("");
+    const n = $("rdPhotoCount"); if(n) n.textContent = roadside.photos.length || "";
+  }
+  async function addRoadPhotos(files){
+    if(!requireName(()=>addRoadPhotos(files))) return;
+    const d = new Date();
+    const ymd = String(d.getFullYear()).slice(2)+pad2(d.getMonth()+1)+pad2(d.getDate());
+    for(const f of Array.from(files||[])){
+      const id = "p_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
+      const label = "RP-"+ymd+"-"+Math.random().toString(36).slice(2,8).toUpperCase();
+      try{
+        const { full, thumb } = await stampImage(f, label);
+        await putPhotoBytes(id, full);
+        roadside.photos.push({ id, thumb, label, caption:"", addedAt:new Date().toISOString() });
+        clearStorageWarning("photo");
+      }catch(err){ showStorageWarning("photo", err); FHKit.toast("Couldn't save a photo. Check your device's available storage."); }
+    }
+    renderRoadPhotos(); autosave();
+  }
+  (function wireRoadside(){
+    const card = $("roadCard"), pcard = $("roadPhotoCard");
+    if(!card || !pcard) return;
+    card.addEventListener("input", ev=>{
+      const t = ev.target;
+      if(t.id==="rdOther") roadside.preparedOther = t.value;
+      else if(t.id==="rdTime") roadside.time = t.value;
+      else if(t.id==="rdComment") roadside.commentary = t.value;
+      else if(t.dataset.rdv){ const [i,k] = t.dataset.rdv.split("|"); if(roadside.values[+i]) roadside.values[+i][k] = t.value; }
+      else return;
+      autosave();
+    });
+    card.addEventListener("change", ev=>{
+      const t = ev.target;
+      if(t.id==="rdPrep"){ roadside.preparedBy = t.value; $("rdOtherWrap").hidden = t.value!=="__other"; autosave(); }
+      else if(t.dataset.rdv){ const [i,k] = t.dataset.rdv.split("|"); if(roadside.values[+i]) roadside.values[+i][k] = t.value; autosave(); }
+    });
+    card.addEventListener("click", ev=>{
+      if(ev.target.closest("#rdAddValue")){ roadside.values.push(blankValue()); renderRoadValues(); autosave(); return; }
+      const d = ev.target.closest("[data-rd-del]");
+      if(d){
+        const i = +d.dataset.rdDel, v = roadside.values[i]; if(!v) return;
+        const empty = !(v.value||v.threat||v.mitigation||v.priority);
+        const go = ()=>{ roadside.values.splice(i,1); if(!roadside.values.length) roadside.values.push(blankValue()); renderRoadValues(); autosave(); };
+        if(empty) go(); else confirmToast("Remove row "+(i+1)+"?", "Remove", go);
+      }
+    });
+    pcard.addEventListener("input", ev=>{
+      const id = ev.target.dataset.rdcap; if(!id) return;
+      const p = roadside.photos.find(x=>x.id===id); if(p){ p.caption = ev.target.value; autosave(); }
+    });
+    pcard.addEventListener("click", ev=>{
+      if(ev.target.closest("#rdTakePhoto")){ $("rdCamInput").click(); return; }
+      if(ev.target.closest("#rdChoosePhoto")){ $("rdFileInput").click(); return; }
+      const d = ev.target.dataset.rdPhotoDel;
+      if(d){ roadside.photos = roadside.photos.filter(p=>p.id!==d); renderRoadPhotos(); autosave(); deletePhotoBytes(d); }
+    });
+    ["rdCamInput","rdFileInput"].forEach(id=> $(id).addEventListener("change", ev=>{
+      const files = Array.from(ev.target.files||[]); ev.target.value = ""; addRoadPhotos(files);
+    }));
+  })();
+  // Row-level typed inputs (roadside significance text, tree attributes).
+  $("tbody").addEventListener("input", ev=>{
+    const t = ev.target;
+    if(t.dataset.sigtext){ const i = rowIndexById(t.dataset.sigtext); if(i>=0){ rows[i].sigText = t.value; autosave(); } return; }
+    if(t.dataset.tree){
+      const k = t.dataset.tree.indexOf("|"), id = t.dataset.tree.slice(0,k), f = t.dataset.tree.slice(k+1);
+      const i = rowIndexById(id); if(i<0) return;
+      const r = rows[i]; if(!r.tree) r.tree = blankTree();
+      r.tree[f] = t.value; touchTree(r); autosave();
+    }
+  });
+
+  // ── Export for the Roadside and Significant Tree types ───────────────
+  function xlsxSheetFor(type, D, pushFn){
+    const m = D.m, rowsX = D.rows || [];
+    const push = pushFn;
+    if(type==="roadside"){
+      const rd = Object.assign(blankRoadside(), D.roadside || {});
+      const prepared = rd.preparedBy==="__other" ? (rd.preparedOther||"") : (rd.preparedBy||"");
+      push(["Keystone Conservation - Casey Conservation Roadsides"], "bold");
+      push([]);
+      push(["Title Page"], "bold");
+      push(["Site conducted", m.site||""]);
+      push(["Conducted on", (m.date||"") + (rd.time ? " "+rd.time : "")]);
+      push(["Prepared by", prepared]);
+      push([]);
+      push(["Values and Threats"], "bold");
+      push(["#","Ecological Value","Threatening Process(es)","Mitigation","Priority"], "bold");
+      (rd.values||[]).filter(v=>v.value||v.threat||v.mitigation||v.priority).forEach((v,i)=>{ push([i+1, v.value, v.threat, v.mitigation, v.priority], "wrap"); });
+      push([]);
+      push(["Commentary"], "bold");
+      push(["Observations and Recommendation:", rd.commentary||""], "wrap");
+      push([]);
+      push(["Significant Species Observed"], "bold");
+      push(["#","Scientific Name","Common Name","Significance","Record ID","Points","Coordinates (GDA2020 MGA zone 55)","Uncertain ID","Recorded by","Notes"], "bold");
+      rowsX.forEach((r,i)=>{
+        const coords = (r.points||[]).map(p=>{ try{ const xy = FHKit.xyForSrs(p.lat,p.lon,FHKit.EXPORT_SRS); return Math.round(xy[0])+"E "+Math.round(xy[1])+"N"; }catch(e){ return ""; } }).join("; ");
+        push([i+1, r.sci, r.common||"", r.sigText||"", r.id||"", (r.points||[]).length||"", coords, r.uncertain?"Yes":"", r.addedBy||"", r.fieldNotes||""], (r.free||r.uncertain) ? "red" : "wrap");
+      });
+      if((rd.photos||[]).length){
+        push([]); push(["Photos"], "bold"); push(["Photo ID","Caption"], "bold");
+        rd.photos.forEach(p=> push([p.label||"", p.caption||""]));
+      }
+      if((D.siteNotes||[]).length){
+        push([]); push(["Field Notes"], "bold");
+        D.siteNotes.forEach(n=>{ if((n.text||"").trim()) push([fmtNoteTime(n.ts), n.text], "wrap"); });
+      }
+      return [6,30,34,34,18,8,30,12,14,34];
+    }
+    // trees: one clean attribute table (header on row 1) so it opens straight into GIS
+    push(TREE_FIELDS.map(f=>f.k), "bold");
+    rowsX.forEach(r=> push(TREE_FIELDS.map(f=>treeVal(r,f)), r.uncertain ? "red" : null));
+    if((D.polygons||[]).length){
+      push([]); push(["Polygons"], "bold"); push(["Polygon ID","Points","Species","Notes"], "bold");
+      D.polygons.forEach(pg=> push([pg.id, (pg.vertices||[]).length, (pg.species||[]).join("; "), pg.notes||""], "wrap"));
+    }
+    if((D.siteNotes||[]).length){
+      push([]); push(["Field Notes"], "bold");
+      D.siteNotes.forEach(n=>{ if((n.text||"").trim()) push([fmtNoteTime(n.ts), n.text], "wrap"); });
+    }
+    push([]); push(["Site", m.site||""]); push(["Date", m.date||""]); push(["Trees", rowsX.length]);
+    return [22,22,12,12,18,28,24,22,20,12,10,8,20,16,28,14,20,16,8];
+  }
+  function gpkgChunks(optsBase, pts, out){
+    try{ out.push(FHKit.buildGeoPackageBytes(Object.assign({}, optsBase, { points:pts }))); }
+    catch(e){
+      if(pts.length<=1) throw e;
+      const h = Math.ceil(pts.length/2);
+      gpkgChunks(optsBase, pts.slice(0,h), out); gpkgChunks(optsBase, pts.slice(h), out);
+    }
+  }
+  async function buildTypedParts(D){
+    const m = D.m, type = D.type, rowsX = D.rows || [], polygons = D.polygons || [];
+    const sheet = [], styles = [];
+    const widths = xlsxSheetFor(type, D, (cells, style)=>{ sheet.push(cells); styles.push(style||null); });
+    const label = TYPE_LABEL[type];
+    const sheetName = type==="roadside" ? "Roadside" : "Trees";
+    const xlsxBlob = FHKit.buildXLSXBlob(sheetName, sheet, styles, widths);
+    const baseName = (fileSafe(m.site) || label)+" - "+(fileSafe(m.date) || FHKit.today());
+    const xlsxFilename = baseName+".xlsx";
+    // photos: per-record photos, plus the roadside photo list
+    const photoFiles = D.skipPhotos ? {} : await buildPhotoFiles(rowsX);
+    if(type==="roadside" && !D.skipPhotos){
+      const rp = (D.roadside && D.roadside.photos) || [];
+      for(const p of rp){
+        let du = p.dataUrl; if(!du){ try{ du = await getPhotoBytes(p.id); }catch(e){ du = null; } }
+        if(du) photoFiles[(p.label || p.id)+".jpg"] = dataUrlToBytes(du);
+      }
+    }
+    const gisFiles = {}; let geoPoints = [], pointsIncluded = false, polygonsIncluded = false;
+    const ident = label+" - "+(m.site||"Site")+" - "+(m.date||FHKit.today());
+    if(type==="roadside"){
+      const pts = [];
+      rowsX.forEach(r=> (r.points||[]).forEach(p=>{ pts.push({ id:r.id, sci:r.sci, common:r.common||r.sci, lat:p.lat, lon:p.lon,
+        attrs:[ r.id, r.sci, r.common||"", r.sigText||"", r.fieldNotes||"" ] }); }));
+      geoPoints = pts.map(p=>({ id:p.id, sci:p.sci, common:p.common, lat:p.lat, lon:p.lon }));
+      if(pts.length){
+        const out = [];
+        gpkgChunks({ tableName:"roadside_species_points", identifier:ident, description:"Significant species points for this Keystone Conservation Casey roadside survey.",
+          columns:[{name:"record_id"},{name:"scientific_name"},{name:"common_name"},{name:"significance"},{name:"notes"}] }, pts, out);
+        out.forEach((b,i)=>{ gisFiles[out.length>1 ? "roadside_species_points_"+(i+1)+".gpkg" : "roadside_species_points.gpkg"] = b; });
+        pointsIncluded = true;
+      }
+    } else {
+      const pts = [];
+      rowsX.forEach(r=>{
+        const p = (r.points||[])[0]; if(!p) return;
+        pts.push({ id:r.id, sci:r.sci, common:r.common||r.sci, lat:p.lat, lon:p.lon, attrs:TREE_FIELDS.map(f=>treeVal(r,f)) });
+      });
+      geoPoints = pts.map(p=>({ id:p.id, sci:p.sci, common:p.common, lat:p.lat, lon:p.lon }));
+      if(pts.length){
+        const out = [];
+        gpkgChunks({ tableName:"significant_trees", identifier:ident, description:"Significant tree points for this Keystone Conservation survey.",
+          columns:TREE_FIELDS.map(f=>({ name:f.k, type:f.t||"text" })) }, pts, out);
+        out.forEach((b,i)=>{ gisFiles[out.length>1 ? "significant_trees_"+(i+1)+".gpkg" : "significant_trees.gpkg"] = b; });
+        pointsIncluded = true;
+      }
+      if(polygons.length){
+        try{
+          gisFiles["tree_polygons.gpkg"] = FHKit.buildPolygonGeoPackageBytes({ tableName:"tree_polygons", identifier:ident+" - Polygons",
+            description:"Polygons for this Keystone Conservation significant tree survey.", site:m.site, date:m.date, polygons:polygons });
+          polygonsIncluded = true;
+        }catch(e){ FHKit.toast("Polygons were too large for one GeoPackage and were left out of the GIS files."); }
+      }
+    }
+    let pdfBytes = null;
+    if(type==="roadside"){
+      try{ pdfBytes = await buildRoadsidePdf(D); }
+      catch(e){ FHKit.toast("The PDF could not be built ("+(e&&e.message||e)+"). The rest of the export went ahead."); }
+    }
+    const zipFiles = {};
+    zipFiles[xlsxFilename] = new Uint8Array(await xlsxBlob.arrayBuffer());
+    if(pdfBytes) zipFiles[baseName+".pdf"] = pdfBytes;
+    Object.keys(gisFiles).forEach(f=> zipFiles["GIS/"+f] = gisFiles[f]);
+    Object.keys(photoFiles).forEach(f=> zipFiles["photos/"+f] = photoFiles[f]);
+    const zipName = baseName+" ("+label+").zip";
+    return { xlsxBlob, xlsxFilename, gisBlob:null, photoZipBlob:null, gisFiles, photoFiles, pdfBytes, zipFiles, zipName, title:label,
+      site:m.site, date:m.date, hasPhotos:Object.keys(photoFiles).length>0, hasPoints:pointsIncluded, hasPolygons:polygonsIncluded,
+      baseName, geoPoints, polys: polygonsIncluded ? polygons : [] };
+  }
+  async function exportTypedChooser(parts){
+    const zip = FHKit.buildZipBlob(parts.zipFiles);
+    const names = ["Excel file"]; if(parts.pdfBytes) names.push("PDF report"); if(Object.keys(parts.gisFiles).length) names.push("GIS files"); if(parts.hasPhotos) names.push("photos");
+    showExportChooser({ xlsxBlob:zip, xlsxFilename:parts.zipName, xlsxMime:"application/zip", gisBlob:null, photoZipBlob:null,
+      filesNote:"one zip with "+names.join(", "), title:parts.title, site:parts.site, date:parts.date });
+  }
+
+  // ── Roadside PDF (Keystone style: charcoal band, gold text) ─────────────
+  function pdfLatin1(s){
+    return String(s==null?"":s).replace(/[–—]/g,"-").replace(/[‘’]/g,"'").replace(/[“”]/g,'"')
+      .replace(/•/g,"-").replace(/·/g,"|").replace(/\r/g,"").replace(/[^\n\x20-\x7e\xa0-\xff]/g,"?");
+  }
+  function pdfEsc(s){ return pdfLatin1(s).replace(/\\/g,"\\\\").replace(/\(/g,"\\(").replace(/\)/g,"\\)"); }
+  function pdfStrW(s, size, bold){
+    let w = 0; const str = pdfLatin1(s);
+    for(let i=0;i<str.length;i++){
+      const c = str[i];
+      if("il.,;:'|!jI".indexOf(c)>=0) w += .27;
+      else if("ftr()[] -/".indexOf(c)>=0) w += .33;
+      else if("mwMW@%".indexOf(c)>=0) w += .85;
+      else if(c>="A" && c<="Z") w += .68;
+      else if(c>="0" && c<="9") w += .56;
+      else w += .52;
+    }
+    return w*size*(bold?1.06:1);
+  }
+  function pdfWrap(s, width, size, bold){
+    const out = [];
+    String(s==null?"":s).split("\n").forEach(par=>{
+      const words = par.split(/\s+/).filter(Boolean);
+      if(!words.length){ out.push(""); return; }
+      let line = "";
+      words.forEach(w=>{
+        while(pdfStrW(w,size,bold) > width){   // break very long words
+          let k = w.length; while(k>1 && pdfStrW(w.slice(0,k),size,bold) > width) k--;
+          if(line){ out.push(line); line = ""; }
+          out.push(w.slice(0,k)); w = w.slice(k);
+        }
+        const test = line ? line+" "+w : w;
+        if(pdfStrW(test,size,bold) <= width) line = test; else { if(line) out.push(line); line = w; }
+      });
+      if(line) out.push(line);
+    });
+    return out;
+  }
+  function jpegInfo(bytes){
+    let i = 2;
+    while(i < bytes.length){
+      if(bytes[i] !== 0xFF){ i++; continue; }
+      const mk = bytes[i+1];
+      if(mk>=0xC0 && mk<=0xC3){ return { h:(bytes[i+5]<<8)|bytes[i+6], w:(bytes[i+7]<<8)|bytes[i+8] }; }
+      i += 2 + ((bytes[i+2]<<8)|bytes[i+3]);
+    }
+    return null;
+  }
+  async function pdfLogoBytes(){
+    try{
+      const r = await fetch("logo.png"); if(!r.ok) return null;
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const img = await new Promise((res,rej)=>{ const im = new Image(); im.onload = ()=>res(im); im.onerror = rej; im.src = url; });
+      const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight;
+      const g = c.getContext("2d"); g.fillStyle = "#333331"; g.fillRect(0,0,c.width,c.height); g.drawImage(img,0,0);
+      URL.revokeObjectURL(url);
+      return dataUrlToBytes(c.toDataURL("image/jpeg", 0.92));
+    }catch(e){ return null; }
+  }
+  async function buildRoadsidePdf(D){
+    const rd = Object.assign(blankRoadside(), D.roadside || {});
+    const m = D.m, rowsX = D.rows || [];
+    const W = 595.28, H = 841.89, M = 42, CW = W - 2*M;
+    const GOLD = "0.800 0.655 0.208", CHAR = "0.200 0.200 0.192", INK = "0.165 0.165 0.157", MUTE = "0.42 0.416 0.388", PALE = "0.941 0.929 0.894", LINE = "0.80 0.78 0.72";
+    const pages = []; let cur = null, y = 0;
+    const images = [];   // { bytes, w, h }
+    function newPage(){ cur = { ops:[], imgs:[] }; pages.push(cur); y = H - M; }
+    function txt(x, yb, s, size, bold, col){ cur.ops.push("BT /"+(bold?"F2":"F1")+" "+size+" Tf "+(col||INK)+" rg "+x.toFixed(2)+" "+yb.toFixed(2)+" Td ("+pdfEsc(s)+") Tj ET"); }
+    function rect(x, yb, w, h, fill){ cur.ops.push(fill+" rg "+x.toFixed(2)+" "+yb.toFixed(2)+" "+w.toFixed(2)+" "+h.toFixed(2)+" re f"); }
+    function box(x, yb, w, h){ cur.ops.push(LINE+" RG 0.6 w "+x.toFixed(2)+" "+yb.toFixed(2)+" "+w.toFixed(2)+" "+h.toFixed(2)+" re S"); }
+    function need(h){ if(y - h < M + 22) newPage(); }
+    function heading(s){
+      need(40); y -= 6;
+      rect(M, y-22, CW, 22, PALE); rect(M, y-22, 3, 22, GOLD);
+      txt(M+10, y-15, s, 11.5, true, INK); y -= 30;
+    }
+    function para(s, size){
+      size = size || 10; const lh = size*1.35;
+      pdfWrap(s, CW, size, false).forEach(l=>{ need(lh); y -= lh; txt(M, y+size*0.25, l, size, false, INK); });
+      y -= 4;
+    }
+    function kv(label, val){
+      const lines = pdfWrap(val || "-", CW-140, 10, false), lh = 13.5;
+      need(lines.length*lh + 4);
+      txt(M, y-10, label, 10, true, MUTE);
+      lines.forEach((l,i)=> txt(M+140, y-10-i*lh, l, 10, false, INK));
+      y -= lines.length*lh + 4;
+    }
+    function table(cols, headers, data){
+      const tot = cols.reduce((a,b)=>a+b,0), ws = cols.map(c=>c/tot*CW), pad = 4, size = 9, lh = 11.5;
+      function drawRow(cells, bold, fill){
+        const wrapped = cells.map((c,i)=> pdfWrap(c, ws[i]-2*pad, size, bold));
+        const n = Math.max(1, ...wrapped.map(a=>a.length));
+        const h = n*lh + 2*pad;
+        need(h);
+        let x = M;
+        if(fill) rect(M, y-h, CW, h, fill);
+        wrapped.forEach((lines,i)=>{
+          box(x, y-h, ws[i], h);
+          lines.forEach((l,k)=> txt(x+pad, y-pad-size-k*lh+1.5, l, size, bold, INK));
+          x += ws[i];
+        });
+        y -= h;
+      }
+      need(40);
+      drawRow(headers, true, PALE);
+      data.forEach(r=> drawRow(r, false, null));
+      y -= 8;
+    }
+    // first page: brand band
+    newPage();
+    rect(0, H-84, W, 84, CHAR);
+    const logo = await pdfLogoBytes();
+    if(logo){ const inf = jpegInfo(logo); if(inf){ images.push({ bytes:logo, w:inf.w, h:inf.h }); const hh = 58, ww = hh*inf.w/inf.h; cur.imgs.push({ n:images.length-1, x:M, y:H-84+13, w:ww, h:hh }); } }
+    else { txt(M, H-44, "KEYSTONE CONSERVATION", 20, true, GOLD); txt(M, H-62, "ECOLOGICAL CONSULTANCY AND MANAGEMENT", 9, false, GOLD); }
+    txt(W-M-pdfStrW("Casey Roadside Survey",11,true), H-48, "Casey Roadside Survey", 11, true, GOLD);
+    y = H - 84 - 24;
+    txt(M, y-14, "Casey Conservation Roadsides", 18, true, INK); y -= 30;
+
+    heading("Title Page");
+    const prepared = rd.preparedBy==="__other" ? (rd.preparedOther||"") : (rd.preparedBy||"");
+    kv("Site conducted", m.site||"");
+    kv("Conducted on", (m.date||"") + (rd.time ? "  "+rd.time : ""));
+    kv("Prepared by", prepared);
+
+    heading("Values and Threats");
+    const vals = (rd.values||[]).filter(v=>v.value||v.threat||v.mitigation||v.priority).map((v,i)=>[String(i+1), v.value, v.threat, v.mitigation, v.priority]);
+    if(vals.length) table([4,24,24,32,12], ["#","Ecological Value","Threatening Process(es)","Mitigation","Priority"], vals);
+    else para("No values or threats recorded.");
+
+    heading("Commentary");
+    para(rd.commentary || "No commentary recorded.");
+
+    heading("Significant Species Observed");
+    if(rowsX.length) table([4,30,26,40], ["#","Scientific Name","Common Name","Significance"], rowsX.map((r,i)=>[String(i+1), r.sci, r.common||"", r.sigText||""]));
+    else para("No significant species recorded.");
+
+    const ph = (rd.photos||[]).filter(p=>p.thumb);
+    if(ph.length){
+      heading("Photos");
+      const colsN = 3, gap = 10, cw = (CW - gap*(colsN-1))/colsN;
+      for(let i=0;i<ph.length;i+=colsN){
+        const batch = ph.slice(i, i+colsN).map(p=>{ const b = dataUrlToBytes(p.thumb), inf = jpegInfo(b); return { p, b, inf }; }).filter(x=>x.inf);
+        if(!batch.length) continue;
+        const ih = Math.max(...batch.map(x=> cw*x.inf.h/x.inf.w));
+        const caps = batch.map(x=> pdfWrap((x.p.caption?x.p.caption+" ":"")+"("+(x.p.label||"")+")", cw, 8, false));
+        const h = ih + Math.max(...caps.map(c=>c.length))*10 + 10;
+        need(h);
+        batch.forEach((x,k)=>{
+          const ww = cw, hh = cw*x.inf.h/x.inf.w, xx = M + k*(cw+gap);
+          images.push({ bytes:x.b, w:x.inf.w, h:x.inf.h });
+          cur.imgs.push({ n:images.length-1, x:xx, y:y-hh, w:ww, h:hh });
+          caps[k].forEach((l,j)=> txt(xx, y-hh-9-j*10, l, 8, false, MUTE));
+        });
+        y -= h;
+      }
+    }
+    // footers
+    pages.forEach((pg,i)=>{
+      cur = pg;
+      cur.ops.push(LINE+" RG 0.6 w "+M+" "+(M-6)+" m "+(W-M)+" "+(M-6)+" l S");
+      txt(M, M-18, "Keystone Conservation | Ecological Consultancy and Management", 8, false, MUTE);
+      const pn = "Page "+(i+1)+" of "+pages.length; txt(W-M-pdfStrW(pn,8,false), M-18, pn, 8, false, MUTE);
+    });
+    // assemble
+    const enc = s=>{ const u = new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i] = s.charCodeAt(i) & 255; return u; };
+    const objs = [];   // objs[i] = parts for object i+1
+    objs.push(["<< /Type /Catalog /Pages 2 0 R >>"]);
+    objs.push([null]);   // pages, filled below
+    objs.push(["<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"]);
+    objs.push(["<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"]);
+    const imgObjNo = images.map((im,i)=>{
+      objs.push(["<< /Type /XObject /Subtype /Image /Width "+im.w+" /Height "+im.h+" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+im.bytes.length+" >>\nstream\n", im.bytes, "\nendstream"]);
+      return objs.length;
+    });
+    const pageNos = [];
+    pages.forEach(pg=>{
+      let content = pg.ops.join("\n");
+      pg.imgs.forEach((im,k)=>{ content += "\nq "+im.w.toFixed(2)+" 0 0 "+im.h.toFixed(2)+" "+im.x.toFixed(2)+" "+im.y.toFixed(2)+" cm /Im"+im.n+" Do Q"; });
+      const cBytes = enc(content);
+      objs.push(["<< /Length "+cBytes.length+" >>\nstream\n", cBytes, "\nendstream"]);
+      const cNo = objs.length;
+      const xo = pg.imgs.length ? " /XObject << "+pg.imgs.map(im=>"/Im"+im.n+" "+imgObjNo[im.n]+" 0 R").join(" ")+" >>" : "";
+      objs.push(["<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "+W+" "+H+"] /Contents "+cNo+" 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >>"+xo+" >> >>"]);
+      pageNos.push(objs.length);
+    });
+    objs[1] = ["<< /Type /Pages /Count "+pageNos.length+" /Kids [ "+pageNos.map(n=>n+" 0 R").join(" ")+" ] >>"];
+    const chunks = []; let len = 0; const offs = [];
+    const add = x=>{ const u = typeof x==="string" ? enc(x) : x; chunks.push(u); len += u.length; };
+    add("%PDF-1.4\n");
+    objs.forEach((parts,i)=>{ offs.push(len); add((i+1)+" 0 obj\n"); parts.forEach(add); add("\nendobj\n"); });
+    const xr = len;
+    add("xref\n0 "+(objs.length+1)+"\n0000000000 65535 f \n");
+    offs.forEach(o=> add(String(o).padStart(10,"0")+" 00000 n \n"));
+    add("trailer\n<< /Size "+(objs.length+1)+" /Root 1 0 R >>\nstartxref\n"+xr+"\n%%EOF");
+    const out = new Uint8Array(len); let p = 0; chunks.forEach(c=>{ out.set(c,p); p += c.length; });
+    return out;
+  }
+  // Home page: choose the survey type to start.
+  $("homeStart").addEventListener("click", ()=> chooseType("flora"));
+  $("homeStartRoad").addEventListener("click", ()=> chooseType("roadside"));
+  $("homeStartTree").addEventListener("click", ()=> chooseType("tree"));
+
+  FHKit.buildPicker($("pick"), $("pickList"), add, ()=> surveyType==="tree" ? [] : rows.map(r=>r.sci), openExisting);
   // Jump to the record already logged for a species picked from the search list.
   function openExisting(sp){
     const k = String(sp.sci||"").toLowerCase();
@@ -9753,11 +10404,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     btn.setAttribute("aria-expanded", open ? "true" : "false");
     $(panel).hidden = !open;
   }
-  $("homeStart").addEventListener("click", ()=>{
-    setStarting(true);
-    setTimeout(()=>{ try{ $("site").focus(); }catch(e){} }, 350);
-  });
   $("homeJoin").addEventListener("click", ()=>{
+    if(surveyType!=="flora"){ surveyType = "flora"; applyType(); }
     setStarting(true);
     setTimeout(()=>{ const c = $("liveCard"); if(c) c.scrollIntoView({ behavior:"smooth", block:"start" }); try{ $("liveJoinCode").focus(); }catch(e){} }, 350);
   });
