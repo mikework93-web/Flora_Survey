@@ -18,7 +18,8 @@ Changes made to this copy of the app (started from your `Flora_Survey`). Plain-E
   - Polygons work as before.
   - Export: one zip with the Excel attribute table (the template's fields as columns, header in row 1), a GeoPackage of tree points carrying every attribute, a polygons GeoPackage if any were drawn, and the photos named by tree ID. Large surveys split into several point GeoPackage files automatically.
 - **VicKey** is in the Menu in all three survey types.
-- Not included for the new types yet: Team Sync, and importing an exported survey back in. Export all includes them.
+- **Team Sync now works for both new types (build 2026-11-10.2).** Joining a code adopts the survey type. Significant Trees: every attribute in the tree table syncs per tree, so trees added on either phone show on both (GISFID is numbered by creation order). Casey Roadside: the form (prepared by, time, Values and Threats table, Commentary) syncs through the survey record, last edit wins; species and their significance text sync like Flora Survey. Photos stay on the phone that took them, as in Flora Survey.
+- Not included for the new types yet: importing an exported survey back in. Export all includes them.
 - Tested with mock data in a browser (form entry, species search, map point, photos, export contents, reload and restore, Flora Survey unchanged). Not tested on a real phone.
 
 ## Offline VicFlora: no longer stalls at the keys, keeps going in the background (2026-11-02, v.2026-11-02.1)
