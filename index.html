@@ -1011,6 +1011,7 @@ body.t-roadside .only-flora,body.t-tree .only-flora,body.t-roadside .not-road,bo
 .tr-ro b{font-weight:600;word-break:break-all}
 .tr-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
 .tr-f input{width:100%}
+.tr-sub{margin-top:12px}.tr-opt{font-weight:400;color:var(--muted);font-size:12px}.tr-crit{display:grid;gap:8px}.tr-c{border:1px solid var(--border);border-radius:3px;padding:8px;background:var(--field)}.tr-chk{display:flex;gap:8px;align-items:center;font-size:14px}.tr-chk input{width:20px;height:20px;flex:none}.tr-d{font-size:11.5px;color:var(--muted);margin-top:3px}.tr-c select{width:100%;margin-top:3px}
 @media (max-width:420px){.tr-grid,.tr-auto{grid-template-columns:1fr}}
 </style>
 <!-- Aerial imagery map (for precise point placement/adjustment and polygon
@@ -5116,7 +5117,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-10.3";
+  const BUILD_VERSION = "2026-11-10.4";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -9825,7 +9826,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   function valPhotoIds(v){ return (v.photos||[]).map(p=>p.label).filter(Boolean); }
   function rowPhotoIds(r){ const ph = r.photos||[]; return ph.map((p,i)=> ph.length>1 ? (r.id||"species")+"-"+(i+1) : (r.id||"species")); }
   function blankRoadside(){ return { preparedBy:"", preparedOther:"", time:"", values:[blankValue(),blankValue(),blankValue()], commentary:"", photos:[] }; }
-  function blankTree(){ return { owner:"", address:"", name2:"", assessment:"", eastWest:"", elbYear:"", fid:0, modNote:"", status:"", health:"", dbh:"", created:"", modAt:"", modBy:"" }; }
+  function blankTree(){ return { c_horti:"", c_loc:"", c_rare:"", c_old:"", c_size:"", c_aes:"", c_curious:"", c_hist:"", c_abor:"", c_exam:"", c_remnant:"", c_habitat:"", owner:"", address:"", name2:"", assessment:"", eastWest:"", elbYear:"", fid:0, modNote:"", status:"", health:"", dbh:"", created:"", modAt:"", modBy:"" }; }
   // Significant tree attribute table (the Feature list supplied for Casey).
   // auto = filled by the app, f = typed by the surveyor. t = GIS column type.
   const TREE_FIELDS = [
@@ -9847,7 +9848,21 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     { k:"GISStatus", f:"status" },
     { k:"GISCreateDate", auto:"created" },
     { k:"Tree/Patch Health", f:"health" },
-    { k:"DBH", f:"dbh", t:"real", num:true }
+    { k:"DBH", f:"dbh", t:"real", num:true },
+    // Significance criteria (National Trust criteria plus additional criteria). None is mandatory.
+    // Ticked = "Yes", blank = not selected.
+    { k:"Horticultural_Value", f:"c_horti", chk:true, d:"Outstanding horticultural or genetic value (e.g. important stock for future propagation), including rare examples of local gene pools." },
+    { k:"Location_Landscape_Context", f:"c_loc", chk:true, d:"Unique location or context contributing to the landscape: remnant native vegetation, landmarks, trees in a historic garden, park or town, neighbourhood or area character." },
+    { k:"Rare_or_Localised", f:"c_rare", chk:true, d:"Species or group of trees rare in the wild or in cultivation, or with a very localised distribution." },
+    { k:"Particularly_Old", f:"c_old", chk:true, d:"Particularly old or venerable for its species variant." },
+    { k:"Outstanding_Size", f:"c_size", chk:true, d:"Outstanding height, trunk circumference or canopy spread." },
+    { k:"Aesthetic_Value", f:"c_aes", chk:true, d:"Considerable aesthetic value because of its form or other attributes." },
+    { k:"Curious_Growth_Form", f:"c_curious", chk:true, d:"Outstanding interest from a curious growth form or physical feature: abnormal outgrowths, fusion of branches, natural damage or pruning." },
+    { k:"Historic_Value", f:"c_hist", chk:true, d:"Important to the cultural or natural history of the area, e.g. commemorates an occasion, planted by notable people or linked to an important event." },
+    { k:"Aboriginal_Culture", f:"c_abor", chk:true, d:"Recognised association with Aboriginal culture or heritage." },
+    { k:"Outstanding_Example_of_Species", f:"c_exam", chk:true, d:"Outstanding example of its species in good form, structure and health." },
+    { k:"Remnant", f:"c_remnant", sel:["Type 1","Type 2"], d:"Type 1: survives from the pre-European era. Type 2: survives from a previous landscape period, e.g. orchard fruit/nut trees from before urbanisation." },
+    { k:"Outstanding_Habitat_Value", f:"c_habitat", chk:true, d:"Outstanding value as habitat or niche for native flora and fauna. Requires review by an ecologist." }
   ];
   function pad2(n){ return String(n).padStart(2,"0"); }
   function stampNow(){ const d = new Date(); return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())+" "+pad2(d.getHours())+":"+pad2(d.getMinutes())+":"+pad2(d.getSeconds()); }
@@ -9907,16 +9922,23 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const t = r.tree || blankTree();
     const ro = (label, val) => '<div class="tr-ro"><span>'+e(label)+'</span><b>'+e(val===null||val===undefined||val===""?"-":val)+'</b></div>';
     const en = treeEN(r);
-    const inputs = TREE_FIELDS.filter(f=>f.f).map(f=>
+    const inputs = TREE_FIELDS.filter(f=>f.f && !f.chk && !f.sel).map(f=>
       '<div class="tr-f"><label class="detail-label" for="tr_'+e(r.id)+'_'+f.f+'">'+e(f.k)+'</label>'
       + '<input id="tr_'+e(r.id)+'_'+f.f+'" type="text"'+(f.num?' inputmode="decimal"':'')+' data-tree="'+e(r.id)+'|'+f.f+'" value="'+e(t[f.f]||"")+'" autocomplete="off"></div>'
     ).join("");
+    const critHtml = '<div class="tr-title tr-sub">Significance criteria <span class="tr-opt">(all optional)</span></div><div class="tr-crit">'
+      + TREE_FIELDS.filter(f=>f.chk||f.sel).map(f=>{
+          const id = 'tr_'+e(r.id)+'_'+f.f, lab = f.k.replace(/_/g," ");
+          if(f.chk) return '<div class="tr-c"><label class="tr-chk"><input type="checkbox" id="'+id+'" data-tree="'+e(r.id)+'|'+f.f+'"'+(t[f.f]?' checked':'')+'> <b>'+e(lab)+'</b></label><div class="tr-d">'+e(f.d)+'</div></div>';
+          return '<div class="tr-c"><label class="detail-label" for="'+id+'"><b>'+e(lab)+'</b></label><select id="'+id+'" data-tree="'+e(r.id)+'|'+f.f+'"><option value="">Not selected</option>'
+            + f.sel.map(o=>'<option'+(t[f.f]===o?' selected':'')+'>'+o+'</option>').join("") + '</select><div class="tr-d">'+e(f.d)+'</div></div>';
+        }).join("") + '</div>';
     return '<div class="tr-panel"><div class="tr-title">Tree attributes</div>'
       + '<div class="tr-auto">'
       + ro("Unique_Tree_ID", r.id) + ro("Common_Name", r.common||r.sci) + ro("Genus_and_species", r.sci)
       + ro("Easting", en[0]) + ro("Northing", en[1]) + ro("GISFID", treeFid(r))
       + ro("GISCreateDate", t.created) + ro("GISModDate", t.modAt) + ro("GISModName", t.modBy)
-      + '</div><div class="tr-grid">'+inputs+'</div></div>';
+      + '</div><div class="tr-grid">'+inputs+'</div>' + critHtml + '</div>';
   }
   function applyType(){
     const t = surveyType;
@@ -10091,7 +10113,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const k = t.dataset.tree.indexOf("|"), id = t.dataset.tree.slice(0,k), f = t.dataset.tree.slice(k+1);
       const i = rowIndexById(id); if(i<0) return;
       const r = rows[i]; if(!r.tree) r.tree = blankTree();
-      r.tree[f] = t.value; r.tree.modAt = stampNow(); r.tree.modBy = userName(); autosave(); liveSyncFieldDebounced(r, { treeJson: JSON.stringify(r.tree) });
+      r.tree[f] = (t.type==="checkbox") ? (t.checked ? "Yes" : "") : t.value; r.tree.modAt = stampNow(); r.tree.modBy = userName(); autosave(); liveSyncFieldDebounced(r, { treeJson: JSON.stringify(r.tree) });
     }
   });
 
@@ -10144,7 +10166,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       D.siteNotes.forEach(n=>{ if((n.text||"").trim()) push([fmtNoteTime(n.ts), n.text], "wrap"); });
     }
     push([]); push(["Site", m.site||""]); push(["Date", m.date||""]); push(["Trees", rowsX.length]);
-    return [22,22,12,12,18,28,24,22,20,12,10,8,20,16,28,14,20,16,8];
+    return [22,22,12,12,18,28,24,22,20,12,10,8,20,16,28,14,20,16,8,14,16,14,14,14,14,14,14,14,16,10,16];
   }
   function gpkgChunks(optsBase, pts, out){
     try{ out.push(FHKit.buildGeoPackageBytes(Object.assign({}, optsBase, { points:pts }))); }
