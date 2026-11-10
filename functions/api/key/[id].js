@@ -1,17 +1,22 @@
-/* Cloudflare Pages Function: /api/key/<id>
-   Fetches an identification key from KeyBase on the server side and returns it to the app.
-   The browser cannot call KeyBase directly (it does not allow cross-site requests), so the
-   offline VicFlora download and VicKey use this instead of the slow public relays.
-   Keys rarely change, so each one is cached at Cloudflare for a day. */
-export async function onRequestGet({ params }) {
-  const id = String(params.id || "");
-  if (!/^[A-Za-z0-9_-]{1,20}$/.test(id)) return new Response("bad key id", { status: 400 });
-  const up = await fetch("https://data.rbg.vic.gov.au/keybase-ws/ws/key_get/" + encodeURIComponent(id), {
-    headers: { Accept: "application/json" },
-    cf: { cacheTtl: 86400, cacheEverything: true }
-  });
-  return new Response(up.body, {
-    status: up.status,
-    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400" }
-  });
+// Cloudflare Pages Function: GET /api/key/<id>
+// Fetches an identification key from KeyBase on the server and hands it back to the app,
+// because the browser is not allowed to call KeyBase directly (CORS).
+export async function onRequestGet(context) {
+  const id = String(context.params.id || "").replace(/[^0-9]/g, "");
+  if (!id) return new Response('{"error":"bad key id"}', { status: 400, headers: head() });
+  const url = "https://data.rbg.vic.gov.au/keybase-ws/ws/key_get/" + id;
+  try {
+    const r = await fetch(url, {
+      headers: { "Accept": "application/json", "User-Agent": "FloraSurvey/1.0 (Keystone Conservation)" },
+      cf: { cacheTtl: 86400, cacheEverything: true }
+    });
+    const body = await r.text();
+    return new Response(body, { status: r.status, headers: head() });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: "key service unreachable", detail: String(e && e.message || e) }), { status: 502, headers: head() });
+  }
+}
+export async function onRequestOptions() { return new Response(null, { status: 204, headers: head() }); }
+function head() {
+  return { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400" };
 }
