@@ -7,7 +7,7 @@
 (function () {
   "use strict";
   var DB = "fh_vicflora_offline", VER = 1;
-  var KEY_WS = "https://data.rbg.vic.gov.au/keybase-ws/ws/key_get/";
+  var KEY_WS = "https://keybase.rbg.vic.gov.au/api/v1/key_get/";
   var F = "id taxonRank taxonomicStatus taxonName{fullName} establishmentMeans epbc ffg " +
           "preferredVernacularName{name} identificationKeys{id title} currentProfile{profile}";
   var Q_ROOT = "query($id:ID!){taxonConcept(id:$id){id taxonRank taxonomicStatus taxonName{fullName} identificationKeys{id title} higherClassification{id}}}";
@@ -149,7 +149,8 @@
         var to = ctrl && setTimeout(function () { ctrl.abort(); }, 12000);
         return fetch(src.url, { headers: { "Accept": "application/json" }, signal: ctrl ? ctrl.signal : undefined })
           .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-          .then(function (j) { if (!j || !j.leads) throw new Error("not a key"); srcFails[src.name] = 0; return j; })
+          .then(function (j) { if (j && !j.leads && j.first_step && j.first_step.leads) j.leads = j.first_step.leads;
+            if (!j || !j.leads) throw new Error("not a key"); srcFails[src.name] = 0; return j; })
           .catch(function (e) {
             srcFails[src.name] = (srcFails[src.name] || 0) + 1; keyErrors.push(src.name + ": " + (e && e.message === "Failed to fetch" ? "blocked or offline" : (e && e.message) || "failed")); throw e; })
           .finally(function () { if (to) clearTimeout(to); });
