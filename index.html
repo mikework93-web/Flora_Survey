@@ -5124,7 +5124,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-10.9";
+  const BUILD_VERSION = "2026-11-11.1";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -5610,6 +5610,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       fieldNotes:row.fieldNotes||"", free:!!row.free, uncertain:!!row.uncertain, significant:!!row.significant,
       pointsJson: encodePointsField(row.points),
       ...(surveyType!=="flora" ? { sigText:row.sigText||"", zones:row.zones||"", treeJson:row.tree ? JSON.stringify(row.tree) : "" } : {}),
+      ...(surveyType==="tree" && row.tree ? treeAll(row) : {}),
       recordId: row.id, addedBy: row.addedBy||userName()||"", updatedBy: userName()||row.addedBy||"", updatedAt: new Date().toISOString(),
       appVersion: BUILD_VERSION  // historical metadata only (what wrote this record) — the "different app
                                   // version" warning itself is driven by device presence, see syncTeamPresence()
@@ -5627,7 +5628,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       sci: doc.sci, common: doc.common||doc.sci, type: doc.type||"indigenous", lf: doc.lf||"", ffg: doc.ffg||"", epbc: doc.epbc||"",
       fieldNotes: doc.fieldNotes||"", free: !!doc.free, uncertain: !!doc.uncertain, significant: !!doc.significant,
       points: decodePointsField(doc.pointsJson),
-      sigText: doc.sigText||"", zones: doc.zones||"", tree: parseTree(doc.treeJson),
+      sigText: doc.sigText||"", zones: doc.zones||"", ...treeFromDoc(doc),
       photos: [], // photos are always device-local — never synced
       addedBy: doc.addedBy||"", updatedBy: doc.updatedBy||"",
       _liveUpdatedAt: doc._updateTime||"", _liveCode: live.code
@@ -5720,11 +5721,14 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       .then(()=> FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code+"/species/"+row.id, fields))
       .catch(()=> queueLiveOp({ op:"patch", id:row.id, fields }));
   }
+  const noteSyncPartial = new Map();
   function liveSyncFieldDebounced(row, partial, delay){
     if(!live.active) return;
     const key = row.id;
     clearTimeout(noteSyncTimers.get(key));
-    noteSyncTimers.set(key, setTimeout(()=> liveSyncField(row, partial), delay||800));
+    // Edits made inside the wait are sent together, so a quick second edit never cancels the first.
+    noteSyncPartial.set(key, Object.assign(noteSyncPartial.get(key)||{}, partial));
+    noteSyncTimers.set(key, setTimeout(()=>{ const p = noteSyncPartial.get(key); noteSyncPartial.delete(key); liveSyncField(row, p||partial); }, delay||800));
   }
   function liveDeleteSpecies(row){
     if(!live.active) return;
@@ -5759,7 +5763,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     if(typeof doc.pointsJson === "string") local.points = decodePointsField(doc.pointsJson);
     if(typeof doc.sigText === "string" && !(active && active.dataset && active.dataset.sigtext === local.id)) local.sigText = doc.sigText;
     if(typeof doc.zones === "string" && !(active && active.closest && active.closest("details.rd-zones")) && !(active && active.dataset && active.dataset.rowztext === local.id)) local.zones = doc.zones;
-    if(typeof doc.treeJson === "string" && doc.treeJson && !(active && active.dataset && active.dataset.tree && active.dataset.tree.indexOf(local.id+"|") === 0)){ const tt = parseTree(doc.treeJson); if(tt) local.tree = tt; }
+    if(surveyType==="tree") treeMergeInto(local, doc, active);
     if(!notesFocused && typeof doc.fieldNotes === "string") local.fieldNotes = doc.fieldNotes;
     local.addedBy = doc.addedBy || local.addedBy;
     local.updatedBy = doc.updatedBy || local.updatedBy;
@@ -9881,8 +9885,35 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const now = stampNow();
     if(!r.tree.created){ r.tree.created = now; }
     r.tree.modAt = now; r.tree.modBy = userName();
-    liveSyncField(r, { treeJson: JSON.stringify(r.tree) });
+    liveSyncFieldDebounced(r, treePatch(r, ["created","modAt","modBy"].concat(treeUnsent(r))));
   }
+  // Tree attributes are shared one field at a time, each with its own edit time, so two people filling in
+  // different attributes of the same tree never overwrite each other.
+  function treeUnsent(r){ const b = blankTree(); return Object.keys(b).filter(f=> r.tree && r.tree[f]!==b[f] && r.tree[f]!=null && !(r._tt && r._tt[f]) && f!=="created" && f!=="modAt" && f!=="modBy"); }
+  function treePatch(r, names){
+    r._tt = r._tt||{}; const ts = new Date().toISOString(), out = {};
+    names.forEach(f=>{ r._tt[f] = ts; out["tr_"+f] = String(r.tree[f]==null?"":r.tree[f]); out["trt_"+f] = ts; });
+    return out;
+  }
+  function treeAll(row){
+    const b = blankTree(), names = Object.keys(b).filter(f=> row.tree && (row.tree[f]!==b[f] || f==="created"));
+    return treePatch(row, names);
+  }
+  function treeMergeInto(local, doc, active){
+    const keys = Object.keys(doc).filter(k=>k.indexOf("tr_")===0), b = blankTree();
+    if(!keys.length){ if(doc.treeJson && !local.tree){ const t = parseTree(doc.treeJson); if(t) local.tree = t; } return; }
+    if(!local.tree) local.tree = blankTree();
+    local._tt = local._tt||{};
+    keys.forEach(k=>{
+      const f = k.slice(3); if(!(f in b)) return;
+      const rt = String(doc["trt_"+f]||""), lt = local._tt[f]||"", rv = String(doc[k]==null?"":doc[k]);
+      if(active && active.dataset && active.dataset.tree === local.id+"|"+f) return;
+      if(lt && rt && rt<=lt) return;
+      if(!lt && rv==="" && local.tree[f]) return;
+      local.tree[f] = (typeof b[f]==="number") ? (Number(rv)||0) : rv; local._tt[f] = rt;
+    });
+  }
+  function treeFromDoc(doc){ const tmp = { id:"", tree:undefined, _tt:{} }; treeMergeInto(tmp, doc, null); return { tree:tmp.tree, _tt:tmp._tt }; }
   // GISFID is the tree's position in creation order, worked out when it is shown or exported,
   // so two people adding trees at once under Team Sync can never end up with the same number.
   function treeFid(r, all){
@@ -10132,7 +10163,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const k = t.dataset.tree.indexOf("|"), id = t.dataset.tree.slice(0,k), f = t.dataset.tree.slice(k+1);
       const i = rowIndexById(id); if(i<0) return;
       const r = rows[i]; if(!r.tree) r.tree = blankTree();
-      r.tree[f] = (t.type==="checkbox") ? (t.checked ? "Yes" : "") : t.value; r.tree.modAt = stampNow(); r.tree.modBy = userName(); autosave(); liveSyncFieldDebounced(r, { treeJson: JSON.stringify(r.tree) });
+      r.tree[f] = (t.type==="checkbox") ? (t.checked ? "Yes" : "") : t.value; r.tree.modAt = stampNow(); r.tree.modBy = userName(); autosave(); liveSyncFieldDebounced(r, treePatch(r, [f,"modAt","modBy"]));
     }
   });
 
@@ -10240,8 +10271,18 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   }
   async function loadRvmp(d, dist){
     if(!requireName(()=>loadRvmp(d, dist))) return;
-    const keep = roadside.values.filter(v=> !v.rvmp && (v.value||v.threat||v.mitigation||v.priority||(v.photos||[]).length));
-    const fresh = rvmpRows(d).map(x=>{ const v = blankValue(); Object.assign(v, x); v.rvmp = true; return v; });
+    // Rows already in the table keep their edits. RVMP rows get a code worked out from their content, so
+    // a second phone loading the same roadside produces the same rows instead of doubled ones.
+    const hash = t=>{ let h = 5381; for(let i=0;i<t.length;i++) h = ((h<<5)+h+t.charCodeAt(i))>>>0; return h.toString(36).toUpperCase(); };
+    const edited = v=> v.threat||v.mitigation||v.priority||(v.photos||[]).length;
+    const keep = roadside.values.filter(v=> (v.value||v.zones||v.threat||v.mitigation||v.priority||(v.photos||[]).length) && (!v.rvmp || edited(v)));
+    const used = {};
+    const fresh = rvmpRows(d).map(x=>{
+      const have = keep.find(k=> k.rvmp && k.value===x.value);
+      if(have){ have.zones = have.zones || x.zones; return null; }
+      const v = blankValue(); Object.assign(v, x); v.rvmp = true;
+      let c = "RV-"+hash(d.id+"|"+x.value), n = 1; while(used[c]) c = "RV-"+hash(d.id+"|"+x.value)+(++n); used[c] = 1; v.code = c; return v;
+    }).filter(Boolean);
     roadside.values = keep.concat(fresh); roadside.rvmpId = d.id; roadside.rvmpName = d.name+(d.loc?" - "+d.loc:""); roadside.rvmpConfirmed = new Date().toISOString();
     if(!(roadside.commentary||"").trim()){
       roadside.commentary = "RVMP data for "+d.name+(d.loc?" ("+d.loc+")":"")+": "+d.cat+(d.own?". Ownership: "+d.own:"")+". "+d.n+" mapped zone"+(d.n===1?"":"s")+" ("+d.zones[0].c+(d.n>1?" to "+d.zones[d.n-1].c:"")+"), "+d.ha+" ha.";
@@ -10697,64 +10738,185 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   }
 
   // ── Team Sync for the roadside / tree types ─────────────────────────────
-  // Tree attributes and roadside significance travel on each species record (treeJson, sigText).
-  // The roadside form (prepared by, time, commentary, values and threats table) lives on the shared
-  // survey record itself, so everyone sees the same form. The last edit to a field wins.
-  // Photos stay on each phone, as in the Flora Survey.
-  var roadMetaDirty = false, roadMetaAppliedAt = "", roadMetaTimer = null;
+  // Every field of the roadside form is shared on its own: prepared by, time, commentary, the RVMP
+  // roadside choice, and every cell of every Values/Threats row. Each field travels with its own edit
+  // time, only the fields a person actually changed are sent, and a newer edit to a field beats an
+  // older one without touching anything else. A deleted row is sent as a marker, so deletions reach
+  // everyone and an old copy of the table can never bring a row back or wipe a teammate's cells.
+  // Rows have fixed codes (RVMP rows get codes worked out from their content), so two phones that
+  // both load the RVMP values end up with the same rows, not doubled ones.
+  // Photos stay on each phone, as in the Flora Survey; their IDs and captions are shared with the row.
+  var RD_M = ["preparedBy","preparedOther","time","commentary","rvmpId","rvmpName","rvmpConfirmed"];
+  var RD_V = ["value","zones","threat","mitigation","priority"];
+  var rdPending = {}, rdTimer = null, rdAppliedAt = "", rdState = null, rdErrShown = false, rdRenderLater = false;
+  function rdKey(code){ return String(code).replace(/[^A-Za-z0-9]/g,"_"); }
+  function rdBlank(v){ return !(v.value||v.zones||v.threat||v.mitigation||v.priority||(v.photos||[]).length); }
+  function rdNow(){ return new Date().toISOString(); }
+  function rdSt(){
+    if(rdState && rdState.code===live.code) return rdState;
+    let st = null;
+    try{ st = JSON.parse(localStorage.getItem("fh_rdsync_"+live.code)||"null"); }catch(e){}
+    rdState = (st && st.code===live.code) ? st : { code:live.code, vals:{}, t:{}, pend:{} };
+    rdPending = rdState.pend || (rdState.pend = {});
+    return rdState;
+  }
+  function rdSave(){ try{ if(rdState) localStorage.setItem("fh_rdsync_"+rdState.code, JSON.stringify(rdState)); }catch(e){} }
+  // Gives each shared row a position number that keeps its place among the rows.
+  function rdAssignOrder(){
+    const vs = roadside.values||[];
+    vs.forEach((v,i)=>{
+      if(v._o!=null || (rdBlank(v) && !(rdState && rdState.vals["r_"+rdKey(v.code)+"_c"]))) return;
+      let p = null, n = null;
+      for(let j=i-1;j>=0;j--) if(vs[j]._o!=null){ p = vs[j]._o; break; }
+      for(let j=i+1;j<vs.length;j++) if(vs[j]._o!=null){ n = vs[j]._o; break; }
+      v._o = (p!=null && n!=null) ? (p+n)/2 : (p!=null ? p+1 : (n!=null ? n-1 : 0));
+    });
+  }
+  // The whole form as flat "key: text" pairs. Untouched blank rows are left out so a phone that joins
+  // never adds empty rows for everyone else.
+  function rdFlat(){
+    const f = {}; RD_M.forEach(k=>{ f["m_"+k] = String(roadside[k]||""); });
+    rdAssignOrder();
+    (roadside.values||[]).forEach(v=>{
+      const b = "r_"+rdKey(v.code)+"_";
+      if(rdBlank(v) && !(rdState && rdState.vals[b+"c"])) return;
+      f[b+"c"] = v.code; f[b+"o"] = String(v._o==null?0:v._o);
+      RD_V.forEach(k=>{ f[b+k] = String(v[k]||""); });
+      f[b+"p"] = JSON.stringify((v.photos||[]).map(p=>({ id:p.id, label:p.label||"" })));
+      f[b+"g"] = v.rvmp ? "1" : "";
+    });
+    return f;
+  }
+  // Works out what changed since the last agreed state and queues just those fields.
+  function rdDiff(){
+    const st = rdSt(), flat = rdFlat(), now = rdNow();
+    Object.keys(flat).forEach(K=>{
+      if(st.vals[K]===flat[K]) { if(rdPending[K] && rdPending[K].v!==flat[K]) delete rdPending[K]; return; }
+      if(!rdPending[K] || rdPending[K].v!==flat[K]) rdPending[K] = { v:flat[K], t:now };
+    });
+    Object.keys(st.vals).forEach(K=>{
+      const m = K.match(/^r_(.+)_c$/); if(!m) return;
+      const x = "r_"+m[1]+"_x";
+      if(flat[K]===undefined && st.vals[x]!=="1" && !(rdPending[x] && rdPending[x].v==="1")) rdPending[x] = { v:"1", t:now };
+    });
+    rdSave();
+  }
   function surveyMetaLiveFields(){
     const f = { type:surveyType };
     if(surveyType==="roadside"){
-      f.rdPreparedBy = roadside.preparedBy||""; f.rdPreparedOther = roadside.preparedOther||""; f.rdTime = roadside.time||"";
-      f.rdCommentary = roadside.commentary||""; f.rdValuesJson = JSON.stringify((roadside.values||[]).map(v=>Object.assign({}, v, { photos:(v.photos||[]).map(p=>({ id:p.id, label:p.label })) })));
-      f.rdUpdatedBy = deviceId(); f.rdUpdatedAt = new Date().toISOString();
+      const flat = rdFlat(), now = rdNow();
+      Object.keys(flat).forEach(K=>{ f["rd_"+K] = flat[K]; f["rd_"+K+"_t"] = now; });
     }
     return f;
   }
   function liveSyncRoadside(){
     if(!live.active || surveyType!=="roadside") return;
-    roadMetaDirty = true;
-    clearTimeout(roadMetaTimer);
-    roadMetaTimer = setTimeout(pushRoadMeta, 900);
+    rdDiff();
+    clearTimeout(rdTimer);
+    rdTimer = setTimeout(pushRoadMeta, 900);
   }
   async function pushRoadMeta(){
-    if(!live.active || !roadMetaDirty) return;
+    if(!live.active || surveyType!=="roadside") return;
+    const st = rdSt(); rdDiff();
+    const keys = Object.keys(rdPending); if(!keys.length) return;
+    const fields = {}, sent = {};
+    keys.forEach(K=>{ const p = rdPending[K]; fields["rd_"+K] = p.v; fields["rd_"+K+"_t"] = p.t; sent[K] = p; });
     try{
       await ensureAuth();
-      const d = await FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code, surveyMetaLiveFields());
-      roadMetaDirty = false; if(d && d._updateTime) roadMetaAppliedAt = d._updateTime;
-    }catch(e){ /* stays dirty: pushed again on the next sync */ }
+      const d = await FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code, fields);
+      keys.forEach(K=>{ st.vals[K] = sent[K].v; st.t[K] = sent[K].t; if(rdPending[K]===sent[K]) delete rdPending[K]; });
+      rdSave(); rdErrShown = false;   // rdAppliedAt is only moved by a pull: the server merges fields, so this reply can already hold a teammate's newer edits
+    }catch(e){
+      // Stays queued and is sent again on the next sync. A refusal is shown once so it is not silent.
+      if(e && (e.status==="PERMISSION_DENIED" || e.status==="INVALID_ARGUMENT") && !rdErrShown){
+        rdErrShown = true; try{ FHKit.toast("Team Sync could not save the form ("+e.status+"). Tell Mike."); }catch(_){}
+      }
+    }
+  }
+  function rdParse(d){
+    const out = {};
+    Object.keys(d).forEach(k=>{
+      if(k.indexOf("rd_")!==0 || /_t$/.test(k)) return;
+      out[k.slice(3)] = { v:String(d[k]==null?"":d[k]), t:String(d[k+"_t"]||"") };
+    });
+    return out;
+  }
+  // Takes a teammate's newer value for each field. A field with an unsent local edit is left alone.
+  function rdApply(d){
+    const st = rdSt(), R = rdParse(d), flat = rdFlat(); let changed = false;
+    const take = (K)=>{
+      const r = R[K]; if(!r || rdPending[K]) return false;
+      const lt = st.t[K];
+      if(lt && r.t && r.t<=lt) return false;
+      if(!lt && flat[K] && r.v==="" ) return false;       // keep content the server does not have
+      if(!lt && st.vals[K]===r.v){ st.t[K] = r.t; return false; }
+      return true;
+    };
+    const done = (K)=>{ st.vals[K] = R[K].v; st.t[K] = R[K].t; changed = true; };
+    RD_M.forEach(k=>{ const K = "m_"+k; if(take(K)){ roadside[k] = R[K].v; done(K); } });
+    const ids = {}; Object.keys(R).forEach(K=>{ const m = K.match(/^r_(.+)_(c|o|value|zones|threat|mitigation|priority|p|g|x)$/); if(m) ids[m[1]] = 1; });
+    roadside.values = roadside.values||[];
+    Object.keys(ids).forEach(id=>{
+      const kk = k=>"r_"+id+"_"+k;
+      let v = roadside.values.find(x=>rdKey(x.code)===id);
+      if(R[kk("x")] && R[kk("x")].v==="1"){
+        if(v && take(kk("x"))){ roadside.values = roadside.values.filter(x=>x!==v); }
+        if(R[kk("x")]){ st.vals[kk("x")] = "1"; st.t[kk("x")] = R[kk("x")].t; st.vals[kk("c")] = (R[kk("c")]||{}).v || st.vals[kk("c")] || ""; changed = true; }
+        return;
+      }
+      if(!v){
+        v = blankValue(); v.code = (R[kk("c")] && R[kk("c")].v) || id; v.photos = [];
+        roadside.values.push(v); changed = true;
+      }
+      RD_V.forEach(k=>{ const K = kk(k); if(take(K)){ v[k] = R[K].v; done(K); } });
+      if(R[kk("c")]){ st.vals[kk("c")] = R[kk("c")].v; st.t[kk("c")] = R[kk("c")].t; }
+      if(R[kk("o")]){ const o = parseFloat(R[kk("o")].v); if(!isNaN(o)){ v._o = o; st.vals[kk("o")] = R[kk("o")].v; st.t[kk("o")] = R[kk("o")].t; } }
+      if(take(kk("g"))){ v.rvmp = R[kk("g")].v==="1"; done(kk("g")); }
+      if(take(kk("p"))){
+        try{
+          const local = {}; (v.photos||[]).forEach(p=>{ local[p.id] = p; });
+          v.photos = JSON.parse(R[kk("p")].v||"[]").map(p=> local[p.id] || { id:p.id, label:p.label, thumb:"" });
+          done(kk("p"));
+        }catch(e){}
+      }
+    });
+    // Empty rows that were never shared make way once the teammates' rows have arrived.
+    if(roadside.values.some(v=>!rdBlank(v))){
+      const n = roadside.values.length;
+      roadside.values = roadside.values.filter(v=> !rdBlank(v) || st.vals["r_"+rdKey(v.code)+"_c"]);
+      if(roadside.values.length!==n) changed = true;
+    }
+    if(!roadside.values.length) roadside.values.push(blankValue());
+    roadside.values.forEach((v,i)=>{ if(v._o==null) v._o = 1e9+i; });
+    roadside.values.sort((a,b)=> (a._o-b._o) || String(a.code).localeCompare(String(b.code)));
+    roadside.values.forEach(v=>{ if(v._o>=1e9) delete v._o; });
+    rdSave();
+    return changed;
   }
   function applyRoadMeta(d){
-    roadside.preparedBy = d.rdPreparedBy||""; roadside.preparedOther = d.rdPreparedOther||""; roadside.time = d.rdTime||"";
-    roadside.commentary = d.rdCommentary||"";
-    try{
-      const v = JSON.parse(d.rdValuesJson||"[]");
-      if(Array.isArray(v) && v.length){
-        const local = {}; (roadside.values||[]).forEach(o=> (o.photos||[]).forEach(p=>{ local[p.id] = p; }));
-        roadside.values = v.map(x=>{ const o = Object.assign(blankValue(), x); o.photos = (x.photos||[]).map(p=> local[p.id] || { id:p.id, label:p.label, thumb:"" }); return normValue(o); });
-      }
-    }catch(e){}
+    const changed = rdApply(d);
+    const a = document.activeElement;
+    if(a && a.closest && a.closest("#roadCard") && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)){ rdRenderLater = true; return changed; }
     renderRoadside();
+    return changed;
   }
+  document.addEventListener("focusout", ()=>{ if(rdRenderLater) setTimeout(()=>{ const a = document.activeElement; if(!(a && a.closest && a.closest("#roadCard") && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))){ rdRenderLater = false; try{ renderRoadside(); }catch(e){} } }, 60); });
   // Called when joining: take the survey's type (and roadside form) from the shared record.
   function adoptRemoteSurveyMeta(survey){
     const t = (survey && (survey.type==="roadside" || survey.type==="tree")) ? survey.type : "flora";
-    if(t !== surveyType){ surveyType = t; roadside = blankRoadside(); }
-    if(t==="roadside" && survey.rdUpdatedAt){ applyRoadMeta(survey); roadMetaAppliedAt = survey._updateTime||""; }
+    if(t !== surveyType){ surveyType = t; roadside = blankRoadside(); rdState = null; }
+    if(t==="roadside"){ rdSt(); applyRoadMeta(survey); rdAppliedAt = survey._updateTime||""; liveSyncRoadside(); }
     applyType(); renderRoadside();
-    roadMetaDirty = false;
   }
   async function pullRemoteSurveyMeta(){
     if(!live.active || surveyType!=="roadside") return;
-    if(roadMetaDirty){ await pushRoadMeta(); return; }
+    rdSt(); if(Object.keys(rdPending).length) await pushRoadMeta();
     const d = await FHKit.live.fsGetDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code);
-    if(!d || !d.rdUpdatedAt || d.rdUpdatedBy===deviceId()) { if(d && d._updateTime) roadMetaAppliedAt = d._updateTime; return; }
-    if(d._updateTime && d._updateTime <= roadMetaAppliedAt) return;
-    const a = document.activeElement;
-    if(a && a.closest && a.closest("#roadCard")) return;   // don't pull the text out from under someone typing
-    applyRoadMeta(d); roadMetaAppliedAt = d._updateTime||"";
-    autosave();
+    if(!d) return;
+    if(d._updateTime && d._updateTime <= rdAppliedAt && !Object.keys(rdPending).length) return;
+    const changed = applyRoadMeta(d); rdAppliedAt = d._updateTime||rdAppliedAt;
+    if(changed) autosave();
+    liveSyncRoadside();   // sends anything local that the server does not have yet
   }
   // Home page: choose the survey type to start.
   $("homeStart").addEventListener("click", ()=> chooseType("flora"));

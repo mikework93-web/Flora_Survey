@@ -2,6 +2,17 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## Team Sync rebuilt for the roadside and tree forms (2026-11-11, v.2026-11-11.1)
+- **Nothing is overwritten any more.** The roadside form used to be sent as one block, so whoever saved last replaced everyone else's rows and cells. Now every field is shared on its own: prepared by, time, commentary, the RVMP roadside choice, and every cell of every Values and Threats row (value, zone codes, threat, mitigation, priority, photo IDs). Only what a person changed is sent, and the newer edit to a field wins.
+- **Edits to the same row from two phones both keep.** One person can fill in the threat while another fills in the mitigation on the same row.
+- **Rows added and deleted on one phone reach the others.** An old copy on another phone can no longer bring a deleted row back or wipe a new one.
+- **Joining no longer adds empty rows or replaces what is there.** Empty rows nobody has typed in are never shared.
+- **Pre-loaded RVMP rows are the same on every phone.** Two phones that load the same roadside get the same rows, not doubled ones. Loading the same roadside again keeps your edits.
+- **Significant Tree attributes are shared one attribute at a time.** Two people filling in different attributes of the same tree keep both.
+- **Quick edits to different fields of one species are all sent.** Before, a second edit within a second could cancel the first.
+- **No more silent failures:** if Firebase refuses the form, the app says so once and keeps trying.
+- Still on each phone only: photo images (the IDs and captions are shared), and the roadside-level photos.
+
 ## New survey types: Casey Roadside and Significant Trees (2026-11-10, v.2026-11-10.1)
 - **Home page:** three ways to start: Flora Survey (unchanged), Casey Roadside Survey and Significant Tree Survey. Each survey remembers its type, shows it as a tag, and appears with its type in the Open and Saved folder lists. Team Sync, the Summary card and (for roadside) Polygons are only shown for the survey types they apply to.
 - **Casey Roadside (follows the report template):**
