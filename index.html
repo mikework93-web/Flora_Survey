@@ -1071,7 +1071,7 @@ body.t-roadside .only-flora,body.t-tree .only-flora,body.t-roadside .not-road,bo
     </div>
   </div>
 
-  <div class="card only-flora" id="liveCard">
+  <div class="card" id="liveCard">
     <h2>Team Sync <span class="live-pill" id="livePill" hidden></span></h2>
     <div id="liveSetup">
       <div class="field"><label for="userName">Your name</label><div class="ifield"><svg class="fi" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/></svg><input id="userName" autocomplete="name" placeholder="Enter your name"></div></div>
@@ -5114,7 +5114,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-10.1";
+  const BUILD_VERSION = "2026-11-10.2";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -5598,6 +5598,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       sci:row.sci, common:row.common||row.sci, type:row.type||"indigenous", lf:row.lf||"", ffg:row.ffg||"", epbc:row.epbc||"",
       fieldNotes:row.fieldNotes||"", free:!!row.free, uncertain:!!row.uncertain, significant:!!row.significant,
       pointsJson: encodePointsField(row.points),
+      ...(surveyType!=="flora" ? { sigText:row.sigText||"", treeJson:row.tree ? JSON.stringify(row.tree) : "" } : {}),
       recordId: row.id, addedBy: row.addedBy||userName()||"", updatedBy: userName()||row.addedBy||"", updatedAt: new Date().toISOString(),
       appVersion: BUILD_VERSION  // historical metadata only (what wrote this record) — the "different app
                                   // version" warning itself is driven by device presence, see syncTeamPresence()
@@ -5615,6 +5616,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       sci: doc.sci, common: doc.common||doc.sci, type: doc.type||"indigenous", lf: doc.lf||"", ffg: doc.ffg||"", epbc: doc.epbc||"",
       fieldNotes: doc.fieldNotes||"", free: !!doc.free, uncertain: !!doc.uncertain, significant: !!doc.significant,
       points: decodePointsField(doc.pointsJson),
+      sigText: doc.sigText||"", tree: parseTree(doc.treeJson),
       photos: [], // photos are always device-local — never synced
       addedBy: doc.addedBy||"", updatedBy: doc.updatedBy||"",
       _liveUpdatedAt: doc._updateTime||"", _liveCode: live.code
@@ -5744,6 +5746,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     local.type = doc.type || local.type;
     local.free = !!doc.free; local.uncertain = !!doc.uncertain; local.significant = !!doc.significant;
     if(typeof doc.pointsJson === "string") local.points = decodePointsField(doc.pointsJson);
+    if(typeof doc.sigText === "string" && !(active && active.dataset && active.dataset.sigtext === local.id)) local.sigText = doc.sigText;
+    if(typeof doc.treeJson === "string" && doc.treeJson && !(active && active.dataset && active.dataset.tree && active.dataset.tree.indexOf(local.id+"|") === 0)){ const tt = parseTree(doc.treeJson); if(tt) local.tree = tt; }
     if(!notesFocused && typeof doc.fieldNotes === "string") local.fieldNotes = doc.fieldNotes;
     local.addedBy = doc.addedBy || local.addedBy;
     local.updatedBy = doc.updatedBy || local.updatedBy;
@@ -5957,6 +5961,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     // Polygons are pulled from here (the tail of the species pull) so every call site that
     // pulls species also pulls polygons. A failure here is swallowed: the next poll retries.
     try{ await pullRemotePolygons(forceFull === true); }catch(e){}
+    try{ await pullRemoteSurveyMeta(); }catch(e){}
     renderLiveUI();
     render(); autosave();
     persistLiveSession();
@@ -6364,7 +6369,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       while(!code && attempts<5){
         const candidate = makeLiveCode();
         try{
-          await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys", candidate, { site:$("site").value||"", date:$("date").value||"", createdAt:new Date().toISOString(), createdBy:name });
+          await FHKit.live.fsCreateDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys", candidate, Object.assign({ site:$("site").value||"", date:$("date").value||"", createdAt:new Date().toISOString(), createdBy:name }, surveyMetaLiveFields()));
           code = candidate;
         }catch(e){ if(e.status!=="ALREADY_EXISTS") throw e; attempts++; }
       }
@@ -6422,6 +6427,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         }
       }
       live.code = code; live.active = true;
+      adoptRemoteSurveyMeta(survey);
       if(survey.site && !($("site").value||"").trim()) $("site").value = survey.site;
       if(survey.date && !($("date").value||"").trim()) $("date").value = survey.date;
       await reconcileWithRemote();   // combines whatever's already local with what's shared
@@ -9838,21 +9844,29 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   ];
   function pad2(n){ return String(n).padStart(2,"0"); }
   function stampNow(){ const d = new Date(); return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())+" "+pad2(d.getHours())+":"+pad2(d.getMinutes())+":"+pad2(d.getSeconds()); }
-  function nextTreeFid(){ return rows.reduce((m,r)=> Math.max(m, (r.tree && r.tree.fid) || 0), 0) + 1; }
   // Called when a tree's location is confirmed or its attributes change.
   function touchTree(r){
     if(!r.tree) r.tree = blankTree();
     const now = stampNow();
     if(!r.tree.created){ r.tree.created = now; }
-    if(!r.tree.fid) r.tree.fid = nextTreeFid();
     r.tree.modAt = now; r.tree.modBy = userName();
+    liveSyncField(r, { treeJson: JSON.stringify(r.tree) });
   }
+  // GISFID is the tree's position in creation order, worked out when it is shown or exported,
+  // so two people adding trees at once under Team Sync can never end up with the same number.
+  function treeFid(r, all){
+    const list = (all || rows).filter(x=> x.tree && x.tree.created).slice().sort((a,b)=>
+      a.tree.created < b.tree.created ? -1 : (a.tree.created > b.tree.created ? 1 : (a.id < b.id ? -1 : 1)));
+    const i = list.indexOf(r);
+    return i >= 0 ? i+1 : "";
+  }
+  function parseTree(json){ if(!json) return undefined; try{ const o = JSON.parse(json); return (o && typeof o==="object") ? Object.assign(blankTree(), o) : undefined; }catch(e){ return undefined; } }
   function treeEN(r){
     const p = (r.points||[])[0];
     if(!p) return [null, null];
     try{ const xy = FHKit.xyForSrs(p.lat, p.lon, FHKit.EXPORT_SRS); return [Math.round(xy[0]*100)/100, Math.round(xy[1]*100)/100]; }catch(e){ return [null, null]; }
   }
-  function treeVal(r, f){
+  function treeVal(r, f, all){
     const t = r.tree || blankTree();
     if(f.f) return t[f.f] == null ? "" : t[f.f];
     switch(f.auto){
@@ -9861,7 +9875,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       case "sci": return r.sci || "";
       case "easting": return treeEN(r)[0];
       case "northing": return treeEN(r)[1];
-      case "fid": return t.fid || "";
+      case "fid": return treeFid(r, all);
       case "modAt": return t.modAt || "";
       case "modBy": return t.modBy || "";
       case "created": return t.created || "";
@@ -9893,7 +9907,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     return '<div class="tr-panel"><div class="tr-title">Tree attributes</div>'
       + '<div class="tr-auto">'
       + ro("Unique_Tree_ID", r.id) + ro("Common_Name", r.common||r.sci) + ro("Genus_and_species", r.sci)
-      + ro("Easting", en[0]) + ro("Northing", en[1]) + ro("GISFID", t.fid)
+      + ro("Easting", en[0]) + ro("Northing", en[1]) + ro("GISFID", treeFid(r))
       + ro("GISCreateDate", t.created) + ro("GISModDate", t.modAt) + ro("GISModName", t.modBy)
       + '</div><div class="tr-grid">'+inputs+'</div></div>';
   }
@@ -9990,20 +10004,20 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       else if(t.id==="rdComment") roadside.commentary = t.value;
       else if(t.dataset.rdv){ const [i,k] = t.dataset.rdv.split("|"); if(roadside.values[+i]) roadside.values[+i][k] = t.value; }
       else return;
-      autosave();
+      autosave(); liveSyncRoadside();
     });
     card.addEventListener("change", ev=>{
       const t = ev.target;
-      if(t.id==="rdPrep"){ roadside.preparedBy = t.value; $("rdOtherWrap").hidden = t.value!=="__other"; autosave(); }
-      else if(t.dataset.rdv){ const [i,k] = t.dataset.rdv.split("|"); if(roadside.values[+i]) roadside.values[+i][k] = t.value; autosave(); }
+      if(t.id==="rdPrep"){ if(roadside.preparedBy !== t.value){ roadside.preparedBy = t.value; $("rdOtherWrap").hidden = t.value!=="__other"; autosave(); liveSyncRoadside(); } }
+      else if(t.dataset.rdv){ const [i,k] = t.dataset.rdv.split("|"); const v = roadside.values[+i]; if(v && v[k] !== t.value){ v[k] = t.value; autosave(); liveSyncRoadside(); } }
     });
     card.addEventListener("click", ev=>{
-      if(ev.target.closest("#rdAddValue")){ roadside.values.push(blankValue()); renderRoadValues(); autosave(); return; }
+      if(ev.target.closest("#rdAddValue")){ roadside.values.push(blankValue()); renderRoadValues(); autosave(); liveSyncRoadside(); return; }
       const d = ev.target.closest("[data-rd-del]");
       if(d){
         const i = +d.dataset.rdDel, v = roadside.values[i]; if(!v) return;
         const empty = !(v.value||v.threat||v.mitigation||v.priority);
-        const go = ()=>{ roadside.values.splice(i,1); if(!roadside.values.length) roadside.values.push(blankValue()); renderRoadValues(); autosave(); };
+        const go = ()=>{ roadside.values.splice(i,1); if(!roadside.values.length) roadside.values.push(blankValue()); renderRoadValues(); autosave(); liveSyncRoadside(); };
         if(empty) go(); else confirmToast("Remove row "+(i+1)+"?", "Remove", go);
       }
     });
@@ -10024,12 +10038,12 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // Row-level typed inputs (roadside significance text, tree attributes).
   $("tbody").addEventListener("input", ev=>{
     const t = ev.target;
-    if(t.dataset.sigtext){ const i = rowIndexById(t.dataset.sigtext); if(i>=0){ rows[i].sigText = t.value; autosave(); } return; }
+    if(t.dataset.sigtext){ const i = rowIndexById(t.dataset.sigtext); if(i>=0){ rows[i].sigText = t.value; autosave(); liveSyncFieldDebounced(rows[i], { sigText:rows[i].sigText }); } return; }
     if(t.dataset.tree){
       const k = t.dataset.tree.indexOf("|"), id = t.dataset.tree.slice(0,k), f = t.dataset.tree.slice(k+1);
       const i = rowIndexById(id); if(i<0) return;
       const r = rows[i]; if(!r.tree) r.tree = blankTree();
-      r.tree[f] = t.value; touchTree(r); autosave();
+      r.tree[f] = t.value; r.tree.modAt = stampNow(); r.tree.modBy = userName(); autosave(); liveSyncFieldDebounced(r, { treeJson: JSON.stringify(r.tree) });
     }
   });
 
@@ -10072,7 +10086,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
     // trees: one clean attribute table (header on row 1) so it opens straight into GIS
     push(TREE_FIELDS.map(f=>f.k), "bold");
-    rowsX.forEach(r=> push(TREE_FIELDS.map(f=>treeVal(r,f)), r.uncertain ? "red" : null));
+    rowsX.forEach(r=> push(TREE_FIELDS.map(f=>treeVal(r,f,rowsX)), r.uncertain ? "red" : null));
     if((D.polygons||[]).length){
       push([]); push(["Polygons"], "bold"); push(["Polygon ID","Points","Species","Notes"], "bold");
       D.polygons.forEach(pg=> push([pg.id, (pg.vertices||[]).length, (pg.species||[]).join("; "), pg.notes||""], "wrap"));
@@ -10128,7 +10142,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const pts = [];
       rowsX.forEach(r=>{
         const p = (r.points||[])[0]; if(!p) return;
-        pts.push({ id:r.id, sci:r.sci, common:r.common||r.sci, lat:p.lat, lon:p.lon, attrs:TREE_FIELDS.map(f=>treeVal(r,f)) });
+        pts.push({ id:r.id, sci:r.sci, common:r.common||r.sci, lat:p.lat, lon:p.lon, attrs:TREE_FIELDS.map(f=>treeVal(r,f,rowsX)) });
       });
       geoPoints = pts.map(p=>({ id:p.id, sci:p.sci, common:p.common, lat:p.lat, lon:p.lon }));
       if(pts.length){
@@ -10366,6 +10380,61 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     add("trailer\n<< /Size "+(objs.length+1)+" /Root 1 0 R >>\nstartxref\n"+xr+"\n%%EOF");
     const out = new Uint8Array(len); let p = 0; chunks.forEach(c=>{ out.set(c,p); p += c.length; });
     return out;
+  }
+
+  // ── Team Sync for the roadside / tree types ─────────────────────────────
+  // Tree attributes and roadside significance travel on each species record (treeJson, sigText).
+  // The roadside form (prepared by, time, commentary, values and threats table) lives on the shared
+  // survey record itself, so everyone sees the same form. The last edit to a field wins.
+  // Photos stay on each phone, as in the Flora Survey.
+  var roadMetaDirty = false, roadMetaAppliedAt = "", roadMetaTimer = null;
+  function surveyMetaLiveFields(){
+    const f = { type:surveyType };
+    if(surveyType==="roadside"){
+      f.rdPreparedBy = roadside.preparedBy||""; f.rdPreparedOther = roadside.preparedOther||""; f.rdTime = roadside.time||"";
+      f.rdCommentary = roadside.commentary||""; f.rdValuesJson = JSON.stringify(roadside.values||[]);
+      f.rdUpdatedBy = deviceId(); f.rdUpdatedAt = new Date().toISOString();
+    }
+    return f;
+  }
+  function liveSyncRoadside(){
+    if(!live.active || surveyType!=="roadside") return;
+    roadMetaDirty = true;
+    clearTimeout(roadMetaTimer);
+    roadMetaTimer = setTimeout(pushRoadMeta, 900);
+  }
+  async function pushRoadMeta(){
+    if(!live.active || !roadMetaDirty) return;
+    try{
+      await ensureAuth();
+      const d = await FHKit.live.fsPatchDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code, surveyMetaLiveFields());
+      roadMetaDirty = false; if(d && d._updateTime) roadMetaAppliedAt = d._updateTime;
+    }catch(e){ /* stays dirty: pushed again on the next sync */ }
+  }
+  function applyRoadMeta(d){
+    roadside.preparedBy = d.rdPreparedBy||""; roadside.preparedOther = d.rdPreparedOther||""; roadside.time = d.rdTime||"";
+    roadside.commentary = d.rdCommentary||"";
+    try{ const v = JSON.parse(d.rdValuesJson||"[]"); if(Array.isArray(v) && v.length) roadside.values = v.map(x=>Object.assign(blankValue(), x)); }catch(e){}
+    renderRoadside();
+  }
+  // Called when joining: take the survey's type (and roadside form) from the shared record.
+  function adoptRemoteSurveyMeta(survey){
+    const t = (survey && (survey.type==="roadside" || survey.type==="tree")) ? survey.type : "flora";
+    if(t !== surveyType){ surveyType = t; roadside = blankRoadside(); }
+    if(t==="roadside" && survey.rdUpdatedAt){ applyRoadMeta(survey); roadMetaAppliedAt = survey._updateTime||""; }
+    applyType(); renderRoadside();
+    roadMetaDirty = false;
+  }
+  async function pullRemoteSurveyMeta(){
+    if(!live.active || surveyType!=="roadside") return;
+    if(roadMetaDirty){ await pushRoadMeta(); return; }
+    const d = await FHKit.live.fsGetDoc(FIREBASE_CONFIG.projectId, live.idToken, "surveys/"+live.code);
+    if(!d || !d.rdUpdatedAt || d.rdUpdatedBy===deviceId()) { if(d && d._updateTime) roadMetaAppliedAt = d._updateTime; return; }
+    if(d._updateTime && d._updateTime <= roadMetaAppliedAt) return;
+    const a = document.activeElement;
+    if(a && a.closest && a.closest("#roadCard")) return;   // don't pull the text out from under someone typing
+    applyRoadMeta(d); roadMetaAppliedAt = d._updateTime||"";
+    autosave();
   }
   // Home page: choose the survey type to start.
   $("homeStart").addEventListener("click", ()=> chooseType("flora"));
