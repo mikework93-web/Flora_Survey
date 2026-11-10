@@ -35,22 +35,46 @@
         d.createObjectStore("keys", { keyPath: "id" });
         d.createObjectStore("meta", { keyPath: "id" });
       };
-      r.onsuccess = function () { db = r.result; res(db); };
+      r.onsuccess = function () {
+        var d = r.result; db = d;
+        // iPhone Safari closes the database when the page is backgrounded or memory is tight.
+        // Forget the dead connection so the next call opens a fresh one.
+        d.onclose = function () { if (db === d) db = null; };
+        d.onversionchange = function () { try { d.close(); } catch (e) { } if (db === d) db = null; };
+        res(d);
+      };
       r.onerror = function () { rej(r.error); };
+      r.onblocked = function () { };
     });
   }
+  // A closed/closing connection (InvalidStateError) or an aborted transaction is retried on a fresh connection.
+  function withDb(fn) {
+    var tries = 0;
+    function attempt() {
+      return open().then(fn).catch(function (e) {
+        var msg = String((e && (e.message || e.name)) || "");
+        var dead = /closing|closed|InvalidState|UnknownError|AbortError|QuotaExceeded|Internal error/i.test(msg) || (e && /InvalidStateError|UnknownError|AbortError/.test(e.name || ""));
+        if (dead && tries < 4) {
+          tries++; db = null;
+          return new Promise(function (r) { setTimeout(r, 300 * tries); }).then(attempt);
+        }
+        throw e;
+      });
+    }
+    return attempt();
+  }
   function tx(stores, mode, fn) {
-    return open().then(function (d) {
+    return withDb(function (d) {
       return new Promise(function (res, rej) {
         var t = d.transaction(stores, mode), out;
         out = fn(t);
         t.oncomplete = function () { res(out && out.result !== undefined ? out.result : out); };
-        t.onerror = t.onabort = function () { rej(t.error); };
+        t.onerror = t.onabort = function () { rej(t.error || new Error("AbortError")); };
       });
     });
   }
   function getOne(store, id) {
-    return open().then(function (d) {
+    return withDb(function (d) {
       return new Promise(function (res, rej) {
         var r = d.transaction(store, "readonly").objectStore(store).get(id);
         r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); };
@@ -58,13 +82,14 @@
     });
   }
   function getAll(store) {
-    return open().then(function (d) {
+    return withDb(function (d) {
       return new Promise(function (res, rej) {
         var r = d.transaction(store, "readonly").objectStore(store).getAll();
         r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); };
       });
     });
   }
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
   function saveMeta() { return tx(["meta"], "readwrite", function (t) { t.objectStore("meta").put(meta); }); }
 
   /* ---------- in-memory index (names only, small) ---------- */
