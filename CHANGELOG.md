@@ -2,6 +2,12 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## Saved Folder: Export roadsides and Export trees (2026-11-11, v.2026-11-11.4)
+- **Two new buttons in the Saved Folder window:** Export roadsides and Export trees. Each builds its own zip of every saved survey of that type (plus the one open now if it is that type). The two survey types are never mixed.
+- **One folder per survey** with the Excel file, the GIS layers and, for roadsides, the PDF. You can tick Include photos.
+- **An ALL SURVEYS folder in each zip.** Roadsides: every roadside value (with zone codes) in one Excel file and every species point in one GeoPackage. Trees: every tree in one Excel file and one GeoPackage. Each row carries its site and date.
+- The existing Menu > Export all (all survey types) is unchanged.
+
 ## VicKey comparison: subspecies, varieties and forms (2026-11-11, v.2026-11-11.2)
 - **Species comparison now offers subspecies, varieties and forms.** A box under the two search fields, "Include subspecies, varieties and forms", is ticked by default and remembers your choice. Search results show the rank under each name.
 - **Keys:** the species' own key is tried first, then the genus key. If a key does not list the subspecies or variety by name, the comparison falls back to where their species part ways and says so.

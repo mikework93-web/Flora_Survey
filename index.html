@@ -5155,7 +5155,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-11.2";
+  const BUILD_VERSION = "2026-11-11.4";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -6951,13 +6951,16 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     ov.innerHTML = '<div class="fh-modal-card"><h3>Saved Folder</h3><div class="fh-modal-list">'
       + listHtml
       + '</div><div class="fh-modal-foot" style="justify-content:space-between">'
-      + '<span><button class="ghost" id="fhImport" title="Import a previously exported survey (Excel + GeoPackage + photos) as a new Saved Folder entry" data-import="1">Import…</button> '
+      + '<span style="display:flex;flex-wrap:wrap;gap:6px"><button class="ghost" id="fhImport" title="Import a previously exported survey (Excel + GeoPackage + photos) as a new Saved Folder entry" data-import="1">Import…</button> '
+      + '<button class="ghost" id="fhExpRoad" title="One zip of every saved Casey Roadside survey" data-exptyped="roadside">Export roadsides</button> '
+      + '<button class="ghost" id="fhExpTree" title="One zip of every saved Significant Tree survey" data-exptyped="tree">Export trees</button> '
       + '<button class="ghost" id="fhMerge" title="Combine two or more saved surveys into one new entry" data-merge="1">Merge…</button></span>'
       + '<button class="ghost" data-close="1">Close</button></div></div>';
     document.body.appendChild(ov);
     ov.addEventListener("click", e=>{
       if(e.target.dataset.import){ ov.remove(); openImportFlow(); return; }
       if(e.target.dataset.merge){ ov.remove(); openMergeSurveysFlow(); return; }
+      if(e.target.dataset.exptyped){ const w = e.target.dataset.exptyped; ov.remove(); exportAllTyped(w); return; }
       if(e.target===ov || e.target.dataset.close){ ov.remove(); return; }
       const ln = e.target.dataset.load, dn = e.target.dataset.del;
       if(ln){
@@ -10507,13 +10510,13 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         }
       }
     }
-    const gisFiles = {}; let geoPoints = [], pointsIncluded = false, polygonsIncluded = false;
+    const gisFiles = {}; let geoPoints = [], pointsIncluded = false, polygonsIncluded = false, ptsFull = [];
     const ident = label+" - "+(m.site||"Site")+" - "+(m.date||FHKit.today());
     if(type==="roadside"){
       const pts = [];
       rowsX.forEach(r=> (r.points||[]).forEach(p=>{ pts.push({ id:r.id, sci:r.sci, common:r.common||r.sci, lat:p.lat, lon:p.lon,
         attrs:[ r.id, r.sci, r.common||"", r.sigText||"", r.fieldNotes||"", rowZoneText(r, roadById((D.roadside||{}).rvmpId)) ] }); }));
-      geoPoints = pts.map(p=>({ id:p.id, sci:p.sci, common:p.common, lat:p.lat, lon:p.lon }));
+      geoPoints = pts.map(p=>({ id:p.id, sci:p.sci, common:p.common, lat:p.lat, lon:p.lon })); ptsFull = pts;
       if(pts.length){
         const out = [];
         gpkgChunks({ tableName:"roadside_species_points", identifier:ident, description:"Significant species points for this Keystone Conservation Casey roadside survey.",
@@ -10527,7 +10530,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         const p = (r.points||[])[0]; if(!p) return;
         pts.push({ id:r.id, sci:r.sci, common:r.common||r.sci, lat:p.lat, lon:p.lon, attrs:TREE_FIELDS.map(f=>treeVal(r,f,rowsX)) });
       });
-      geoPoints = pts.map(p=>({ id:p.id, sci:p.sci, common:p.common, lat:p.lat, lon:p.lon }));
+      geoPoints = pts.map(p=>({ id:p.id, sci:p.sci, common:p.common, lat:p.lat, lon:p.lon })); ptsFull = pts;
       if(pts.length){
         const out = [];
         gpkgChunks({ tableName:"significant_trees", identifier:ident, description:"Significant tree points for this Keystone Conservation survey.",
@@ -10556,7 +10559,72 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const zipName = baseName+" ("+label+").zip";
     return { xlsxBlob, xlsxFilename, gisBlob:null, photoZipBlob:null, gisFiles, photoFiles, pdfBytes, zipFiles, zipName, title:label,
       site:m.site, date:m.date, hasPhotos:Object.keys(photoFiles).length>0, hasPoints:pointsIncluded, hasPolygons:polygonsIncluded,
-      baseName, geoPoints, polys: polygonsIncluded ? polygons : [] };
+      baseName, geoPoints, polys: polygonsIncluded ? polygons : [], ptsFull: ptsFull };
+  }
+  // ── Saved Folder > Export all: every saved Casey Roadside and Significant Tree survey (plus the open one)
+  // in one zip. One folder per survey (Excel, PDF for roadsides, GIS layers, photos if ticked), and an
+  // "ALL SURVEYS" folder with the trees and the roadside values and species points of every survey combined.
+  async function exportAllTyped(only){
+    const folder = getFolder();
+    const items = Object.keys(folder).map(k=>({ key:k, snap:folder[k] }));
+    if(surveyStarted && surveyType===only){
+      const lv = snapshot(); const i = items.findIndex(x=>x.key===lv.folderKey);
+      if(i>=0) items[i] = { key:lv.folderKey, snap:lv }; else items.push({ key:lv.folderKey, snap:lv });
+    }
+    const use = items.filter(x=> x.snap && x.snap.type===only);
+    const what = only==="roadside" ? "Casey Roadside" : "Significant Tree";
+    if(!use.length){ FHKit.notice("Nothing to export", "There are no saved "+what+" surveys yet. Save a survey first, then Export all will include it.", "warn"); return; }
+    const ov = document.createElement("div"); ov.className = "fh-modal";
+    ov.innerHTML = '<div class="fh-modal-card"><h3>Export all '+(only==="roadside"?"roadside":"tree")+' surveys</h3><div style="padding:16px 18px">'
+      + '<p class="muted" style="margin:0 0 12px">'+use.length+" "+what+" survey"+(use.length===1?"":"s")+' will go into one zip. Each gets its own folder ('+(only==="roadside"?"Excel, PDF, GIS layers":"Excel, GIS layers")+'), plus an ALL SURVEYS folder with '+(only==="roadside"?"every roadside value and every species point":"every tree")+' combined.</p>'
+      + '<label style="display:flex;align-items:center;gap:10px;margin:0 0 14px;text-transform:none;letter-spacing:0;font-size:13.5px;font-weight:600;color:var(--ink)"><input type="checkbox" id="expTyPhotos" style="width:auto"> Include photos (makes the file much larger)</label>'
+      + '<button type="button" class="btn" id="expTyGo" style="width:100%">Build zip</button>'
+      + '<p class="muted" id="expTyMsg" style="margin:10px 0 0"></p></div>'
+      + '<div class="fh-modal-foot"><button class="ghost" data-close="1">Close</button></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener("click", e=>{ if(e.target===ov || e.target.dataset.close) ov.remove(); });
+    ov.querySelector("#expTyGo").addEventListener("click", async ()=>{
+      const go = ov.querySelector("#expTyGo"), msg = ov.querySelector("#expTyMsg");
+      go.disabled = true;
+      const withPhotos = ov.querySelector("#expTyPhotos").checked;
+      try{
+        const files = {}, used = new Set(), treePts = [], roadPts = [], treeSheet = [], roadSheet = [], tStyles = [], rStyles = [];
+        treeSheet.push(["Site","Date"].concat(TREE_FIELDS.map(f=>f.k))); tStyles.push("bold");
+        roadSheet.push(["Site","Date","Roadside (RVMP)","Row ID","Zone codes","Ecological value","Threatening process(es)","Mitigation","Priority","Photo IDs"]); rStyles.push("bold");
+        let n = 0;
+        for(const it of use){
+          n++; msg.textContent = "Building "+n+" of "+use.length+"...";
+          const s = it.snap, sm = s.meta || {}, type = s.type;
+          const D = { m:{ site:sm.site||"", date:sm.date||"" }, rows:s.species||[], polygons:s.polygons||[], siteNotes:s.siteNotes||[], skipPhotos:!withPhotos, type, roadside:s.roadside };
+          const parts = await buildTypedParts(D);
+          let dir = fileSafe(parts.baseName) || ("Survey "+n), k = 2;
+          while(used.has(dir.toLowerCase())) dir = (fileSafe(parts.baseName) || "Survey")+" ("+(k++)+")";
+          used.add(dir.toLowerCase());
+          Object.keys(parts.zipFiles).forEach(f=>{ files[dir+"/"+f] = parts.zipFiles[f]; });
+          const site = sm.site||"", date = sm.date||"";
+          if(type==="tree"){
+            (parts.ptsFull||[]).forEach(p=> treePts.push({ id:p.id, sci:p.sci, common:p.common, lat:p.lat, lon:p.lon, attrs:[site, date].concat(p.attrs) }));
+            (s.species||[]).forEach(r=>{ treeSheet.push([site, date].concat(TREE_FIELDS.map(f=>treeVal(r,f,s.species||[])))); tStyles.push(null); });
+          } else {
+            (parts.ptsFull||[]).forEach(p=> roadPts.push({ id:p.id, sci:p.sci, common:p.common, lat:p.lat, lon:p.lon, attrs:[site, date].concat(p.attrs) }));
+            const rd = s.roadside || {};
+            (rd.values||[]).forEach(v=>{
+              if(!(v.value||v.zones||v.threat||v.mitigation||v.priority)) return;
+              roadSheet.push([site, date, rd.rvmpName||"", v.code, v.zones||"", v.value||"", v.threat||"", v.mitigation||"", v.priority||"", (v.photos||[]).map(p=>p.label||p.id).join("; ")]); rStyles.push("wrap");
+            });
+          }
+        }
+        if(treePts.length){ try{ const out = []; gpkgChunks({ tableName:"significant_trees", identifier:"All significant trees", description:"Significant tree points from every saved tree survey.", columns:[{name:"site"},{name:"survey_date"}].concat(TREE_FIELDS.map(f=>({ name:f.k, type:f.t||"text" }))) }, treePts, out); out.forEach((b,i)=>{ files["ALL SURVEYS/all_significant_trees"+(out.length>1?"_"+(i+1):"")+".gpkg"] = b; }); }catch(e){} }
+        if(roadPts.length){ try{ const out = []; gpkgChunks({ tableName:"roadside_species_points", identifier:"All roadside species points", description:"Significant species points from every saved roadside survey.", columns:[{name:"site"},{name:"survey_date"},{name:"record_id"},{name:"scientific_name"},{name:"common_name"},{name:"significance"},{name:"notes"},{name:"zone_codes"}] }, roadPts, out); out.forEach((b,i)=>{ files["ALL SURVEYS/all_roadside_species_points"+(out.length>1?"_"+(i+1):"")+".gpkg"] = b; }); }catch(e){} }
+        if(treeSheet.length>1) files["ALL SURVEYS/All trees.xlsx"] = new Uint8Array(await FHKit.buildXLSXBlob("Trees", treeSheet, tStyles, [22,12].concat(TREE_FIELDS.map(()=>16))).arrayBuffer());
+        if(roadSheet.length>1) files["ALL SURVEYS/All roadside values.xlsx"] = new Uint8Array(await FHKit.buildXLSXBlob("Roadside values", roadSheet, rStyles, [22,12,24,14,20,34,34,34,12,26]).arrayBuffer());
+        const name = (only==="roadside" ? "Casey Roadside surveys" : "Significant Tree surveys")+" - "+FHKit.today()+".zip";
+        msg.textContent = "Done.";
+        FHKit.triggerDownload(FHKit.buildZipBlob(files), name);
+        FHKit.toast("Exported "+use.length+" survey"+(use.length===1?"":"s"));
+        ov.remove();
+      }catch(e){ go.disabled = false; msg.textContent = "Export failed: "+(e&&e.message||e); }
+    });
   }
   async function exportTypedChooser(parts){
     const zip = FHKit.buildZipBlob(parts.zipFiles);
