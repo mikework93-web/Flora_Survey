@@ -2,6 +2,11 @@
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
 
+## VicKey comparison: subspecies, varieties and forms (2026-11-11, v.2026-11-11.2)
+- **Species comparison now offers subspecies, varieties and forms.** A box under the two search fields, "Include subspecies, varieties and forms", is ticked by default and remembers your choice. Search results show the rank under each name.
+- **Keys:** the species' own key is tried first, then the genus key. If a key does not list the subspecies or variety by name, the comparison falls back to where their species part ways and says so.
+- **Descriptions:** where VicFlora has no description for a subspecies or variety, the species description is shown instead, with a note saying so.
+
 ## Team Sync rebuilt for the roadside and tree forms (2026-11-11, v.2026-11-11.1)
 - **Nothing is overwritten any more.** The roadside form used to be sent as one block, so whoever saved last replaced everyone else's rows and cells. Now every field is shared on its own: prepared by, time, commentary, the RVMP roadside choice, and every cell of every Values and Threats row (value, zone codes, threat, mitigation, priority, photo IDs). Only what a person changed is sent, and the newer edit to a field wins.
 - **Edits to the same row from two phones both keep.** One person can fill in the threat while another fills in the mitigation on the same row.

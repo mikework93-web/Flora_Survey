@@ -2673,6 +2673,12 @@ window.FHFuzzy = (function () {
   var TABS = [["cmp", "Comparison"], ["key", "Species Key"], ["multi", "MultiAccess Key"]];
   var CMP_KINDS = [["species", "Species"], ["genus", "Genera"], ["family", "Families"]];
   var cmpMode = "species";
+  // Species comparison can include subspecies, varieties and forms (ticked by default, remembered).
+  var INFRA = ["SUBSPECIES", "VARIETY", "FORM"];
+  var infraOn = true;
+  try { infraOn = localStorage.getItem("vk_infra") !== "0"; } catch (e) { }
+  function spRanks() { return infraOn ? ["SPECIES"].concat(INFRA) : ["SPECIES"]; }
+  function isInfra(t) { return !!t && INFRA.indexOf(t.taxonRank) >= 0; }
   function tabOf(m) { return (m === "key" || m === "multi") ? m : "cmp"; }
 
   function resetState() { S = { a: null, b: null, tA: null, opts: null }; K = { keys: [], key: null, view: "bracket", stack: [], genus: null }; MA = null; applyKeyset(MKS); }
@@ -2722,6 +2728,7 @@ window.FHFuzzy = (function () {
   function typeahead(input, list, ranks, onPick) {
     var timer = null, seq = 0;
     function hide() { list.classList.remove("show"); }
+    function rk() { return typeof ranks === "function" ? ranks() : ranks; }
     input.addEventListener("input", function () {
       clearTimeout(timer);
       var q = input.value.trim();
@@ -2729,13 +2736,13 @@ window.FHFuzzy = (function () {
       var mine = ++seq;
       list.innerHTML = '<div class="vk-note">Searching VicFlora...</div>'; list.classList.add("show");
       timer = setTimeout(function () {
-        search(q, ranks).then(function (res) {
+        search(q, rk()).then(function (res) {
           if (mine !== seq || !root) return;
           var hid = 0;
-          if (lgaOn() && ranks.indexOf("SPECIES") >= 0) { var kept = res.filter(function (r) { return inLga(r.name); }); hid = res.length - kept.length; res = kept; }
+          if (lgaOn() && rk().indexOf("SPECIES") >= 0) { var kept = res.filter(function (r) { return inLga(r.name); }); hid = res.length - kept.length; res = kept; }
           if (!res.length) { list.innerHTML = hid ? '<div class="vk-note">' + hid + " matching species, none recorded in " + esc(LGA.name) + ". Tick &ldquo;Include species from outside this LGA&rdquo; in Step 1 to see them.</div>" : '<div class="vk-note">No accepted match. Check the spelling.</div>'; return; }
           list.innerHTML = res.slice(0, 40).map(function (r, i) {
-            return '<button type="button" class="vk-opt" data-i="' + i + '"><i>' + esc(r.name) + '</i>' + (r.common ? '<small>' + esc(r.common) + '</small>' : '') + '</button>';
+            return '<button type="button" class="vk-opt" data-i="' + i + '"><i>' + esc(r.name) + '</i>' + (r.rank && r.rank !== "SPECIES" && r.rank !== "GENUS" && r.rank !== "FAMILY" ? '<small>' + esc(r.rank.charAt(0) + r.rank.slice(1).toLowerCase()) + (r.common ? ' &middot; ' + esc(r.common) : '') + '</small>' : (r.common ? '<small>' + esc(r.common) + '</small>' : '')) + '</button>';
           }).join("") + (hid ? '<div class="vk-note">' + hid + " more hidden (not recorded in " + esc(LGA.name) + ").</div>" : "");
           list._res = res;
         }).catch(function () {
@@ -2951,12 +2958,15 @@ window.FHFuzzy = (function () {
         ? '<input id="vkB" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="' + (mode === "species" ? "Search a second species" : "Search family") + '" disabled><div class="vk-list" id="vkListB"></div>'
         : '<select id="vkB" disabled><option>Pick the first one</option></select>') +
       '</div></div>' +
+      (mode === "species" ? '<label class="vk-tog"><input type="checkbox" id="vkInfra"' + (infraOn ? " checked" : "") + '> Include subspecies, varieties and forms</label>' : '') +
       '<div id="vkOut"></div>';
     offLine();
     body.querySelector("#vkKind").addEventListener("change", function (e) { mode = cmpMode = e.target.value; resetState(); render(); });
-    typeahead(body.querySelector("#vkA"), body.querySelector("#vkListA"), [M.rank], pickA);
+    var infraBox = body.querySelector("#vkInfra");
+    if (infraBox) infraBox.addEventListener("change", function () { infraOn = infraBox.checked; try { localStorage.setItem("vk_infra", infraOn ? "1" : "0"); } catch (e) { } });
+    typeahead(body.querySelector("#vkA"), body.querySelector("#vkListA"), mode === "species" ? spRanks : [M.rank], pickA);
     if (mode === "family") typeahead(body.querySelector("#vkB"), body.querySelector("#vkListB"), ["FAMILY"], pickB);
-    else if (mode === "species") typeahead(body.querySelector("#vkB"), body.querySelector("#vkListB"), ["SPECIES"], pickB);
+    else if (mode === "species") typeahead(body.querySelector("#vkB"), body.querySelector("#vkListB"), spRanks, pickB);
     else body.querySelector("#vkB").addEventListener("change", function (e) {
       var i = e.target.value;
       if (i === "") return;
@@ -3557,6 +3567,13 @@ window.FHFuzzy = (function () {
     status("Loading both descriptions and the key from VicFlora...");
     var pA = S.tA && S.tA.id === S.a.id ? Promise.resolve(S.tA) : node(S.a.id);
     Promise.all([pA, node(S.b.id)]).then(function (res) {
+      return Promise.all(res.map(function (t) {
+        var has = t.currentProfile && t.currentProfile.profile && String(t.currentProfile.profile).replace(/<[^>]*>/g, "").trim();
+        var sp = isInfra(t) && !has ? ancestorOfRank(t, "SPECIES") : null;
+        if (!sp) return t;
+        return node(sp.id).then(function (st) { t.currentProfile = st.currentProfile; t._profFrom = nm(st); return t; }).catch(function () { return t; });
+      }));
+    }).then(function (res) {
       if (my !== runId) return;
       var tA = res[0], tB = res[1];
       S.tA = tA;
@@ -3577,7 +3594,7 @@ window.FHFuzzy = (function () {
   var RANKS = ["LIFE","KINGDOM","SUBKINGDOM","PHYLUM","SUBPHYLUM","CLASS","SUBCLASS","SUPERORDER","ORDER","SUBORDER","FAMILY","GENUS","SECTION","SPECIES"];
   function candidateKeys(tA, tB, own, ov) {
     var all = (tA.higherClassification || []).concat(tB.higherClassification || []);
-    var wantRank = ov ? ov.ranks : { species: ["GENUS"], genus: ["FAMILY"], family: null }[mode];
+    var wantRank = ov ? ov.ranks : { species: ["SPECIES", "GENUS"], genus: ["FAMILY"], family: null }[mode];
     all = all.filter(function (a) {
       var i = RANKS.indexOf(a.taxonRank);
       if (wantRank) return wantRank.indexOf(a.taxonRank) >= 0;
@@ -3610,7 +3627,19 @@ window.FHFuzzy = (function () {
     var cands = candidateKeys(tA, tB);
     var pre = (cands.length || mode === "family" || !S.up) ? Promise.resolve(cands)
       : node(S.up.id).then(function (t) { return t.identificationKeys || []; }).catch(function () { return []; });
-    return pre.then(function (c2) { return locate2(A, B, c2); });
+    return pre.then(function (c2) { return locate2(A, B, c2); }).then(function (loc) {
+      if (mode !== "species" || !(loc.reason || !loc.sp) || !(isInfra(tA) || isInfra(tB))) return loc;
+      // The keys do not list the subspecies or variety by name: try the species they belong to.
+      var sA = isInfra(tA) ? ancestorOfRank(tA, "SPECIES") : null, sB = isInfra(tB) ? ancestorOfRank(tB, "SPECIES") : null;
+      var A2 = sA ? { id: sA.id, name: nm(sA) } : A, B2 = sB ? { id: sB.id, name: nm(sB) } : B;
+      if (A2.id === A.id && B2.id === B.id) return loc;
+      if (A2.id === B2.id) return loc;                       // two forms of one species: nothing higher to compare
+      return locate2(A2, B2, candidateKeys(tA, tB)).then(function (l2) {
+        if (l2.reason || !l2.sp) return loc;
+        l2.via = { la: A2.name, lb: B2.name, a: A.name, b: B.name };
+        return l2;
+      });
+    });
   }
   function locate2(A, B, cands, ex) {
     if (!cands.length) return Promise.resolve({ reason: "nokey", cands: cands });
@@ -3652,6 +3681,7 @@ window.FHFuzzy = (function () {
     var h = '<div class="vk-vs"><a href="' + VF + 'taxon/' + esc(tA.id) + '" target="_blank" rel="noopener">' + esc(nA) + '<small>Open in VicFlora</small></a>' +
       '<a href="' + VF + 'taxon/' + esc(tB.id) + '" target="_blank" rel="noopener">' + esc(nB) + '<small>Open in VicFlora</small></a></div>';
 
+    if (tA._profFrom || tB._profFrom) h += '<p class="vk-foot">' + esc(tA._profFrom ? nA : nB) + (tA._profFrom && tB._profFrom ? " and " + esc(nB) : "") + ' ' + (tA._profFrom && tB._profFrom ? "have" : "has") + ' no description of its own in VicFlora, so the species description (' + esc(tA._profFrom || tB._profFrom) + ') is shown instead.</p>';
     h += '<div class="vk-h">Features side by side</div>';
     if (!rows.length) {
       h += '<div class="vk-status">VicFlora has no written description for either of these.</div>';
@@ -3664,7 +3694,8 @@ window.FHFuzzy = (function () {
     }
 
     h += '<div class="vk-h">Where the key separates them</div>';
-    var cA = loc.ctx ? loc.ctx.la : nA, cB = loc.ctx ? loc.ctx.lb : nB;
+    var cA = loc.ctx ? loc.ctx.la : (loc.via ? loc.via.la : nA), cB = loc.ctx ? loc.ctx.lb : (loc.via ? loc.via.lb : nB);
+    if (loc.via) h += '<p class="vk-foot">The key does not list ' + esc(loc.via.a === loc.via.la ? loc.via.b : (loc.via.b === loc.via.lb ? loc.via.a : loc.via.a + " and " + loc.via.b)) + ' by name, so this shows where their species part ways. Check the subspecies or variety in VicFlora for the finer difference.</p>';
     if (loc.ctx) h += '<p class="vk-foot">These are in different ' + (loc.ctx.level === "genus" ? 'genera of <i>' + esc(loc.ctx.family) + '</i>' : 'families') + ', so no single key lists both species. This shows where the ' + (loc.ctx.level === "genus" ? "family" : "higher-level") + ' key separates <i>' + esc(cA) + '</i> from <i>' + esc(cB) + '</i>.</p>';
     if (loc.reason) {
       var links = (loc.cands || []).slice(0, 4).map(function (c) { return '<a href="' + VF + 'key/' + esc(c.id) + '" target="_blank" rel="noopener">' + esc(c.title) + "</a>"; }).join(", ");
@@ -5124,7 +5155,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-11.1";
+  const BUILD_VERSION = "2026-11-11.2";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
