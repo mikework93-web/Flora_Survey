@@ -1,3 +1,14 @@
+## OneDrive backup: surveys, GIS and photos (2026-11-13, v.2026-11-13.5)
+- **New Menu item: OneDrive backup.** Microsoft sign-in, a private app folder in OneDrive, add and update only. Same method as KeystoneHub.
+- **One folder per survey, named "Site - Date"** under Flora Survey in the app folder. It holds the same files as Export: the Excel file, the GIS layers (when the survey has points or polygons), the PDF for roadsides, and the photos in a Photos folder. Flora, roadside and tree surveys are all covered.
+- **No copies per person.** Anyone on the same site and date writes to the same folder and file names, so a synced survey is one set of files, not one per user.
+- **No stale overwrites.** Before replacing a file, the app checks the OneDrive copy. If it is newer than this device's copy, it leaves it alone.
+- **When:** a few seconds after a survey changes, every 2 minutes, when the app is hidden, and when the device is back online. "Back up now" does it on demand.
+- **Never deletes:** there is no delete call in the code.
+- **Recover photos:** puts back photos that a survey on the device refers to but that are missing on it. It never overwrites anything.
+- **Setup:** reuse the KeystoneHub Entra app registration and add this app's address as a second redirect URI (Single-page application). The address is shown in the OneDrive backup box before you connect.
+- Limits: a survey with no site name is not backed up. Renaming the site or changing the date starts a new folder. Photos upload from the device that holds them. Two different surveys with the same site and date would share a folder.
+
 ## Roadside survey: Southern Brown Bandicoot and Koala records (2026-11-13, v.2026-11-13.1)
 - **Two ALA downloads added** (Koala, 26,273 Victoria-wide records; Southern Brown Bandicoot, 9,061). They were cut to the Casey roadsides, cross-posted duplicates were removed, and each record was measured to the roadside's patches.
 - **Same rule as the other species:** a record within 1 km, accurate to 1 km or better, and no more than 20 years old on the day of the survey. Records with no date are dropped. Records with no stated accuracy are counted (this adds 3 bandicoot roadsides).
