@@ -1,6 +1,22 @@
+## Roadside survey: Southern Brown Bandicoot and Koala records (2026-11-13, v.2026-11-13.1)
+- **Two ALA downloads added** (Koala, 26,273 Victoria-wide records; Southern Brown Bandicoot, 9,061). They were cut to the Casey roadsides, cross-posted duplicates were removed, and each record was measured to the roadside's patches.
+- **Same rule as the other species:** a record within 1 km, accurate to 1 km or better, and no more than 20 years old on the day of the survey. Records with no date are dropped. Records with no stated accuracy are counted (this adds 3 bandicoot roadsides).
+- **Result:** Koala qualifies on 26 roadsides and Southern Brown Bandicoot on 23 (20 if records with no stated accuracy were left out). 7 more roadsides have older Koala records only, and 9 have older bandicoot records only.
+- **Rows and panel:** both species appear in the Pre-load panel and the Values table. Rows from ALA say "Source: ALA (includes VBA)". The bandicoot row merges into the RVMP bandicoot row where one exists.
+- **Status:** Southern Brown Bandicoot is shown as EPBC Endangered. Koala has no status text, because I could not confirm a Victorian listing.
+- Caveat: ALA mixes sources (VBA, iNaturalist, museums), so it is not a direct VBA extract. Sensitive records can be generalised.
+
 # Flora Survey — change log
 
 Changes made to this copy of the app (started from your `Flora_Survey`). Plain-English summary, newest work first.
+
+## Roadside survey: VBA fauna records (2026-11-13, v.2026-11-11.6)
+- **VBA threatened fauna records are now part of the roadside pre-load.** Source: the Casey VBA export (670 usable records: Latham's Snipe, Swamp Skink, Glossy Grass Skink, Powerful Owl, Southern Toadlet). Each record was measured to the roadside's mapped patches. The radius was changed from 5 km to 1 km in this build.
+- **The rule:** a species is put forward as significant fauna for a roadside when it has at least one VBA record within 1 km of the roadside, accurate to 1 km or better, and no more than 20 years old on the day of the survey. The 20 years counts back from today, so it moves on its own.
+- **Values table:** each qualifying species gets a Values row (whole roadside) with its status, how many records, the nearest distance and the latest year. If the RVMP data already lists the species, the VBA sentence is added to that row. Species rows are added too.
+- **Pre-load panel:** a new box under the roadside picker lists every species with its count, whether it qualifies, and an expandable list of the nearest records with date, distance and location accuracy. Species with only older or too-coarse records are shown as not qualifying.
+- **Not in the file:** Southern Brown Bandicoot and Koala. They still come from the RVMP data where it lists them.
+- Reloading a roadside keeps your edits and does not double the rows.
 
 ## Saved Folder: Export roadsides and Export trees (2026-11-11, v.2026-11-11.4)
 - **Two new buttons in the Saved Folder window:** Export roadsides and Export trees. Each builds its own zip of every saved survey of that type (plus the one open now if it is that type). The two survey types are never mixed.
