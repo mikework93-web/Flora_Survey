@@ -1,4 +1,4 @@
-## OneDrive backup: surveys, GIS and photos (2026-11-13, v.2026-11-13.5)
+## OneDrive backup: surveys, GIS and photos (2026-11-13, v.2026-11-13.6)
 - **New Menu item: OneDrive backup.** Microsoft sign-in, a private app folder in OneDrive, add and update only. Same method as KeystoneHub.
 - **One folder per survey, named "Site - Date"** under Flora Survey in the app folder. It holds the same files as Export: the Excel file, the GIS layers (when the survey has points or polygons), the PDF for roadsides, and the photos in a Photos folder. Flora, roadside and tree surveys are all covered.
 - **No copies per person.** Anyone on the same site and date writes to the same folder and file names, so a synced survey is one set of files, not one per user.
@@ -6,7 +6,7 @@
 - **When:** a few seconds after a survey changes, every 2 minutes, when the app is hidden, and when the device is back online. "Back up now" does it on demand.
 - **Never deletes:** there is no delete call in the code.
 - **Recover photos:** puts back photos that a survey on the device refers to but that are missing on it. It never overwrites anything.
-- **Setup:** reuse the KeystoneHub Entra app registration and add this app's address as a second redirect URI (Single-page application). The address is shown in the OneDrive backup box before you connect.
+- **Setup:** the KeystoneHub Entra client ID is built in and already filled into the OneDrive backup box, so each device only taps Connect OneDrive and signs in. The app's address must be listed as a Single-page application redirect URI on that registration (it is: flora-survey-1tf.pages.dev).
 - Limits: a survey with no site name is not backed up. Renaming the site or changing the date starts a new folder. Photos upload from the device that holds them. Two different surveys with the same site and date would share a folder.
 
 ## Roadside survey: Southern Brown Bandicoot and Koala records (2026-11-13, v.2026-11-13.1)

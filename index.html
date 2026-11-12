@@ -5156,7 +5156,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-13.5";
+  const BUILD_VERSION = "2026-11-13.6";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -11093,7 +11093,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   const OD_ROOT = "Flora Survey";
   const odLsj = (k,d)=>{ try{ return JSON.parse(localStorage.getItem(k))||d; }catch(e){ return d; } };
   const odLss = (k,v)=>{ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} };
-  const odCfg = ()=> odLsj("fh_od_cfg", { clientId:"" });
+  const OD_DEFAULT_CID = "ea86cb95-ad59-4d09-8d10-959955d2f098";   // Keystone Entra app registration (a client ID is not a secret)
+  const odCfg = ()=>{ const c = odLsj("fh_od_cfg", { clientId:"" }); if(!c.clientId) c.clientId = OD_DEFAULT_CID; return c; };
   const odTok = ()=> odLsj("fh_od_tok", null);
   const odState = ()=> odLsj("fh_od_state", { done:{}, last:0, err:"", n:0 });
   const odConnected = ()=> !!(odTok() && odCfg().clientId);
@@ -11104,7 +11105,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   const odHash = s=>{ let h = 5381; for(let i=0;i<s.length;i++) h = ((h<<5)+h+s.charCodeAt(i))|0; return String(h)+":"+s.length; };
   async function odConnect(){
     const cid = odCfg().clientId;
-    if(!cid){ FHKit.toast("Paste the Application (client) ID first"); return; }
+    if(!cid){ FHKit.toast("Enter the Application (client) ID first"); return; }
     const v = odB64u(crypto.getRandomValues(new Uint8Array(48)));
     const ch = odB64u(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v))));
     const st = odB64u(crypto.getRandomValues(new Uint8Array(12)));
