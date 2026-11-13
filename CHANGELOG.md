@@ -1,3 +1,10 @@
+## OneDrive sync: surveys on all your devices (2026-11-13, v.2026-11-13.7)
+- **Surveys now follow you between devices.** Each survey folder in OneDrive also holds the survey itself (survey.json). A device that syncs adds the surveys it is missing and brings in their photos. Open them from Menu > Saved folder. "Sync now" in the OneDrive backup box does it on demand, and it runs by itself when the app opens, every few minutes and when the app is hidden.
+- **Newest copy wins, without losing edits.** A copy from another device replaces the one on this device only if it is newer and this device has not changed that survey since the last sync. If both changed, the copy on this device is kept and a message says so.
+- **Deleted stays deleted.** A survey you delete on a device is not put back on that device. Nothing is ever deleted in OneDrive.
+- **The survey you have open is never replaced** while it is open.
+- One survey is matched across devices by site name and date.
+
 ## OneDrive backup: surveys, GIS and photos (2026-11-13, v.2026-11-13.6)
 - **New Menu item: OneDrive backup.** Microsoft sign-in, a private app folder in OneDrive, add and update only. Same method as KeystoneHub.
 - **One folder per survey, named "Site - Date"** under Flora Survey in the app folder. It holds the same files as Export: the Excel file, the GIS layers (when the survey has points or polygons), the PDF for roadsides, and the photos in a Photos folder. Flora, roadside and tree surveys are all covered.
