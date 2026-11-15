@@ -1,3 +1,12 @@
+## OneDrive sign-in expiry (2026-11-16, v.2026-11-16.1)
+- **Microsoft ends a browser app's OneDrive sign-in after exactly 24 hours** (error AADSTS700084). It cannot be extended from the app, so the backup stopped after a day with a raw error.
+- **Now handled:** when the sign-in runs out, an orange banner appears at the top: "OneDrive backup is paused. Tap here to sign in again." One tap goes to Microsoft and back, using the same account without the account picker. The OneDrive backup box shows the same "Sign in again" button. The app also asks before the 24 hours are up, and does not show the raw error.
+- **Nothing is lost while signed out.** Surveys stay on the device and back up and sync after signing in again.
+
+## OneDrive sync fix (2026-11-13, v.2026-11-13.8)
+- **Fixed: surveys already backed up by earlier builds were never uploaded as surveys**, so other devices found nothing to bring in. The app now forgets those old records once and uploads the survey file for every saved survey.
+- **Sync now tells you what it found**, for example "OneDrive holds 4 surveys; this device has 6", instead of only "already up to date".
+
 ## OneDrive sync: surveys on all your devices (2026-11-13, v.2026-11-13.7)
 - **Surveys now follow you between devices.** Each survey folder in OneDrive also holds the survey itself (survey.json). A device that syncs adds the surveys it is missing and brings in their photos. Open them from Menu > Saved folder. "Sync now" in the OneDrive backup box does it on demand, and it runs by itself when the app opens, every few minutes and when the app is hidden.
 - **Newest copy wins, without losing edits.** A copy from another device replaces the one on this device only if it is newer and this device has not changed that survey since the last sync. If both changed, the copy on this device is kept and a message says so.

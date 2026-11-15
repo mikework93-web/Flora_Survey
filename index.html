@@ -5156,7 +5156,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-13.7";
+  const BUILD_VERSION = "2026-11-16.1";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -11087,7 +11087,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
      OneDrive backup (Microsoft Graph, app-folder scope, add and update only).
      Same approach as KeystoneHub. Per survey: <app folder>/Flora Survey/<site - date>/ (Excel, GIS, Photos). The app never deletes anything in OneDrive.
      =================================================================== */
-  const OD_SCOPE = "offline_access Files.ReadWrite.AppFolder";
+  const OD_SCOPE = "openid offline_access Files.ReadWrite.AppFolder";
+  const OD_MAXAGE = 23*3600*1000;   // Microsoft ends a browser app sign-in after 24 hours, so ask again before then
   const OD_AUTH = "https://login.microsoftonline.com/common/oauth2/v2.0/";
   const OD_G = "https://graph.microsoft.com/v1.0/me/drive/special/approot";
   const OD_ROOT = "Flora Survey";
@@ -11103,21 +11104,40 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   const odSafe = s=> String(s||"file").replace(/[^\w.\- ]+/g,"_").slice(0,80);
   const odEnc = p=> p.split("/").map(encodeURIComponent).join("/");
   const odHash = s=>{ let h = 5381; for(let i=0;i<s.length;i++) h = ((h<<5)+h+s.charCodeAt(i))|0; return String(h)+":"+s.length; };
-  async function odConnect(){
+  async function odConnect(again){
     const cid = odCfg().clientId;
     if(!cid){ FHKit.toast("Enter the Application (client) ID first"); return; }
     const v = odB64u(crypto.getRandomValues(new Uint8Array(48)));
     const ch = odB64u(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v))));
     const st = odB64u(crypto.getRandomValues(new Uint8Array(12)));
     try{ sessionStorage.setItem("fh_od_pkce", JSON.stringify({ v:v, st:st })); }catch(e){}
-    location.href = OD_AUTH+"authorize?"+new URLSearchParams({ client_id:cid, response_type:"code", redirect_uri:odRedirect(), response_mode:"query", scope:OD_SCOPE, state:st, code_challenge:ch, code_challenge_method:"S256", prompt:"select_account" });
+    location.href = OD_AUTH+"authorize?"+new URLSearchParams(Object.assign({ client_id:cid, response_type:"code", redirect_uri:odRedirect(), response_mode:"query", scope:OD_SCOPE, state:st, code_challenge:ch, code_challenge_method:"S256" }, ((odTok()||{}).hint||odCfg().hint) ? { login_hint:(odTok()||{}).hint||odCfg().hint } : {}, again ? {} : { prompt:"select_account" }));
   }
   async function odTokenReq(params){
     const r = await fetch(OD_AUTH+"token", { method:"POST", headers:{ "Content-Type":"application/x-www-form-urlencoded" }, body:new URLSearchParams(Object.assign({ client_id:odCfg().clientId, scope:OD_SCOPE }, params)) });
     const j = await r.json();
-    if(!r.ok) throw new Error(j.error_description || j.error || "Sign-in failed");
-    const old = odTok()||{};
-    odLss("fh_od_tok", { access:j.access_token, refresh:j.refresh_token||old.refresh, exp:Date.now()+(j.expires_in-120)*1000 });
+    if(!r.ok){
+      const e = new Error(/AADSTS700084|invalid_grant|interaction_required|AADSTS70043|AADSTS50173/.test((j.error_description||"")+(j.error||"")) ? "Sign in again" : (j.error_description || j.error || "Sign-in failed"));
+      if(e.message === "Sign in again") e.signin = true;
+      throw e;
+    }
+    const old = odTok()||{}; let hint = old.hint||"";
+    try{ if(j.id_token){ const pl = JSON.parse(atob(j.id_token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))); hint = pl.preferred_username || pl.email || hint; } }catch(e){}
+    odLss("fh_od_tok", { access:j.access_token, refresh:j.refresh_token||old.refresh, exp:Date.now()+(j.expires_in-120)*1000, born:(params.grant_type === "authorization_code") ? Date.now() : (old.born||Date.now()), hint:hint });
+  }
+  // Marks that the Microsoft sign-in has run out. Nothing is lost: surveys stay on the device and back up after signing in again.
+  function odNeedLogin(on){
+    const st = odState(); st.login = !!on; if(on) st.err = ""; odLss("fh_od_state", st); odBanner();
+  }
+  function odBanner(){
+    const need = odConnected() && !!odState().login; let b = document.getElementById("odBanner");
+    if(!need){ if(b) b.remove(); return; }
+    if(!b){
+      b = document.createElement("button"); b.type = "button"; b.id = "odBanner";
+      b.style.cssText = "position:fixed;left:8px;right:8px;top:8px;z-index:9999;padding:10px 12px;border:0;border-radius:10px;background:#b45309;color:#fff;font:600 13px system-ui,sans-serif;text-align:left;box-shadow:0 2px 10px rgba(0,0,0,.3)";
+      b.textContent = "OneDrive backup is paused. Tap here to sign in again (needed once a day).";
+      b.onclick = ()=> odConnect(true); document.body.appendChild(b);
+    }
   }
   async function odHandleRedirect(){
     const q = new URLSearchParams(location.search), code = q.get("code"), st = q.get("state");
@@ -11129,19 +11149,22 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     try{
       await odTokenReq({ grant_type:"authorization_code", code:code, redirect_uri:odRedirect(), code_verifier:p.v });
       try{ sessionStorage.removeItem("fh_od_pkce"); }catch(e){}
-      FHKit.toast("OneDrive connected");
+      odNeedLogin(false); FHKit.toast("OneDrive connected");
       odSync(true); odDialog();
     }catch(e){ FHKit.toast(String(e.message||e)); }
   }
   async function odAccess(){
     let t = odTok(); if(!t) throw new Error("Not connected");
-    if(Date.now() > t.exp){ if(!t.refresh) throw new Error("Sign in again"); await odTokenReq({ grant_type:"refresh_token", refresh_token:t.refresh }); t = odTok(); }
+    if(Date.now() > t.exp){
+      if(!t.refresh || Date.now() - (t.born||0) > OD_MAXAGE){ const e = new Error("Sign in again"); e.signin = true; throw e; }
+      await odTokenReq({ grant_type:"refresh_token", refresh_token:t.refresh }); t = odTok();
+    }
     return t.access;
   }
   async function odFetch(url, opts){
     opts = opts||{}; const h = Object.assign({}, opts.headers||{}); h.Authorization = "Bearer "+await odAccess();
     const r = await fetch(url, Object.assign({}, opts, { headers:h }));
-    if(r.status === 401){ const st = odState(); st.err = "Sign in again"; odLss("fh_od_state", st); }
+    if(r.status === 401){ odNeedLogin(true); }
     return r;
   }
   // The only writes are PUT (create or replace) and createUploadSession. There is deliberately no DELETE anywhere.
@@ -11212,12 +11235,13 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     return n;
   }
   async function odPull(st, manual){
-    let added = 0, updated = 0, photos = 0, conflicts = 0;
+    let added = 0, updated = 0, photos = 0, conflicts = 0, found = 0;
     const fol = getFolder(), known = new Set(st.keys||[]); st.seen = st.seen||{}; st.pull = st.pull||{};
     let openKey = null; try{ if(surveyStarted) openKey = snapshot().folderKey; }catch(e){}
     const dirs = (await odList(OD_ROOT)).filter(f=>f.folder);
     for(const d of dirs){
       const kids = await odList(OD_ROOT+"/"+d.name), sj = kids.find(f=>f.name === "survey.json"); if(!sj) continue;
+      found++;
       if(!manual && st.pull[d.name] === sj.lastModifiedDateTime) continue;
       let remote = null; try{ remote = await (await odGet(sj)).json(); }catch(e){ continue; }
       if(!remote || typeof remote !== "object") continue;
@@ -11242,12 +11266,14 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     if(added || updated) putFolder(fol);
     Object.keys(getFolder()).forEach(k=>known.add(k)); st.keys = Array.from(known);
     st.lastPull = Date.now();
-    return { added:added, updated:updated, photos:photos, conflicts:conflicts };
+    return { added:added, updated:updated, photos:photos, conflicts:conflicts, found:found };
   }
   async function odSync(manual){
     if(odBusy || !odConnected()) return;
     if(!navigator.onLine){ if(manual) FHKit.toast("No connection. It will back up when you are online."); return; }
     odBusy = true; const st = odState(); st.err = ""; let up = 0, newer = 0;
+    // Earlier builds recorded surveys as backed up without the survey file itself. Forget those records once so it is uploaded.
+    if(st.fmt !== 2){ st.done = st.done||{}; Object.keys(st.done).forEach(k=>{ if(k.indexOf("s:") === 0) delete st.done[k]; }); st.pull = {}; st.fmt = 2; }
     try{
       const fol = getFolder();
       for(const key of Object.keys(fol)){
@@ -11280,14 +11306,14 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
           await odPut(OD_ROOT+"/"+dir+"/Photos/"+ids[id], b); st.done[k] = 1; up++; odStatus("Backing up... "+up);
         }
       }
-      let pr = { added:0, updated:0, photos:0, conflicts:0 };
+      let pr = { added:0, updated:0, photos:0, conflicts:0, found:-1 };
       if(manual || !st.lastPull || Date.now()-st.lastPull > 240000) pr = await odPull(st, manual);
       Object.keys(getFolder()).forEach(k=>{ st.keys = st.keys||[]; if(st.keys.indexOf(k)<0) st.keys.push(k); });
-      st.last = Date.now(); st.n = (st.n||0)+up; odLss("fh_od_state", st);
+      st.login = false; st.last = Date.now(); st.n = (st.n||0)+up; odLss("fh_od_state", st); odBanner();
       if(pr.added || pr.updated){ FHKit.toast((pr.added?pr.added+" survey"+(pr.added>1?"s":"")+" added from OneDrive":"")+(pr.added&&pr.updated?", ":"")+(pr.updated?pr.updated+" updated":"")+". Open them from Menu > Saved folder."); }
       else if(manual && pr.conflicts){ FHKit.toast(pr.conflicts+" survey"+(pr.conflicts>1?"s":"")+" changed on this device and in OneDrive. The copy on this device was kept."); }
-      else if(manual) FHKit.toast(up ? "Backed up "+up+" file"+(up>1?"s":"")+" to OneDrive" : (newer ? "OneDrive already has newer copies" : "OneDrive is already up to date"));
-    }catch(e){ st.err = String(e.message||e); odLss("fh_od_state", st); if(manual) FHKit.toast("OneDrive: "+st.err); }
+      else if(manual){ const nl = Object.keys(getFolder()).length; FHKit.toast((up ? "Backed up "+up+" file"+(up>1?"s":"")+". " : "Nothing new to upload. ")+"OneDrive holds "+Math.max(pr.found,0)+" survey"+(pr.found===1?"":"s")+"; this device has "+nl+(newer?". Some OneDrive copies are newer than this device's, so they were left alone":"")+"."); }
+    }catch(e){ if(e && e.signin){ st.login = true; st.err = ""; odLss("fh_od_state", st); odBanner(); if(manual) FHKit.toast("Sign in to OneDrive again to continue."); } else { st.err = String(e.message||e); odLss("fh_od_state", st); if(manual) FHKit.toast("OneDrive: "+st.err); } }
     odBusy = false; odStatus();
   }
   function odSchedule(){ if(!odConnected()) return; clearTimeout(odTimer); odTimer = setTimeout(()=>odSync(false), 15000); }
@@ -11317,7 +11343,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   function odStatus(txt){
     const el = document.getElementById("odStatus"); if(!el) return;
     const st = odState();
-    el.textContent = txt || (st.err ? "Problem: "+st.err : st.last ? "Last backup: "+new Date(st.last).toLocaleString() : "No backup yet");
+    el.textContent = txt || (st.login ? "Signed out. Tap Sign in again." : st.err ? "Problem: "+st.err : st.last ? "Last backup: "+new Date(st.last).toLocaleString() : "No backup yet");
   }
   function odDialog(){
     const old = document.getElementById("fhOd"); if(old) old.remove();
@@ -11331,7 +11357,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
            : '<label style="display:block;font-size:12px;margin:6px 0 2px">Application (client) ID</label><input id="odCid" type="text" autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:8px" value="'+FHKit.esc(cid)+'" placeholder="paste from Microsoft Entra">'
              + '<p style="font-size:12px;line-height:1.4;opacity:.85">One-time setup in Microsoft Entra (App registrations): the redirect URI must be exactly <code style="word-break:break-all">'+FHKit.esc(odRedirect())+'</code>, type Single-page application, with Files.ReadWrite.AppFolder permission.</p>')
       + '<div class="name-ask-btns" style="flex-wrap:wrap;gap:8px">'
-      + (c ? '<button type="button" class="btn" id="odNow">Sync now</button><button type="button" class="btn sec" id="odRec">Recover photos</button><button type="button" class="btn sec" id="odDisc">Disconnect</button>'
+      + (c ? (odState().login ? '<button type="button" class="btn" id="odAgain">Sign in again</button>' : '')+'<button type="button" class="btn" id="odNow">Sync now</button><button type="button" class="btn sec" id="odRec">Recover photos</button><button type="button" class="btn sec" id="odDisc">Disconnect</button>'
            : '<button type="button" class="btn" id="odConn">Connect OneDrive</button>')
       + '<button type="button" class="btn sec" id="odClose">Close</button></div></div>';
     document.body.appendChild(wrap);
@@ -11340,6 +11366,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     if(c){
       odStatus();
       q("#odNow").onclick = ()=> odSync(true);
+      if(q("#odAgain")) q("#odAgain").onclick = ()=> odConnect(true);
       q("#odRec").onclick = ()=> odRecover();
       q("#odDisc").onclick = ()=>{ if(!confirm("This device will stop backing up. Nothing in OneDrive is deleted.")) return; try{ localStorage.removeItem("fh_od_tok"); }catch(e){} close(); FHKit.toast("OneDrive disconnected"); };
     }else{
@@ -11357,6 +11384,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     };
     let tries = 0; const iv = setInterval(()=>{ if(addItem() || ++tries > 50) clearInterval(iv); }, 200);
     odHandleRedirect();
+    try{ const t = odTok(); if(odConnected() && t && Date.now() > t.exp && (!t.refresh || Date.now()-(t.born||0) > OD_MAXAGE)) odNeedLogin(true); else odBanner(); }catch(e){}
     setInterval(()=>{ if(odConnected()) odSync(false); }, 120000);
     window.addEventListener("online", ()=> odSchedule());
     document.addEventListener("visibilitychange", ()=>{ if(document.hidden && odConnected()){ clearTimeout(odTimer); odSync(false); } });
