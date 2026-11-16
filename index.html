@@ -5156,7 +5156,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-16.1";
+  const BUILD_VERSION = "2026-11-16.2";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -11171,6 +11171,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   async function odPut(path, blob){
     const r = await odFetch(OD_G+":/"+odEnc(path)+":/content?@microsoft.graph.conflictBehavior=replace", { method:"PUT", headers:{ "Content-Type":blob.type||"application/octet-stream" }, body:blob });
     if(!r.ok) throw new Error("Upload failed ("+r.status+") "+path);
+    try{ return await r.json(); }catch(e){ return null; }
   }
   async function odList(folder){
     const out = []; let url = OD_G+":/"+odEnc(folder)+":/children?$top=200&$select=name,id,size,folder,lastModifiedDateTime,@microsoft.graph.downloadUrl";
@@ -11218,9 +11219,77 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   }
   const odDataUrlBlob = du=>{ const m = /^data:([^;]+);base64,(.*)$/.exec(du||""); if(!m) return null; const bin = atob(m[2]), b = new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) b[i] = bin.charCodeAt(i); return new Blob([b], { type:m[1] }); };
   let odBusy = false, odTimer = null;
-  // Brings surveys from OneDrive onto this device. Adds ones that are missing, and replaces a local copy only when
-  // OneDrive has a newer one and this device has not changed it since the last sync. Never re-adds a survey deleted
-  // on this device, never touches the survey that is open, never deletes anything.
+  // ---- Merge ----------------------------------------------------------------------------------
+  // Three-way merge of a survey: what this device changed and what another device changed since the
+  // last version they shared. Nothing entered on either side is dropped:
+  //   rows (by id), site notes, polygons, points and photos from both sides are all kept;
+  //   different fields of the same record both survive;
+  //   the same text field changed on both sides keeps both texts;
+  //   the same non-text field changed on both sides keeps the newer value and writes the other as a site note;
+  //   a record removed on one device is only removed if the other device had not touched it.
+  const odIsObj = x=> x && typeof x === "object" && !Array.isArray(x);
+  const odStable = v=> JSON.stringify(v, (k,x)=> odIsObj(x) ? Object.keys(x).sort().reduce((o,kk)=>{ o[kk] = x[kk]; return o; }, {}) : x);
+  const odEq = (a,b)=> odStable(a) === odStable(b);
+  const OD_TEXTKEY = /note|comment|text|remark|desc|threat|mitigat|^c$|^o$/i;
+  function odM3(b, l, r, key, cx){
+    if(odEq(l, r)) return l;
+    if(b !== undefined && odEq(l, b)) return r;
+    if(b !== undefined && odEq(r, b)) return l;
+    if(odIsObj(l) && odIsObj(r)){
+      const o = {}, bo = odIsObj(b) ? b : {};
+      Object.keys(l).concat(Object.keys(r)).forEach(k=>{
+        if(Object.prototype.hasOwnProperty.call(o, k)) return;
+        const inL = k in l, inR = k in r, inB = k in bo;
+        if(inL && inR) o[k] = odM3(bo[k], l[k], r[k], k, cx);
+        else if(inL) o[k] = l[k];                                   // other device lacks it: keep
+        else if(inB && odEq(r[k], bo[k])) { /* removed here, untouched there: stays removed */ }
+        else o[k] = r[k];                                           // added or changed on the other device: keep
+      });
+      return o;
+    }
+    if(Array.isArray(l) && Array.isArray(r)){
+      const keyed = a=> a.every(x=> odIsObj(x) && x.id != null);
+      if(keyed(l) && keyed(r)){
+        const bm = new Map((Array.isArray(b) ? b : []).filter(x=> odIsObj(x) && x.id != null).map(x=>[x.id, x]));
+        const rm = new Map(r.map(x=>[x.id, x])), lm = new Map(l.map(x=>[x.id, x])), out = [];
+        l.forEach(x=>{ out.push(rm.has(x.id) ? odM3(bm.get(x.id), x, rm.get(x.id), key, cx) : x); });
+        r.forEach(y=>{ if(lm.has(y.id)) return; const bb = bm.get(y.id); if(bb && odEq(bb, y)) return; out.push(y); });
+        return out;
+      }
+      const seen = new Set(l.map(odStable)), out = l.slice();
+      r.forEach(y=>{ if(!seen.has(odStable(y))){ seen.add(odStable(y)); out.push(y); } });
+      return out;
+    }
+    if(typeof l === "string" && typeof r === "string" && OD_TEXTKEY.test(key||"")){
+      if(!l.trim()) return r; if(!r.trim()) return l;
+      if(l.indexOf(r) >= 0) return l; if(r.indexOf(l) >= 0) return r;
+      return l+"\n"+r;
+    }
+    // Same non-text value changed on both devices: keep the newer one and record the other so nothing is lost.
+    const keep = cx.lNew ? l : r, other = cx.lNew ? r : l;
+    cx.lost.push({ key:key||"", val:other });
+    return keep;
+  }
+  function odMerge(base, local, remote){
+    const cx = { lNew:(Date.parse(local.savedAt)||0) >= (Date.parse(remote.savedAt)||0), lost:[] };
+    const cl = JSON.parse(JSON.stringify(local)), cr = JSON.parse(JSON.stringify(remote)), cb = base ? JSON.parse(JSON.stringify(base)) : undefined;
+    [cl, cr, cb].forEach(x=>{ if(x){ delete x.savedAt; delete x.folderKey; } });
+    const m = odM3(cb, cl, cr, "", cx);
+    m.folderKey = local.folderKey; m.type = local.type || remote.type; m.savedAt = local.savedAt;
+    if(cx.lost.length){
+      m.siteNotes = Array.isArray(m.siteNotes) ? m.siteNotes : [];
+      cx.lost.forEach(x=>{
+        const id = "merge_"+odHash(x.key+"|"+odStable(x.val));
+        if(!m.siteNotes.some(n=>n && n.id === id)) m.siteNotes.push({ id:id, text:'Merged from another device: "'+x.key+'" was also entered as '+odStable(x.val).slice(0,200)+'.', ts:new Date().toISOString(), by:"OneDrive merge" });
+      });
+    }
+    return m;
+  }
+  const odNoSaved = s=>{ const c = JSON.parse(JSON.stringify(s)); delete c.savedAt; delete c.folderKey; return odStable(c); };
+  // Last version of each survey that this device shared with OneDrive (the base for the next merge).
+  const odDb = ()=> new Promise((res, rej)=>{ const q = indexedDB.open("fh_od_base", 1); q.onupgradeneeded = ()=>q.result.createObjectStore("b"); q.onsuccess = ()=>res(q.result); q.onerror = ()=>rej(q.error); });
+  async function odBaseGet(k){ try{ const db = await odDb(); return await new Promise(r=>{ const q = db.transaction("b").objectStore("b").get(k); q.onsuccess = ()=>r(q.result); q.onerror = ()=>r(undefined); }); }catch(e){ return undefined; } }
+  async function odBaseSet(k, v){ try{ const db = await odDb(); await new Promise(r=>{ const tx = db.transaction("b", "readwrite"); tx.objectStore("b").put(v, k); tx.oncomplete = ()=>r(); tx.onerror = ()=>r(); }); }catch(e){} }
   async function odPhotosFor(snap, dir){
     const ids = odPhotoIds(snap, {}); let n = 0, list = null;
     for(const id of Object.keys(ids)){
@@ -11234,85 +11303,70 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
     return n;
   }
-  async function odPull(st, manual){
-    let added = 0, updated = 0, photos = 0, conflicts = 0, found = 0;
-    const fol = getFolder(), known = new Set(st.keys||[]); st.seen = st.seen||{}; st.pull = st.pull||{};
-    let openKey = null; try{ if(surveyStarted) openKey = snapshot().folderKey; }catch(e){}
-    const dirs = (await odList(OD_ROOT)).filter(f=>f.folder);
-    for(const d of dirs){
-      const kids = await odList(OD_ROOT+"/"+d.name), sj = kids.find(f=>f.name === "survey.json"); if(!sj) continue;
-      found++;
-      if(!manual && st.pull[d.name] === sj.lastModifiedDateTime) continue;
-      let remote = null; try{ remote = await (await odGet(sj)).json(); }catch(e){ continue; }
-      if(!remote || typeof remote !== "object") continue;
-      const dir = odDir(remote), rkey = remote.folderKey || ("od_"+odHash(dir));
-      const locals = Object.keys(fol).filter(k=>odDir(fol[k]) === dir);
-      let target = null;
-      if(!locals.length){
-        if(known.has(rkey)){ st.pull[d.name] = sj.lastModifiedDateTime; continue; }   // deleted on this device
-        fol[rkey] = remote; added++; target = remote; st.seen[dir] = Date.parse(remote.savedAt)||Date.now();
-      }else{
-        const lk = locals.indexOf(rkey) >= 0 ? rkey : locals.slice().sort((a,b)=>Date.parse((fol[b]||{}).savedAt||0)-Date.parse((fol[a]||{}).savedAt||0))[0];
-        const loc = fol[lk], lt = Date.parse(loc.savedAt)||0, rt = Date.parse(remote.savedAt)||0;
-        if(lk === openKey){ continue; }
-        if(rt > lt){
-          if(lt <= (st.seen[dir]||0)){ remote.folderKey = lk; fol[lk] = remote; updated++; st.seen[dir] = rt; target = remote; }
-          else conflicts++;
-        }else target = loc;
-      }
-      if(target){ try{ photos += await odPhotosFor(target, dir); }catch(e){} }
-      st.pull[d.name] = sj.lastModifiedDateTime;
-    }
-    if(added || updated) putFolder(fol);
-    Object.keys(getFolder()).forEach(k=>known.add(k)); st.keys = Array.from(known);
-    st.lastPull = Date.now();
-    return { added:added, updated:updated, photos:photos, conflicts:conflicts, found:found };
-  }
   async function odSync(manual){
     if(odBusy || !odConnected()) return;
     if(!navigator.onLine){ if(manual) FHKit.toast("No connection. It will back up when you are online."); return; }
-    odBusy = true; const st = odState(); st.err = ""; let up = 0, newer = 0;
-    // Earlier builds recorded surveys as backed up without the survey file itself. Forget those records once so it is uploaded.
-    if(st.fmt !== 2){ st.done = st.done||{}; Object.keys(st.done).forEach(k=>{ if(k.indexOf("s:") === 0) delete st.done[k]; }); st.pull = {}; st.fmt = 2; }
+    odBusy = true; const st = odState(); st.err = ""; let up = 0;
+    if(st.fmt !== 3){ st.done = st.done||{}; Object.keys(st.done).forEach(k=>{ if(k.indexOf("s:") === 0) delete st.done[k]; }); st.pull = {}; st.fmt = 3; }
+    st.pull = st.pull||{};
+    const pr = { added:0, updated:0, photos:0, found:0, merged:0 };
     try{
-      const fol = getFolder();
-      for(const key of Object.keys(fol)){
-        const snap = fol[key]; if(!snap || typeof snap !== "object") continue;
-        const hasData = (snap.species||[]).length || (snap.polygons||[]).length || (snap.siteNotes||[]).length || (snap.roadside && (snap.roadside.values||[]).length);
-        if(!hasData || !((snap.meta||{}).site||"").trim()) continue;
-        const dir = odDir(snap), cp = Object.assign({}, snap); delete cp.savedAt; delete cp.folderKey;
-        const h = odHash(JSON.stringify(cp));
-        if(st.done["s:"+dir] !== h){
-          odStatus("Backing up "+dir+"...");
-          const files = await odBuild(snap), names = Object.keys(files);
-          // Do not replace a newer copy that another device has already put there.
-          let skip = false;
-          if(names.length && snap.savedAt){
-            const meta = await odMeta(OD_ROOT+"/"+dir+"/"+names[0]);
-            if(meta && meta.lastModifiedDateTime && Date.parse(meta.lastModifiedDateTime) > Date.parse(snap.savedAt) + 60000) skip = true;
-          }
-          if(skip){ newer++; st.done["s:"+dir] = h; }
-          else{
-            for(const n of names){ await odPut(OD_ROOT+"/"+dir+"/"+n, new Blob([files[n]])); up++; }
-            st.done["s:"+dir] = h;
-            st.seen = st.seen||{}; st.seen[dir] = Date.parse(snap.savedAt)||Date.now();
-          }
+      const fol = getFolder(); let openKey = null; try{ if(surveyStarted) openKey = snapshot().folderKey; }catch(e){}
+      const checkRemote = manual || !st.lastPull || Date.now()-st.lastPull > 240000;
+      const byDir = {};
+      Object.keys(fol).forEach(k=>{
+        const sn = fol[k]; if(!sn || typeof sn !== "object" || !((sn.meta||{}).site||"").trim()) return;
+        const d = odDir(sn); if(!byDir[d] || (Date.parse(sn.savedAt)||0) > (Date.parse(byDir[d].sn.savedAt)||0)) byDir[d] = { key:k, sn:sn };
+      });
+      let remoteDirs = []; if(checkRemote) remoteDirs = (await odList(OD_ROOT)).filter(f=>f.folder).map(f=>f.name);
+      const dirs = Array.from(new Set(Object.keys(byDir).concat(remoteDirs))); let dirty = false;
+      for(const D of dirs){
+        const loc = byDir[D], hs = loc ? odHash(odNoSaved(loc.sn)) : "";
+        const localChanged = !!loc && st.done["s:"+D] !== hs;
+        let rmeta = null, remote = null;
+        if(checkRemote || localChanged){ rmeta = await odMeta(OD_ROOT+"/"+D+"/survey.json"); if(rmeta) pr.found++; }
+        const remoteChanged = !!rmeta && rmeta.lastModifiedDateTime !== (st.pull[D]||"");
+        if(remoteChanged && loc && loc.key === openKey) continue;       // never change the open survey; it merges after it is closed
+        if(remoteChanged){
+          try{ const r = await odFetch(OD_G+":/"+odEnc(OD_ROOT+"/"+D+"/survey.json")+":/content"); if(r.ok) remote = await r.json(); }catch(e){}
+          if(!remote || typeof remote !== "object"){ continue; }
         }
-        const ids = odPhotoIds(snap, {});
-        for(const id of Object.keys(ids)){
-          const k = "p:"+dir+"/"+ids[id]; if(st.done[k]) continue;
-          let du = null; try{ du = await getPhotoBytes(id); }catch(e){}
-          const b = odDataUrlBlob(du); if(!b) continue;
-          await odPut(OD_ROOT+"/"+dir+"/Photos/"+ids[id], b); st.done[k] = 1; up++; odStatus("Backing up... "+up);
+        const base = await odBaseGet(D);
+        let m = loc ? loc.sn : null, changedLocal = false;
+        if(!loc){
+          if(!remote) continue;
+          if(base){ st.pull[D] = rmeta.lastModifiedDateTime; continue; }      // deleted on this device: stay deleted
+          m = remote; fol[remote.folderKey || ("od_"+odHash(D))] = m; dirty = true; pr.added++; changedLocal = true;
+        }else if(remote){
+          m = odMerge(base, loc.sn, remote);
+          if(odNoSaved(m) !== odNoSaved(loc.sn)){ m.savedAt = new Date().toISOString(); fol[loc.key] = m; dirty = true; pr.updated++; changedLocal = true; }
+        }
+        if(changedLocal){ try{ pr.photos += await odPhotosFor(m, D); }catch(e){} }
+        const needUpload = remote ? odNoSaved(m) !== odNoSaved(remote) : (!!loc && (localChanged || !rmeta));
+        if(needUpload){
+          odStatus("Backing up "+D+"...");
+          const files = await odBuild(m), names = Object.keys(files).filter(n=>n !== "survey.json");
+          for(const n of names){ await odPut(OD_ROOT+"/"+D+"/"+n, new Blob([files[n]])); up++; }
+          const sj = await odPut(OD_ROOT+"/"+D+"/survey.json", new Blob([files["survey.json"]], { type:"application/json" })); up++;
+          st.pull[D] = (sj && sj.lastModifiedDateTime) || "";
+        }else if(rmeta) st.pull[D] = rmeta.lastModifiedDateTime;
+        if(remote && loc) pr.merged++;
+        await odBaseSet(D, m); st.done["s:"+D] = odHash(odNoSaved(m));
+        if(loc || changedLocal){
+          const ids = odPhotoIds(m, {});
+          for(const id of Object.keys(ids)){
+            const k = "p:"+D+"/"+ids[id]; if(st.done[k]) continue;
+            let du = null; try{ du = await getPhotoBytes(id); }catch(e){}
+            const b = odDataUrlBlob(du); if(!b) continue;
+            await odPut(OD_ROOT+"/"+D+"/Photos/"+ids[id], b); st.done[k] = 1; up++; odStatus("Backing up... "+up);
+          }
         }
       }
-      let pr = { added:0, updated:0, photos:0, conflicts:0, found:-1 };
-      if(manual || !st.lastPull || Date.now()-st.lastPull > 240000) pr = await odPull(st, manual);
-      Object.keys(getFolder()).forEach(k=>{ st.keys = st.keys||[]; if(st.keys.indexOf(k)<0) st.keys.push(k); });
+      if(dirty) putFolder(fol);
+      if(checkRemote) st.lastPull = Date.now();
       st.login = false; st.last = Date.now(); st.n = (st.n||0)+up; odLss("fh_od_state", st); odBanner();
-      if(pr.added || pr.updated){ FHKit.toast((pr.added?pr.added+" survey"+(pr.added>1?"s":"")+" added from OneDrive":"")+(pr.added&&pr.updated?", ":"")+(pr.updated?pr.updated+" updated":"")+". Open them from Menu > Saved folder."); }
-      else if(manual && pr.conflicts){ FHKit.toast(pr.conflicts+" survey"+(pr.conflicts>1?"s":"")+" changed on this device and in OneDrive. The copy on this device was kept."); }
-      else if(manual){ const nl = Object.keys(getFolder()).length; FHKit.toast((up ? "Backed up "+up+" file"+(up>1?"s":"")+". " : "Nothing new to upload. ")+"OneDrive holds "+Math.max(pr.found,0)+" survey"+(pr.found===1?"":"s")+"; this device has "+nl+(newer?". Some OneDrive copies are newer than this device's, so they were left alone":"")+"."); }
+      if(pr.added || pr.updated){ FHKit.toast((pr.added?pr.added+" survey"+(pr.added>1?"s":"")+" added from OneDrive":"")+(pr.added&&pr.updated?", ":"")+(pr.updated?pr.updated+" merged with changes from another device":"")+". Open them from Menu > Saved folder."); }
+      else if(manual){ const nl = Object.keys(getFolder()).length; FHKit.toast((up ? "Backed up "+up+" file"+(up>1?"s":"")+". " : "Nothing new to upload. ")+"OneDrive holds "+pr.found+" survey"+(pr.found===1?"":"s")+"; this device has "+nl+"."); }
     }catch(e){ if(e && e.signin){ st.login = true; st.err = ""; odLss("fh_od_state", st); odBanner(); if(manual) FHKit.toast("Sign in to OneDrive again to continue."); } else { st.err = String(e.message||e); odLss("fh_od_state", st); if(manual) FHKit.toast("OneDrive: "+st.err); } }
     odBusy = false; odStatus();
   }
@@ -11352,7 +11406,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     wrap.innerHTML = '<div class="name-ask-card" role="dialog" style="max-width:420px;max-height:88vh;overflow:auto">'
       + '<b>OneDrive backup</b>'
       + '<p style="font-size:13px;line-height:1.45">Each saved survey is copied to OneDrive (Apps folder, Flora Survey) as one folder named "Site - Date": the Excel file, GIS layers and photos, the same as Export. Surveys saved on any of your devices appear on the others: open Menu > Saved folder after a sync. Everyone on the same site and date shares that folder, so there are no copies per person. <b>The app can only add or update files there. It never deletes them</b>, so deleting a survey in the app leaves its OneDrive copy alone.</p>'
-      + '<p style="font-size:13px;line-height:1.45">Each phone or tablet is connected separately. A survey you delete on this device stays deleted here and is never put back. A newer copy from another device replaces the copy on this device only if you have not changed it since the last sync.</p>'
+      + '<p style="font-size:13px;line-height:1.45">Each phone or tablet is connected separately. When two devices both changed a survey, the changes are merged and nothing is dropped: different records and fields all survive, and text entered on both devices is kept together. A record you delete stays deleted unless another device changed it.</p>'
       + (c ? '<p id="odStatus" style="font-size:13px"></p>'
            : '<label style="display:block;font-size:12px;margin:6px 0 2px">Application (client) ID</label><input id="odCid" type="text" autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:8px" value="'+FHKit.esc(cid)+'" placeholder="paste from Microsoft Entra">'
              + '<p style="font-size:12px;line-height:1.4;opacity:.85">One-time setup in Microsoft Entra (App registrations): the redirect URI must be exactly <code style="word-break:break-all">'+FHKit.esc(odRedirect())+'</code>, type Single-page application, with Files.ReadWrite.AppFolder permission.</p>')

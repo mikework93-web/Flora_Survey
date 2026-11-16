@@ -1,3 +1,12 @@
+## OneDrive sync now merges, nothing is overwritten (2026-11-16, v.2026-11-16.2)
+- **Surveys from different devices are merged, not replaced.** The app compares this device, OneDrive and the last version they shared, so it knows what each side changed.
+- **Everything from every user is kept:** all records, site notes, polygons, GPS points and photos from both sides; different fields of the same record both survive; a text field changed on both devices (comments, field notes, roadside commentary) keeps both texts together.
+- **Same non-text field changed on both devices** (for example a species name): the newer value is kept and the other is written into the survey's site notes as "Merged from another device", so it is not lost.
+- **Deletions:** a record removed on one device is removed on the other only if that device had not changed it. A changed record is always kept.
+- **The survey you have open is never changed.** It merges at the next sync after you close it.
+- Exports (Excel, GIS, PDF) in OneDrive are built from the merged survey. OneDrive keeps earlier versions of each file in its own version history.
+- Team Sync is unchanged and is still the way to work on one survey at the same time.
+
 ## OneDrive sign-in expiry (2026-11-16, v.2026-11-16.1)
 - **Microsoft ends a browser app's OneDrive sign-in after exactly 24 hours** (error AADSTS700084). It cannot be extended from the app, so the backup stopped after a day with a raw error.
 - **Now handled:** when the sign-in runs out, an orange banner appears at the top: "OneDrive backup is paused. Tap here to sign in again." One tap goes to Microsoft and back, using the same account without the account picker. The OneDrive backup box shows the same "Sign in again" button. The app also asks before the 24 hours are up, and does not show the raw error.
