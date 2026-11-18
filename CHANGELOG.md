@@ -1,3 +1,11 @@
+## 2026-11-18.6 - VicKey review fixes
+- Figures like "less than 15 cm" or "at least 2 cm wide" are now read as ranges (0 to 15, 2 or more), not as exact values.
+- Auricle lobes of the leaf sheath are no longer counted as lemma lobes.
+- "Spikelets somewhat spreading" no longer makes a tussock grass count as spreading or rhizomatous.
+- Words like decumbent and margins no longer pull clauses into the flowering-time row; "Flowers Sep.-Dec." now fills that row.
+- Senecio: "non-rayed" and "discoid" are read as rayless.
+- Key lookup tolerates authors, "ssp." and brackets in KeyBase item names.
+
 ## VicKey comparison: fewer false "Not described" rows (2026-11-18, v.2026-11-18.5)
 - Each VicFlora clause is now filed under the part it is about, with separate rows for Inflorescence, Spikelets and glumes, Lemma, palea and lobes, and Awn. Before, a clause could land under "Hairs and surface" just because it mentioned hairs, so the same facts sat in different rows for different species.
 - Clauses that run on ("..., lateral lobes erect, ...") are split where a new part starts.

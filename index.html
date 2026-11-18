@@ -2425,13 +2425,14 @@ window.FHFuzzy = (function () {
     ["Flowers", /\b(flowers?|perianth|sepals?|petals?|tepals?|corollas?|calyx|calyces|stamens?|anthers?|styles?|stigmas?|ovary|ovaries|staminodes?|florets?|hypanthium|labellum|column|filaments?)\b/],
     ["Fruit and seeds", /\b(fruits?|utricles?|nuts?|achenes?|capsules?|seeds?|berry|berries|follicles?|drupes?|cones?|pods?|legumes?|cypsela\w*|schizocarps?|samaras?|perigynium|beak|valves?|mericarps?|seeds)\b/],
     ["Spores and sori", /\b(sori|sorus|spores?|indusium|sporangi\w*)\b/],
-    ["Flowering and fruiting time", /\b(flowering|fruiting|flowers?\s+(in|from|mainly|chiefly|spring|summer|autumn|winter)|(spring|summer|autumn|winter)\b|(jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|phenology)\b/],
+    ["Flowering and fruiting time", /\b(flowering|fruiting|flowers?\s+(in|from|mainly|chiefly|spring|summer|autumn|winter)|(spring|summer|autumn|winter)\b|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|phenology)\b/],
     ["Distribution and habitat", /\b(occurs?|occurring|widespread|common|commonly|uncommon|rare|scattered|throughout|restricted|confined|endemic|distribution|native|naturalised|introduced|found|grows|growing|habitat|soils?|swamps?|woodlands?|forests?|grasslands?|heath\w*|coastal|alpine|subalpine|montane|region|bioregion|state|victoria|gippsland|grampians|murray|altitudes?|lowland|highland|ranges?|plains|streams?|wetlands?|riparian|sandy|clay|granite|limestone|new zealand|tasmania|australia)\b/],
     ["Notes and similar species", /\b(confus\w*|similar|resembl\w*|distinguish\w*|differs?|separated|related|allied|hybrids?|variable|variation|taxonomy|compare|cf\.)\b/]
   ];
   var OVERRIDE = { "Flowering and fruiting time": 1, "Notes and similar species": 1, "Distribution and habitat": 1 };
   function categorise(clause) {
     var low = clause.toLowerCase().replace(/\*/g, ""), best = null, pos = 1e9, surf = null;
+    if (/^(?:flowers?|flowering|fruits?|fruiting)\b(?:\s+and\s+(?:fruits?|fruiting|flowers?))?\s+(?:mainly\s+|chiefly\s+|usually\s+|mostly\s+|throughout\b|all\b|in\b|from\b|(?:spring|summer|autumn|winter)\b|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b)/.test(low)) return "Flowering and fruiting time";
     for (var i = 0; i < CATS.length; i++) {
       var m = CATS[i][1].exec(low);
       if (!m) continue;
@@ -2516,7 +2517,13 @@ window.FHFuzzy = (function () {
   function itemMatches(item, taxon) {
     if (!item || !taxon) return false;
     if (taxon.id && item.url && String(item.url).toLowerCase().indexOf(String(taxon.id).toLowerCase()) >= 0) return true;
-    var a = String(item.item_name || "").toLowerCase().trim(), b = String(taxon.name || "").toLowerCase().trim();
+    function nn(x) {
+      var w = String(x || "").toLowerCase().replace(/\([^)]*\)/g, " ").replace(/<[^>]+>/g, "").replace(/\bssp\.?/g, "subsp.").replace(/\bvar\b(?!\.)/g, "var.").replace(/\s+/g, " ").trim().split(" "), o = [];
+      for (var i = 0; i < w.length && o.length < 2; i++) o.push(w[i]);
+      for (; i < w.length; i++) { if (/^(subsp\.|var\.|f\.)$/.test(w[i]) && w[i + 1]) { o.push(w[i], w[i + 1]); break; } }
+      return o.join(" ");
+    }
+    var a = nn(item.item_name), b = nn(taxon.name);
     return !!a && a === b;
   }
 
@@ -3109,7 +3116,7 @@ window.FHFuzzy = (function () {
     ["ligule", /\bligules?\b/gi], ["panicle", /\b(?:panicles?|inflorescences?)\b/gi],
     ["spikelet", /\bspikelets?\b/gi], ["glume", /\bglumes?\b/gi], ["lemma", /\blemmas?\b/gi],
     ["callus", /\bcallus\b/gi], ["awn", /\b(?:awns?|columns?)\b/gi], ["palea", /\bpaleas?\b/gi],
-    ["lobe", /\b(?:lateral )?lobes?\b/gi], ["anther", /\banthers?\b/gi]
+    ["lobe", /(?<!auricular\s)(?<!auricle\s)\b(?:lateral )?lobes?\b/gi], ["anther", /\banthers?\b/gi]
   ];
   var ORGANS = GR_ORGANS, NUMC, CATC;
   var SKIP_BEFORE = /\b(?:beyond|exceed(?:s|ed|ing)?|above|below|than|equal(?:s|ling)?|surpass(?:es|ing)?|from|between|enclos\w+|including|of)\s+(?:the\s+|their\s+|its\s+|a\s+)?(?:[\w-]+\s+){0,2}$/i;
@@ -3145,14 +3152,15 @@ window.FHFuzzy = (function () {
     });
     return { seg: seg, text: t, qual: quals };
   }
-  var MRE = /(up to |to |c\. |about |mostly |usually )?(\d+(?:\.\d+)?)(?:\s*(?:–|-|—|to)\s*(\d+(?:\.\d+)?))?\s*(mm|cm|m)\b(?:\s+(long|high|tall|wide|broad|thick|in diameter|diam))?/gi;
+  var MRE = /(up to |to |less than |under |fewer than |not more than |at most |at least |more than |over |exceeding |c\. |about |mostly |usually )?(\d+(?:\.\d+)?)(?:\s*(?:–|-|—|to)\s*(\d+(?:\.\d+)?))?\s*(mm|cm|m)\b(?:\s+(long|high|tall|wide|broad|thick|in diameter|diam))?/gi;
   function measures(str) {
     var out = [], m;
     MRE.lastIndex = 0;
     while ((m = MRE.exec(str))) {
       var f = { mm: 1, cm: 10, m: 1000 }[m[4].toLowerCase()];
       var a = +m[2] * f, b = m[3] !== undefined ? +m[3] * f : a;
-      if (/^(up to|to)/i.test(m[1] || "") && m[3] === undefined) { b = a; a = 0; }
+      if (/^(up to|to|less than|under|fewer than|not more than|at most)/i.test(m[1] || "") && m[3] === undefined) { b = a; a = 0; }
+      else if (/^(at least|more than|over|exceeding)/i.test(m[1] || "") && m[3] === undefined) { b = Infinity; }
       // "to 70 cm long and 7 mm broad": the "to" covers both measurements, so 7 mm is a maximum too.
       else if (!m[1] && m[3] === undefined && /\bto\s+\d+(?:\.\d+)?\s*(?:mm|cm|m)\b(?:\s+(?:long|high|tall|wide|broad|thick))?\s*(?:,|;|and|or)\s*(?:\w+\s+)?$/i.test(str.slice(Math.max(0, m.index - 45), m.index))) { b = a; a = 0; }
       if (a > b) { var x = a; a = b; b = x; }
@@ -3243,7 +3251,7 @@ window.FHFuzzy = (function () {
   // Feature characters: each state is a regex tested on that organ's piece of the description.
   var GR_CATC = [
     { id: "life", group: "Plant", label: "Life form", organ: "culm", states: [["Perennial", /perennial/i], ["Annual", /\bannual/i]], whole: true },
-    { id: "habit", group: "Plant", label: "Growth habit", whole: true, states: [["Tufted (tussock)", /tufted|tussock|caespitose|clump/i], ["Spreading or rhizomatous", /rhizomat|stolon|spreading|mat-forming|creeping|decumbent/i]] },
+    { id: "habit", group: "Plant", label: "Growth habit", whole: true, states: [["Tufted (tussock)", /tufted|tussock|caespitose|clump/i], ["Spreading or rhizomatous", /rhizomat|stolon|(?<!(?:spikelets?|panicles?|branches|branchlets|inflorescences?|leaves|awns?|lobes|florets?|lemmas?|glumes?)\s(?:\w+\s)?)spreading|mat-forming|creeping|decumbent/i]] },
     { id: "bform", group: "Leaves", label: "Leaf blade form", organ: "blade", states: [["Flat", /\bflat(?:ter|tened)?\b/i], ["Folded or channelled", /channel|folded|conduplicate|grooved/i], ["Inrolled or thread-like", /inrolled|rolled|involute|convolute|terete|filiform|setaceous|thread|needle/i]] },
     { id: "bsurf", group: "Leaves", label: "Leaf blade surface", organ: "blade", states: [["Glabrous or smooth", /glabrous|smooth|hairless/i], ["Hairy", /\bhair|pilose|villous|pubescent|ciliate|tomentose|puberulous/i], ["Scabrous (rough)", /scabrous|scabrid|rough/i]] },
     { id: "ligule", group: "Leaves", label: "Ligule", organ: "ligule", states: [["Membranous", /membran/i], ["A fringe of hairs", /ciliate|fringe|hair/i]] },
@@ -3275,7 +3283,7 @@ window.FHFuzzy = (function () {
       var ns = (m[1].match(/\d+/g) || []).map(Number);
       if (ns.length) return { lo: Math.min.apply(null, ns), hi: Math.max.apply(null, ns) };
     }
-    if (zeroWords && new RegExp("(?:" + labelSrc + ")[\\s:,]+(?:are |is )?(?:absent|lacking|none|nil)|\\b(?:without|lacking|no)\\s+(?:" + labelSrc + ")|\\brayless\\b", "i").test(text) && /ray/.test(labelSrc)) return { lo: 0, hi: 0 };
+    if (zeroWords && new RegExp("(?:" + labelSrc + ")[\\s:,]+(?:are |is )?(?:absent|lacking|none|nil)|\\b(?:without|lacking|no)\\s+(?:" + labelSrc + ")|\\brayless\\b|\\bnon-?rayed\\b|\\bdiscoid\\b|\\bnot rayed\\b", "i").test(text) && /ray/.test(labelSrc)) return { lo: 0, hi: 0 };
     return null;
   }
   var SE_ORGANS = [
@@ -3498,7 +3506,7 @@ window.FHFuzzy = (function () {
     return { ok: ok, unknown: unknown, weak: weak, why: why };
   }
   function fmtNum(mm, c) { var x = mm / c.f; return (Math.round(x * 10) / 10) + (c.unit ? " " + c.unit : ""); }
-  function fmtRange(r, c) { return r.lo === r.hi ? fmtNum(r.lo, c) : (r.lo === 0 ? "up to " + fmtNum(r.hi, c) : fmtNum(r.lo, c).replace(" " + c.unit, "") + "–" + fmtNum(r.hi, c)); }
+  function fmtRange(r, c) { if (r.hi === Infinity) return "at least " + fmtNum(r.lo, c); return r.lo === r.hi ? fmtNum(r.lo, c) : (r.lo === 0 ? "up to " + fmtNum(r.hi, c) : fmtNum(r.lo, c).replace(" " + c.unit, "") + "–" + fmtNum(r.hi, c)); }
   function evidence(t) {
     var parts = [];
     NUMC.forEach(function (c) { if (t.num[c.id] || (t.numx && t.numx[c.id])) parts.push("<li><b>" + esc(c.label) + ":</b> " + (t.num[c.id] ? esc(fmtRange(t.num[c.id], c)) : "") + (t.numx && t.numx[c.id] ? ' <span class="vk-x">(whole spread ' + esc(fmtRange(t.numx[c.id], c)) + ")</span>" : "") + (t.src && t.src[c.id] ? ' <small class="vk-src">&ldquo;' + esc(t.src[c.id]) + "&rdquo;</small>" : "") + "</li>"); });
@@ -5309,7 +5317,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-18.5";
+  const BUILD_VERSION = "2026-11-18.6";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
