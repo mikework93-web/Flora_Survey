@@ -2418,7 +2418,10 @@ window.FHFuzzy = (function () {
     ["Leaves", /\b(leaf|leaves|blades?|lamina|laminae|phyllodes?|fronds?|pinnae|pinnules?|petioles?|stipules?|needles?|leaflets?|cotyledons?)\b/],
     ["Ligules and sheaths", /\b(ligules?|sheaths?|auricles?|collar)\b/],
     ["Hairs and surface", /\b(hairs?|hairy|indumentum|pubescen\w*|glabrous|glabrescent|tomentum|tomentose|scabrous|scabrid|papillose|glaucous|waxy|bloom|hispid|villous|strigose|puberulent)\b/],
-    ["Inflorescence and spikelets", /\b(inflorescences?|panicles?|racemes?|spikes?|spikelets?|umbels?|cymes?|heads?|capitul\w*|peduncles?|involucres?|bracts?|bracteoles?|glumes?|lemmas?|paleas?|rachis|pedicels?|spathe|spadix)\b/],
+    ["Inflorescence", /\b(inflorescences?|panicles?|racemes?|spikes?|umbels?|cymes?|heads?|capitul\w*|peduncles?|involucres?|bracts?|bracteoles?|rachis|pedicels?|spathe|spadix)\b/],
+    ["Spikelets and glumes", /\b(spikelets?|glumes?)\b/],
+    ["Lemma, palea and lobes", /\b(lemmas?|paleas?|callus|lobes?|sinus)\b/],
+    ["Awn", /\b(awns?|setae|bristles?)\b/],
     ["Flowers", /\b(flowers?|perianth|sepals?|petals?|tepals?|corollas?|calyx|calyces|stamens?|anthers?|styles?|stigmas?|ovary|ovaries|staminodes?|florets?|hypanthium|labellum|column|filaments?)\b/],
     ["Fruit and seeds", /\b(fruits?|utricles?|nuts?|achenes?|capsules?|seeds?|berry|berries|follicles?|drupes?|cones?|pods?|legumes?|cypsela\w*|schizocarps?|samaras?|perigynium|beak|valves?|mericarps?|seeds)\b/],
     ["Spores and sori", /\b(sori|sorus|spores?|indusium|sporangi\w*)\b/],
@@ -2428,17 +2431,32 @@ window.FHFuzzy = (function () {
   ];
   var OVERRIDE = { "Flowering and fruiting time": 1, "Notes and similar species": 1, "Distribution and habitat": 1 };
   function categorise(clause) {
-    var low = clause.toLowerCase().replace(/\*/g, ""), best = null, pos = 1e9;
+    var low = clause.toLowerCase().replace(/\*/g, ""), best = null, pos = 1e9, surf = null;
     for (var i = 0; i < CATS.length; i++) {
       var m = CATS[i][1].exec(low);
-      if (m && m.index < pos) { pos = m.index; best = CATS[i][0]; }
+      if (!m) continue;
+      if (CATS[i][0] === "Hairs and surface") { surf = CATS[i][0]; continue; }   // a surface word describes a part; the part decides the row
+      if (m.index < pos) { pos = m.index; best = CATS[i][0]; }
     }
-    return best;
+    return best || surf;
   }
 
   // VicFlora descriptions are prose. Split into clauses (sentences, then
   // semicolons) and file each under a botanical category. A clause with no
   // recognisable keyword (e.g. "solid.") continues the clause before it.
+  var ORG_START = /^(?:the\s+)?(?:(?:central|lateral|upper|lower|first|second|outer|inner)\s+)?(?:lemmas?|paleas?|callus|lobes?|awns?|glumes?|spikelets?|panicles?|inflorescences?|leaves|leaf|blades?|ligules?|sheaths?|culms?|anthers?)\b/i;
+  function splitClauses(sent) {
+    var out = [];
+    sent.replace(/;\s+/g, ";\u0002").split("\u0002").forEach(function (cl) {
+      var parts = cl.split(/,\s+(?=\S)/), cur = [parts[0]];
+      for (var i = 1; i < parts.length; i++) {
+        if (ORG_START.test(parts[i]) && categorise(parts[i]) !== categorise(cur.join(", "))) { out.push(cur.join(", ")); cur = [parts[i]]; }
+        else cur.push(parts[i]);
+      }
+      out.push(cur.join(", "));
+    });
+    return out;
+  }
   function parseProfile(text) {
     var t = cleanText(text);
     var out = { order: [], map: {} };
@@ -2446,7 +2464,7 @@ window.FHFuzzy = (function () {
     var sentences = t.replace(/\.\s+(?=[A-Z][a-z])/g, ".\u0001").split("\u0001");
     var prev = "Other";
     sentences.forEach(function (sent) {
-      sent.replace(/;\s+/g, ";\u0002").split("\u0002").forEach(function (clause, ci) {
+      splitClauses(sent).forEach(function (clause, ci) {
         clause = clause.trim();
         if (!clause) return;
         var cat = categorise(clause);
@@ -5291,7 +5309,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-18.4";
+  const BUILD_VERSION = "2026-11-18.5";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive

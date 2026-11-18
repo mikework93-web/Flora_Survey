@@ -1,3 +1,7 @@
+## VicKey comparison: fewer false "Not described" rows (2026-11-18, v.2026-11-18.5)
+- Each VicFlora clause is now filed under the part it is about, with separate rows for Inflorescence, Spikelets and glumes, Lemma, palea and lobes, and Awn. Before, a clause could land under "Hairs and surface" just because it mentioned hairs, so the same facts sat in different rows for different species.
+- Clauses that run on ("..., lateral lobes erect, ...") are split where a new part starts.
+
 ## VicKey: compare 3 or more, ruled-out list, fuller ranges (2026-11-18, v.2026-11-18.4)
 - Species comparison: "+ Add another species or subspecies" puts three or more side by side. The key section has a pair picker.
 - Multi-access keys: a "Ruled out" list under the possible taxa gives, for each discarded taxon, the feature you entered and what VicFlora describes.
