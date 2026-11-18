@@ -1,3 +1,8 @@
+## OneDrive errors now say which step failed (2026-11-18, v.2026-11-18.1)
+- A failed OneDrive request is retried once after 1.5 seconds.
+- If it still fails, the message names the step (listing folders, checking a survey, downloading, building export files, uploading a file, survey or photo).
+- Safari's "Load failed" was a generic network message; the cause is not yet confirmed.
+
 ## OneDrive sync now merges, nothing is overwritten (2026-11-16, v.2026-11-16.2)
 - **Surveys from different devices are merged, not replaced.** The app compares this device, OneDrive and the last version they shared, so it knows what each side changed.
 - **Everything from every user is kept:** all records, site notes, polygons, GPS points and photos from both sides; different fields of the same record both survive; a text field changed on both devices (comments, field notes, roadside commentary) keeps both texts together.
