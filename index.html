@@ -2431,7 +2431,7 @@ window.FHFuzzy = (function () {
   ];
   var OVERRIDE = { "Flowering and fruiting time": 1, "Notes and similar species": 1, "Distribution and habitat": 1 };
   function categorise(clause) {
-    var low = clause.toLowerCase().replace(/\*/g, ""), best = null, pos = 1e9, surf = null;
+    var low = clause.toLowerCase().replace(/\*/g, "").replace(/\bleaf[- ](?=sheaths?\b)/g, ""), best = null, pos = 1e9, surf = null;
     if (/^(?:flowers?|flowering|fruits?|fruiting)\b(?:\s+and\s+(?:fruits?|fruiting|flowers?))?\s+(?:mainly\s+|chiefly\s+|usually\s+|mostly\s+|throughout\b|all\b|in\b|from\b|(?:spring|summer|autumn|winter)\b|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b)/.test(low)) return "Flowering and fruiting time";
     for (var i = 0; i < CATS.length; i++) {
       var m = CATS[i][1].exec(low);
@@ -3150,31 +3150,79 @@ window.FHFuzzy = (function () {
       var end = Math.min(k + 1 < marks.length ? marks[k + 1].i : t.length, mk.i + 240);
       (seg[mk.o] = seg[mk.o] || []).push(t.slice(mk.i, end));
     });
-    return { seg: seg, text: t, qual: quals };
+    var alt = /\b(?:rarely|sometimes|occasionally)\b/i.test(t0) ? t0.replace(/\s*\(\s*(?:rarely|sometimes|occasionally)\s+(?:to\s+)?([^)]*)\)/gi, " or $1").replace(/,\s*(?:rarely|sometimes|occasionally)\s+(?:to\s+)?/gi, " or ") : null;
+    return { seg: seg, text: t, qual: quals, alt: alt };
   }
-  var MRE = /(up to |to |less than |under |fewer than |not more than |at most |at least |more than |over |exceeding |c\. |about |mostly |usually )?(\d+(?:\.\d+)?)(?:\s*(?:–|-|—|to)\s*(\d+(?:\.\d+)?))?\s*(mm|cm|m)\b(?:\s+(long|high|tall|wide|broad|thick|in diameter|diam))?/gi;
-  function measures(str) {
-    var out = [], m;
-    MRE.lastIndex = 0;
-    while ((m = MRE.exec(str))) {
-      var f = { mm: 1, cm: 10, m: 1000 }[m[4].toLowerCase()];
-      var a = +m[2] * f, b = m[3] !== undefined ? +m[3] * f : a;
-      if (/^(up to|to|less than|under|fewer than|not more than|at most)/i.test(m[1] || "") && m[3] === undefined) { b = a; a = 0; }
-      else if (/^(at least|more than|over|exceeding)/i.test(m[1] || "") && m[3] === undefined) { b = Infinity; }
-      // "to 70 cm long and 7 mm broad": the "to" covers both measurements, so 7 mm is a maximum too.
-      else if (!m[1] && m[3] === undefined && /\bto\s+\d+(?:\.\d+)?\s*(?:mm|cm|m)\b(?:\s+(?:long|high|tall|wide|broad|thick))?\s*(?:,|;|and|or)\s*(?:\w+\s+)?$/i.test(str.slice(Math.max(0, m.index - 45), m.index))) { b = a; a = 0; }
-      if (a > b) { var x = a; a = b; b = x; }
-      if (/\bby\s+$/i.test(str.slice(Math.max(0, m.index - 6), m.index))) continue;   // "extending ... by up to 5 mm" is not a length
-      out.push({ lo: a, hi: b, at: m.index, dim: /wide|broad|thick|diam/i.test(m[5] || "") ? "W" : "L" });
+  // Measurements as Flora of Victoria writes them: "3–5 mm", "(2–)3–5(–7) mm" (usual range with
+  // occasional extremes in brackets), "3–5 × 1–2 mm" (length × width), "to c. 2 mm", "10 mm or more",
+  // "less than 1 mm", "at least 2 cm wide", "1.5–2.5 cm", "3·5 mm".
+  var MPRE = "(?:(up to|to|less than|under|fewer than|not more than|at most|at least|more than|over|exceeding|mostly|usually|commonly|generally|typically)\\s+)?(?:(?:c\\.|ca\\.|about|approx\\.|approximately)\\s*)?";
+  var MNUM = "(\\d+(?:\\.\\d+)?)", MDASH = "\\s*(?:–|-|—|to)\\s*";
+  var MRNG = "(?:\\(\\s*" + MNUM + "\\s*(?:–|-|—)\\s*\\)\\s*)?" + MNUM + "(?:" + MDASH + MNUM + ")?(?:\\s*\\(\\s*(?:–|-|—)\\s*" + MNUM + "\\s*\\))?";
+  var MUNIT = "\\s*(mm|cm|m|µm|μm)\\b";
+  var MDIMW = "(?:\\s+(long|high|tall|wide|broad|thick|across|deep|in diameter|in diam\\.?|diam\\.?))?";
+  var MX = new RegExp(MPRE + MRNG + "(?:" + MUNIT + ")?\\s*[×x]\\s*" + MPRE + MRNG + MUNIT + "(\\s+or (?:more|longer|less))?" + MDIMW, "gi");
+  var MS = new RegExp(MPRE + MRNG + MUNIT + "(\\s+or (?:more|longer|wider|less))?" + MDIMW, "gi");
+  var MRE = MS;
+  function mOne(pre, exlo, lo, hi, exhi, unit, orx) {
+    var f = { mm: 1, cm: 10, m: 1000, "µm": 0.001, "μm": 0.001 }[String(unit || "mm").toLowerCase()] || 1;
+    var a = +lo * f, b = hi !== undefined ? +hi * f : a, r = { lo: a, hi: b };
+    pre = String(pre || "").toLowerCase();
+    if (hi === undefined) {
+      if (/^(up to|to|less than|under|fewer than|not more than|at most)$/.test(pre) || /less/.test(orx || "")) { r.lo = 0; r.hi = a; }
+      else if (/^(at least|more than|over|exceeding)$/.test(pre) || /more|longer|wider/.test(orx || "")) r.hi = Infinity;
     }
+    if (r.lo > r.hi) { var x = r.lo; r.lo = r.hi; r.hi = x; }
+    if (exlo !== undefined && +exlo * f < r.lo) r.xlo = +exlo * f;
+    if (exhi !== undefined && +exhi * f > r.hi) r.xhi = +exhi * f;
+    return r;
+  }
+  function isW(w) { return /wide|broad|thick|diam|across/i.test(w || ""); }
+  function measures(str) {
+    str = String(str || "").replace(/(\d)\s*·\s*(\d)/g, "$1.$2");
+    var out = [], m, used = str;
+    MX.lastIndex = 0;
+    while ((m = MX.exec(str))) {
+      var u2 = m[12], u1 = m[6] || u2;
+      var L = mOne(m[1], m[2], m[3], m[4], m[5], u1), W = mOne(m[7], m[8], m[9], m[10], m[11], u2, m[13]);
+      L.at = m.index; L.dim = "L"; W.at = m.index; W.dim = "W";
+      out.push(L, W);
+      used = used.slice(0, m.index) + new Array(m[0].length + 1).join(" ") + used.slice(m.index + m[0].length);
+    }
+    MS.lastIndex = 0;
+    while ((m = MS.exec(used))) {
+      if (/\bby\s+$/i.test(used.slice(Math.max(0, m.index - 6), m.index))) continue;   // "exceeding ... by up to 5 mm" is not a length
+      var r = mOne(m[1], m[2], m[3], m[4], m[5], m[6], m[7]);
+      // "to 70 cm long and 7 mm broad": the "to" covers both measurements, so 7 mm is a maximum too.
+      if (!m[1] && m[4] === undefined && !m[7] && !/^(?:c\.|ca\.|about|approx)/i.test(m[0]) && /\bto\s+(?:c\.\s*)?\d+(?:\.\d+)?\s*(?:mm|cm|m)\b(?:\s+(?:long|high|tall|wide|broad|thick))?\s*(?:,|;|and|or)\s*(?:\w+\s+)?$/i.test(used.slice(Math.max(0, m.index - 45), m.index))) { r.hi = r.lo; r.lo = 0; }
+      r.at = m.index; r.dim = isW(m[8]) ? "W" : "L";
+      out.push(r);
+    }
+    out.sort(function (a, b) { return a.at - b.at; });
     return out;
   }
+  // Counts with bracketed extremes, "(3–)5–8" -> 3, 5, 8 (all kept; counts are compared on the whole spread).
+  function flatX(t) { return String(t || "").replace(/\(\s*(\d+)\s*[–\-—]\s*\)\s*/g, "$1–").replace(/\s*\(\s*[–\-—]\s*(\d+)\s*\)/g, "–$1"); }
+  // Usual range only, for the "by 2–4 mm" style figures: "(1–)2–4(–5)" -> "2–4".
+  function typX(t) { return String(t || "").replace(/(\d)\s*·\s*(\d)/g, "$1.$2").replace(/\(\s*\d+(?:\.\d+)?\s*[–\-—]\s*\)\s*/g, "").replace(/\s*\(\s*[–\-—]\s*\d+(?:\.\d+)?\s*\)/g, ""); }
   function numFor(seg, organ, dim) {
     var arr = [];
     (Array.isArray(organ) ? organ : [organ]).forEach(function (o) { arr = arr.concat(seg[o] || []); });
     for (var i = 0; i < arr.length; i++) {
       var ms = measures(arr[i]);
-      for (var j = 0; j < ms.length; j++) if (ms[j].dim === dim) return { lo: ms[j].lo, hi: ms[j].hi, src: arr[i].slice(Math.max(0, ms[j].at - 24), ms[j].at + 44).replace(/\s+/g, " ") };
+      for (var j = 0; j < ms.length; j++) if (ms[j].dim === dim) {
+        var r = { lo: ms[j].lo, hi: ms[j].hi, src: arr[i].slice(Math.max(0, ms[j].at - 24), ms[j].at + 44).replace(/\s+/g, " ") };
+        // "lower glume 8–10 mm, upper 7–9 mm": a second figure for the other member of a pair widens the range.
+        for (var k = j + 1; k < ms.length; k++) {
+          if (ms[k].dim !== dim) continue;
+          var before = arr[i].slice(Math.max(0, ms[k].at - 30), ms[k].at);
+          if (/\b(?:upper|lower|first|second|outer|inner|other|central|lateral|terminal|basal|fertile|sterile)\b[^,;]*$/i.test(before) && !/\b(?:sheath|ligule|leaf|blade|callus|column|bristle|lobe|palea|anther|hairs?|body)\b[^,;]*$/i.test(before)) {
+            r.lo = Math.min(r.lo, ms[k].lo); r.hi = Math.max(r.hi, ms[k].hi);
+            r.src = arr[i].slice(Math.max(0, ms[j].at - 24), ms[k].at + 30).replace(/\s+/g, " ");
+          }
+        }
+        return r;
+      }
     }
     return null;
   }
@@ -3186,13 +3234,14 @@ window.FHFuzzy = (function () {
       (sg.seg[o] || []).forEach(function (sx) {
         measures(sx).forEach(function (m) {
           if (m.dim !== dim) return;
+          if ((m.xlo !== undefined || m.xhi !== undefined) && (!typ || (m.lo === typ.lo && m.hi === typ.hi))) add(m.xlo !== undefined ? m.xlo : m.lo, m.xhi !== undefined ? m.xhi : m.hi);
           var base = sg.text.indexOf(sx), ctx = base >= 0 ? sg.text.slice(Math.max(0, base + m.at - 60), base + m.at) : sx.slice(Math.max(0, m.at - 60), m.at);
           if (/\([^)]*$/.test(ctx) || /\b(?:often|forms?|alpine|var\.|subsp\.|ssp\.|exceptionally|depauperate|stunted)\b/i.test(ctx)) add(m.lo, m.hi);
         });
       });
       (sg.qual || []).forEach(function (q) {
         if (q.o !== o) return;
-        measures(q.text).forEach(function (m) { if (m.dim === dim) add(m.lo, m.hi); });
+        measures(q.text).forEach(function (m) { if (m.dim === dim) add(m.xlo !== undefined ? m.xlo : m.lo, m.xhi !== undefined ? m.xhi : m.hi); });
       });
     });
     if (lo === null) return null;
@@ -3226,7 +3275,7 @@ window.FHFuzzy = (function () {
     return set;
   }
   // Numeric characters (values held in mm; "f" converts the unit shown to the user).
-  function rngMm(t, re) { var m = t.match(re); return m ? { lo: +m[1], hi: +(m[2] || m[1]) } : null; }
+  function rngMm(t, re) { var m = typX(t).match(re); return m ? { lo: +m[1], hi: +(m[2] || m[1]) } : null; }
   var GR_NUMC = [
     { id: "height", group: "Plant", label: "Plant (culm) height", unit: "cm", f: 10, organ: "culm", dim: "L" },
     { id: "blen", group: "Leaves", label: "Leaf blade length", unit: "cm", f: 10, organ: "blade", dim: "L" },
@@ -3256,7 +3305,7 @@ window.FHFuzzy = (function () {
     { id: "bsurf", group: "Leaves", label: "Leaf blade surface", organ: "blade", states: [["Glabrous or smooth", /glabrous|smooth|hairless/i], ["Hairy", /\bhair|pilose|villous|pubescent|ciliate|tomentose|puberulous/i], ["Scabrous (rough)", /scabrous|scabrid|rough/i]] },
     { id: "ligule", group: "Leaves", label: "Ligule", organ: "ligule", states: [["Membranous", /membran/i], ["A fringe of hairs", /ciliate|fringe|hair/i]] },
     { id: "pshape", group: "Inflorescence", label: "Panicle shape", organ: "panicle", states: [["Contracted, narrow or spike-like", /contracted|narrow|linear|spike|dense|compact|lanceolate|cylindric/i], ["Open or spreading", /\bopen\b|spreading|diffuse|\blax\b|loose|ovate|pyramidal|broad/i]] },
-    { id: "gcolour", group: "Glumes", label: "Glume colour", organ: "glume", states: [["Purplish", /purpl|violet|dark/i], ["Straw, pale or golden", /straw|pale|yellow|cream|golden|whitish/i], ["Green", /green/i]] },
+    { id: "gcolour", group: "Glumes", label: "Glume colour", organ: "glume", states: [["Purplish", /purpl|violet|dark/i], ["Straw, pale or golden", /straw|pale(?![\s-]*(?:margins?|edges?|tips?|apex))|yellow|cream|golden|whitish(?![\s-]*(?:margins?|edges?))/i], ["Green", /green/i]] },
     { id: "gapex", group: "Glumes", label: "Glume apex", organ: "glume", states: [["Acute to acuminate", /acute|acuminate|attenuate|pointed/i], ["Obtuse", /obtuse|rounded|blunt/i]] },
     { id: "lsurf", group: "Lemma and floret", label: "Lemma surface", organ: "lemma", states: [["Hairy", /\bhair|pilose|villous|pubescent|silky|puberulous/i], ["Glabrous or smooth", /glabrous|hairless|smooth|shiny/i], ["Scabrous (rough)", /scabrous|scabrid|rough|papillose/i]] },
     { id: "lobes", group: "Lemma and floret", label: "Lemma lobes (as in Rytidosperma)", organ: "lobe", states: [["Lobes present", /./]] },
@@ -3266,7 +3315,7 @@ window.FHFuzzy = (function () {
     { id: "coma", group: "Lemma and floret", label: "Coma (ring of hairs) at the awn base", organ: "lemma", extra: "awn", states: [["Coma present", /\bcoma\b/i]] },
     { id: "awnshape", group: "Awn", label: "Awn shape", organ: "awn", states: [["Twice bent", /bigeniculate|twice|two bends|doubly|bent twice/i], ["Bent once", /once[- ](?:bent|geniculate)|bent once|\bgeniculate\b|\bbent\b/i, /bigeniculate|twice|two bends|doubly/i], ["Straight or curved", /straight|not bent|unbent|curved|flexuose|incurved/i]] },
     { id: "awntwist", group: "Awn", label: "Awn base (column)", organ: "awn", states: [["Twisted", /twist|spiral/i]] },
-    { id: "awnsurf", group: "Awn", label: "Awn surface", organ: "awn", states: [["Hairy or plumose", /plumose|hairy|ciliate|feathery|pilose|villous/i], ["Scabrous, scabrid or smooth", /scabrous|scabrid|rough|glabrous|smooth/i]] },
+    { id: "awnsurf", group: "Awn", label: "Awn surface", organ: "awn", states: [["Hairy or plumose", /plumose|hairy|ciliate|feathery|pilose|villous|pubescent|puberulous|hirsute|\bhairs\b/i], ["Scabrous, scabrid or smooth", /scabrous|scabrid|rough|glabrous|smooth/i]] },
     { id: "origin", group: "Other", label: "Origin in Victoria", origin: true, states: [["Native", /./], ["Introduced", /./]] },
     { id: "months", group: "Other", label: "Months seen in flower", months: true, states: MONTHS.map(function (m) { return [m, /./]; }) }
   ];
@@ -3277,8 +3326,11 @@ window.FHFuzzy = (function () {
   var NOTUNIT = "(?!\\d|\\.\\d|[\\u2013\\-]|\\s*(?:mm|cm)\\b)";
   // A count that follows a label, e.g. "ray florets 0 or 5-8" -> {lo:0, hi:8}; "absent" -> 0.
   function countAfter(text, labelSrc, zeroWords) {
+    text = flatX(text);
     var re = new RegExp("(?:" + labelSrc + ")[\\s:,]*(?:c\\.\\s*|about |usually |mostly )?((?:\\d+(?:\\s*(?:or|to|\\u2013|-|\\u2014|,)\\s*)?)+)" + NOTUNIT, "i");
     var m = text.match(re);
+    // "with 10–13 involucral bracts": the number before the label.
+    if (!m) m = text.match(new RegExp("(?:^|[^\\d.\\u2013\\-])((?:\\d+\\s*(?:or|to|\\u2013|-|\\u2014|,)\\s*)*\\d+)(?![\\d.]|\\s*(?:mm|cm|m|\\u00b5m)\\b|\\s*[\\u2013\\-])\\s+(?:[a-z][a-z-]*\\s+){0,2}(?:" + labelSrc + ")\\b", "i"));
     if (m) {
       var ns = (m[1].match(/\d+/g) || []).map(Number);
       if (ns.length) return { lo: Math.min.apply(null, ns), hi: Math.max.apply(null, ns) };
@@ -3347,6 +3399,65 @@ window.FHFuzzy = (function () {
   ];
   var SE_GROUPS = ["Plant", "Leaves", "Flower heads", "Involucre and bracts", "Florets", "Fruit", "Other"];
 
+  /* Review additions: characters the VicFlora keys to Austrostipa, Rytidosperma and Senecio use that
+     were missing, and bracketed extremes in counts. */
+  (function () {
+    function after(arr, id, item) { var i = -1; arr.forEach(function (c, k) { if (c.id === id) i = k; }); arr.splice(i < 0 ? arr.length : i + 1, 0, item); }
+    function byId(arr, id) { for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return arr[i]; return null; }
+    GR_ORGANS.push(["sheath", /\bsheaths?\b/gi], ["coma", /\bcoma\b/gi]);
+    var nfl = byId(GR_NUMC, "nfl");
+    if (nfl) nfl.custom = function (t) {
+      var m = flatX(t).match(/((?:\d+\s*[–\-—]\s*)*\d+)[- ]?(?:flowered|florets?)\b/i);
+      if (!m) return null;
+      var ns = m[1].match(/\d+/g).map(Number);
+      return { lo: Math.min.apply(null, ns), hi: Math.max.apply(null, ns) };
+    };
+    var col = byId(GR_NUMC, "colen");
+    if (col) col.custom = function (t) {
+      var re = /\b(?:straight (?:part|portion)|column)\b(?![\s\w]{0,12}\bbeyond\b)[^;.]{0,40}/gi, m;
+      while ((m = re.exec(typX(t).replace(/(\d)\.(\d)/g, "$1\u2024$2")))) {
+        var ms = measures(m[0].replace(/\u2024/g, ".")).filter(function (x) { return x.dim === "L"; });
+        if (ms.length) return { lo: ms[0].lo, hi: ms[0].hi };
+      }
+      return null;
+    };
+    after(GR_NUMC, "clen", { id: "comalen", group: "Lemma and floret", label: "Coma (hairs at the lemma tip) length", unit: "mm", f: 1, organ: "coma", dim: "L" });
+    after(GR_CATC, "bsurf", { id: "shsurf", group: "Leaves", label: "Leaf sheath surface", organ: "sheath", states: [["Glabrous or smooth", /glabrous|smooth|hairless/i], ["Hairy", /\bhair|pilose|villous|pubescent|tomentose|puberulous|bearded/i], ["Scabrous (rough)", /scabrous|scabrid|rough/i]] });
+    after(GR_CATC, "shsurf", { id: "orifice", group: "Leaves", label: "Hairs at the sheath orifice (mouth) or collar", whole: true, states: [["Hairy, ciliate or tufted", /\b(?:orifice|mouth|throat|collar)\b[^;.]{0,60}\b(?:hairs?|hairy|tufts?|tufted|ciliate|bearded|pilose)\b|\b(?:hairs?|tufts?|cilia)\b[^;.]{0,30}\b(?:at|on|around) the (?:orifice|mouth|throat|collar)\b/i]] });
+    after(GR_CATC, "gapex", { id: "gequal", group: "Glumes", label: "Glume lengths", organ: "glume", states: [["Equal or subequal", /\b(?:sub)?equal\b|nearly equal|about equal|similar in length/i, /\bunequal\b/i], ["Unequal (one clearly shorter)", /\bunequal\b|\b(?:lower|upper|first|second)(?: glume)? (?:distinctly |much |clearly )?(?:shorter|longer)\b/i]] });
+    after(GR_CATC, "lsurf", { id: "lhair", group: "Lemma and floret", label: "Lemma hair rows (Rytidosperma)", organ: "lemma", extra: "lobe", states: [
+      ["Hairs in two rows (series) across the lemma", /\b(?:two|2)\s+(?:transverse\s+)?(?:rows|series)\b|\bupper and lower (?:rows|series)\b|\b(?:upper|lower) (?:row|series)\b/i],
+      ["Upper row continuous (complete)", /\bupper (?:row|series)\b[^;.]{0,40}\b(?:complete|continuous|uninterrupted)\b|\b(?:complete|continuous) upper (?:row|series)\b/i, /\bupper (?:row|series)\b[^;.]{0,40}\b(?:incomplete|interrupted|discontinuous)\b/i],
+      ["Upper row of separate tufts", /\bupper (?:row|series)?\b[^;.]{0,60}\b(?:tufts|interrupted|discontinuous|incomplete)\b|\b(?:dorsal|marginal|separate|discrete) tufts\b/i],
+      ["Upper hairs reaching or passing the lobe bases (sinus)", /\b(?:tufts?|hairs?)\b[^;.]{0,50}\b(?:reach\w*|exceed\w*|overtop\w*|surpass\w*|extending (?:to|beyond))\b[^;.]{0,25}\b(?:sinus|lobes?|base of the lobes)\b/i, /\bnot (?:reaching|exceeding)\b[^;.]{0,25}\b(?:sinus|lobes?)\b/i]
+    ] });
+    after(GR_CATC, "lsurf", { id: "lcolour", group: "Lemma and floret", label: "Lemma colour at maturity", organ: "lemma", states: [
+      ["Dark (dark brown, purplish or black)", /\b(?:dark(?:[- ]brown)?|black(?:ish)?|purpl\w*|chestnut|deep brown|red(?:dish)?[- ]brown|maroon)\b(?![\s\w,-]{0,12}\bhairs?\b)/i],
+      ["Mid brown", /(?<!(?:dark|pale|light|red|reddish|deep)[- ])\bbrown(?:ish)?\b(?![\s\w,-]{0,12}\bhairs?\b)/i],
+      ["Pale (straw, golden, cream or light brown)", /\b(?:pale|straw|golden|yellow\w*|cream\w*|whitish|light|tan|fawn)\b(?![\s\w,-]{0,12}\bhairs?\b)/i],
+      ["Green", /\bgreen/i]] });
+    var coma = byId(GR_CATC, "coma");
+    if (coma) {
+      delete coma.organ; delete coma.extra;
+      coma.custom = function (t) {
+        if (!/\bcoma\b/i.test(t)) return [];
+        if (/\b(?:without|no|lacking)\s+(?:a\s+)?(?:distinct\s+|obvious\s+|conspicuous\s+)?coma\b|\bcoma\s+(?:absent|lacking|obscure|0\b)/i.test(t)) return ["Coma absent or obscure"];
+        return ["Coma present"];
+      };
+      coma.states = [["Coma present", /./], ["Coma absent or obscure", /./]];
+    }
+    after(SE_NUMC, "cal", { id: "ncal", group: "Involucre and bracts", label: "Number of calyculus bracts", unit: "", f: 1, custom: function (t) { return countAfter(t, "calycul(?:us|ar|ate)? bracts?|calyculus of|calyculus", false); } });
+    var nd = byId(SE_NUMC, "ndisc");
+    if (nd) {
+      var nd0 = nd.custom;
+      // In a rayless (discoid) head every floret is a disc floret: "heads non-rayed; florets 20–40".
+      nd.custom = function (t) {
+        var r = nd0(t); if (r) return r;
+        var ry = countAfter(t, "ray florets?|rays?|ligulate florets?", true);
+        return ry && ry.hi === 0 ? countAfter(t, "florets?", false) : null;
+      };
+    }
+  })();
   var MCH = {}, MPROF = "grass";
   var PROFILES = {
     grass: { organs: GR_ORGANS, numc: GR_NUMC, catc: GR_CATC, groups: GR_GROUPS, open: "Plant",
@@ -3354,12 +3465,21 @@ window.FHFuzzy = (function () {
     senecio: { organs: SE_ORGANS, numc: SE_NUMC, catc: SE_CATC, groups: SE_GROUPS, open: "Flower heads",
       intro: "A multi-access key for Senecio (fireweeds and groundsels): type the measurements you took (leaf, head, involucre, phyllaries, ray and disc florets, achene, pappus) and tap the features you see, in any order, and the list of possible species narrows. Built from the VicFlora species descriptions, so it works offline once VicFlora is downloaded." }
   };
+  // Austrostipa and Rytidosperma each get only the characters that apply to them.
+  (function () {
+    var RY = { lobelen: 1, awnex: 1, paex: 1, lobes: 1, lobeshape: 1, lhair: 1 }, ST = { coma: 1, comalen: 1, lcolour: 1 };
+    function sub(drop, intro) {
+      return { organs: GR_ORGANS, numc: GR_NUMC.filter(function (c) { return !drop[c.id]; }), catc: GR_CATC.filter(function (c) { return !drop[c.id]; }), groups: GR_GROUPS, open: "Plant", intro: intro };
+    }
+    PROFILES.stipa = sub(RY, "A multi-access key for Austrostipa (spear-grasses): type the measurements you took (culm, leaf, ligule, panicle, glumes, lemma, callus, coma, awn and column) and tap the features you see, in any order, and the list of possible species narrows. Built from the VicFlora species descriptions, so it works offline once VicFlora is downloaded.");
+    PROFILES.rytid = sub(ST, "A multi-access key for Rytidosperma (wallaby-grasses): type the measurements you took (culm, leaf, panicle, glumes, lemma, lemma lobes, central awn, palea, anthers) and tap the features you see, including the lemma hair rows, in any order, and the list of possible species narrows. Built from the VicFlora species descriptions, so it works offline once VicFlora is downloaded.");
+  })();
   // The sets offered in the MA Key drop-down: which genera are keyed together, and which
   // character set (grass or Senecio terms) they use.
   var KEYSETS = [
     { id: "senecio", label: "Senecio", genera: ["Senecio"], profile: "senecio" },
-    { id: "austrostipa", label: "Austrostipa", genera: ["Austrostipa"], profile: "grass" },
-    { id: "rytidosperma", label: "Rytidosperma", genera: ["Rytidosperma"], profile: "grass" }
+    { id: "austrostipa", label: "Austrostipa", genera: ["Austrostipa"], profile: "stipa" },
+    { id: "rytidosperma", label: "Rytidosperma", genera: ["Rytidosperma"], profile: "rytid" }
   ];
   function setProfile(name) {
     var P = PROFILES[name] || PROFILES.grass;
@@ -3376,13 +3496,18 @@ window.FHFuzzy = (function () {
     NUMC.forEach(function (c) {
       var v = c.custom ? c.custom(sg.text) : numFor(seg, c.organ, c.dim);
       if (v) { num[c.id] = v; if (v.src) src[c.id] = v.src; }
+      if (c.custom && sg.alt) { var w = c.custom(sg.alt); if (w && (!v || w.lo < v.lo || w.hi > v.hi)) numx[c.id] = { lo: Math.min(w.lo, v ? v.lo : w.lo), hi: Math.max(w.hi, v ? v.hi : w.hi) }; }
       if (!c.custom) { var x = extFor(sg, c.organ, c.dim, v); if (x) numx[c.id] = x; }
     });
     CATC.forEach(function (c) {
       var st = new Set();
       if (c.origin) { if (em) st.add(/^native/i.test(em) ? "Native" : "Introduced"); cat[c.id] = st; return; }
       if (c.months) { floweringMonths(sg.text).forEach(function (m) { st.add(m); }); cat[c.id] = st; return; }
-      if (c.custom) { (c.custom(sg.text) || []).forEach(function (x) { st.add(x); }); cat[c.id] = st; return; }
+      if (c.custom) {
+        (c.custom(sg.text) || []).forEach(function (x) { st.add(x); }); cat[c.id] = st;
+        if (sg.alt) { var cx = new Set(); (c.custom(sg.alt) || []).forEach(function (x) { if (!st.has(x)) cx.add(x); }); if (cx.size) catx[c.id] = cx; }
+        return;
+      }
       var txt = c.whole ? sg.text : ((seg[c.organ] || []).concat(c.extra ? (seg[c.extra] || []) : [])).join(" ");
       var qt = (sg.qual || []).filter(function (q) { return c.whole || q.o === c.organ || q.o === c.extra; }).map(function (q) { return q.text; }).join(" ");
       if (txt) c.states.forEach(function (s) { if (s[1].test(txt) && !(s[2] && s[2].test(txt))) st.add(s[0]); });
@@ -3488,10 +3613,11 @@ window.FHFuzzy = (function () {
         var r = t.num[id], x = t.numx && t.numx[id];
         if (!r && !x) { unknown++; if (!MA.keepUnknown) { ok = false; why.push({ id: id, text: "<b>" + esc(ch.label) + ":</b> you entered " + esc(fmtNum(v, ch)) + ", but the description gives no figure." }); } return; }
         var lo = Math.min(r ? r.lo : 1e12, x ? x.lo : 1e12), hi = Math.max(r ? r.hi : -1e12, x ? x.hi : -1e12);
-        if (v < lo * (1 - MA.tol) || v > hi * (1 + MA.tol)) {
+        var sl = (MA.tol > 0 && ch.unit === "mm") ? 0.2 : 0;
+        if (v < lo * (1 - MA.tol) - sl || v > hi * (1 + MA.tol) + sl) {
           ok = false;
           why.push({ id: id, text: "<b>" + esc(ch.label) + ":</b> you entered " + esc(fmtNum(v, ch)) + "; described as " + esc(r ? fmtRange(r, ch) : fmtRange(x, ch)) + (r && x ? " (whole spread " + esc(fmtRange(x, ch)) + ")" : "") + "." });
-        } else if (r && (v < r.lo * (1 - MA.tol) || v > r.hi * (1 + MA.tol))) weak++;
+        } else if (r && (v < r.lo * (1 - MA.tol) - sl || v > r.hi * (1 + MA.tol) + sl)) weak++;
       } else {
         var st = t.cat[id], sx = t.catx && t.catx[id];
         if ((!st || !st.size) && (!sx || !sx.size)) { unknown++; if (!MA.keepUnknown) { ok = false; why.push({ id: id, text: "<b>" + esc(ch.label) + ":</b> the description does not say." }); } return; }
@@ -5317,7 +5443,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-18.6";
+  const BUILD_VERSION = "2026-11-18.7";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive

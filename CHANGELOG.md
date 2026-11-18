@@ -1,3 +1,14 @@
+## 2026-11-18.7 - VicKey botanical review
+- Measurements in Flora of Victoria form are now read properly: "(2–)3–5(–7) mm" (usual range plus occasional extremes, which were previously missed entirely), "3–5 × 1–2 mm" (length and width), "to c. 2 mm", "10 mm or more", "c. 10 mm across", "3·5 mm".
+- "Lower glume 8–10 mm, upper 7–9 mm" now gives 7–10 mm instead of only the first figure.
+- Counts with extremes ("ray florets (0–)5–8", "(5–)6–9-flowered") and "rarely" values ("5–6 (rarely 0)") count towards the whole spread. Counts written before the label ("with 3–6 calycular bracts") are read.
+- Austrostipa and Rytidosperma now have their own character sets. Austrostipa: coma length, coma present or absent, lemma colour at maturity; awn column length now read in cm too. Rytidosperma: lemma hair rows (two rows, upper row continuous or tufted, hairs reaching the lobe bases).
+- New grass characters: leaf sheath surface, hairs at the sheath orifice, glumes equal or unequal. Sheath words no longer leak into the leaf blade surface.
+- Senecio: number of calyculus bracts; disc floret count in rayless heads ("florets 20–40").
+- Glumes "purplish with pale margins" are no longer also counted as pale. Awn column "pubescent" counts as hairy.
+- Comparison table: "Leaf sheaths" and "Sheaths" now land in the same row.
+- With a tolerance set, millimetre measurements also get 0.2 mm of slack, so tiny parts such as a 0.3 mm ligule are not ruled out by hand-lens rounding.
+
 ## 2026-11-18.6 - VicKey review fixes
 - Figures like "less than 15 cm" or "at least 2 cm wide" are now read as ranges (0 to 15, 2 or more), not as exact values.
 - Auricle lobes of the leaf sheath are no longer counted as lemma lobes.
