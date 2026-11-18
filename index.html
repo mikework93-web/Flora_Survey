@@ -878,6 +878,8 @@ html[data-theme="dark"] .leaflet-bar a.leaflet-disabled{background:var(--card);c
 .vk-photos i{font-weight:700}
 .vk-vs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0 4px}
 .vk-vs a{display:block;padding:10px 12px;border:1px solid var(--border);border-top:3px solid var(--gold-dark);border-radius:3px;background:var(--card);color:var(--ink);font-style:italic;font-weight:700;font-size:15px;text-decoration:none;overflow-wrap:anywhere}
+.vk-vsn{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}.vk-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}.vk-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--card);padding:4px 8px;border-radius:3px}.vk-chip button{border:0;background:none;color:var(--muted);font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
+.vk-gone{margin:12px 0;border:1px solid var(--border);border-radius:3px;background:var(--card)}.vk-gone summary{padding:9px 12px;cursor:pointer;font-weight:700}.vk-gx{padding:6px 12px;border-top:1px solid var(--border)}.vk-gx ul{margin:4px 0 0 18px;padding:0;font-size:12.5px}.vk-x{color:var(--muted);font-size:12px}.vk-src{display:block;color:var(--muted);font-size:11px;font-style:italic}
 .vk-vs a small{display:block;font-style:normal;font-weight:400;font-size:11.5px;color:var(--muted)}
 .vk-tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:3px;background:var(--field)}
 .vk-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px;line-height:1.45}
@@ -997,6 +999,7 @@ body.t-roadside .only-flora,body.t-tree .only-flora,body.t-roadside .not-road,bo
 .rd-del{background:none;border:none;color:var(--red);font-size:12px;font-weight:700;cursor:pointer;padding:4px}
 .rd-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin:0 0 10px}
 .rd-photo input{width:100%;margin-top:4px;font-size:12px}
+.rd-sc{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.7);color:#fff;font-size:10px;padding:1px 5px;border-radius:3px}.rd-land{margin:4px 0 8px;font-size:13px}
 .rd-rvmp{border:1px dashed var(--border);border-radius:3px;padding:10px;margin:0 0 12px}.rd-rvmp select{width:100%;margin:2px 0 8px}
 .rd-vba{margin:10px 0 2px;padding:10px 12px;border:1px solid var(--border);border-left:4px solid var(--gold,#b8962e);border-radius:3px;background:var(--field);font-size:13px}.rd-vba-h{font-weight:700;margin-bottom:5px}.rd-vba-flag{font-weight:700;color:#8a5a00;margin-bottom:4px}.rd-vba-none{color:var(--muted,#666);margin-bottom:4px}.rd-vba ul{margin:4px 0 6px;padding-left:18px}.rd-vba li.n{color:var(--muted,#777)}.rd-vba details summary{cursor:pointer;font-size:12px;color:var(--muted,#666)}.rd-vba-recs{font-size:12px;line-height:1.5;margin:3px 0 4px}.rd-vba-f{font-size:11.5px;color:var(--muted,#666);margin-top:4px}
 .rd-zones{margin:2px 0 8px;border:1px solid var(--border);border-radius:3px;background:var(--field)}.rd-zones summary{padding:7px 9px;cursor:pointer;font-size:13px}.rd-zchips{display:flex;flex-wrap:wrap;gap:6px 12px;padding:4px 9px 10px}.rd-zc{font-size:13px;display:flex;gap:5px;align-items:center;white-space:nowrap}.rd-zc input{width:16px;height:16px}.rd-ztext{width:100%;margin:2px 0 8px}.rd-nz{margin-top:6px}
@@ -1134,7 +1137,9 @@ body.t-roadside .only-flora,body.t-tree .only-flora,body.t-roadside .not-road,bo
     <div id="rdPhotos" class="rd-photos"></div>
     <input type="file" accept="image/*" capture="environment" class="file-hidden" tabindex="-1" id="rdCamInput">
     <input type="file" accept="image/*" multiple class="file-hidden" tabindex="-1" id="rdFileInput">
-    <div class="photo-btns"><button type="button" class="btn-out sp-addphoto" id="rdTakePhoto">Take photo</button><button type="button" class="btn-out sp-addphoto" id="rdChoosePhoto">Choose photos</button></div>
+    <p class="muted rd-land" id="rdLandNote">Required: one landscape photo of typical site conditions. All photo uploads must be in landscape format (hold the phone sideways).</p>
+    <input type="file" accept="image/*" class="file-hidden" tabindex="-1" id="rdSiteInput">
+    <div class="photo-btns"><button type="button" class="btn-out sp-addphoto" id="rdSitePhoto">Site conditions photo</button><button type="button" class="btn-out sp-addphoto" id="rdTakePhoto">Take photo</button><button type="button" class="btn-out sp-addphoto" id="rdChoosePhoto">Choose photos</button></div>
   </div>
   <div class="card survey-only">
     <h2 id="addCardTitle">Add species</h2>
@@ -2682,7 +2687,7 @@ window.FHFuzzy = (function () {
   function isInfra(t) { return !!t && INFRA.indexOf(t.taxonRank) >= 0; }
   function tabOf(m) { return (m === "key" || m === "multi") ? m : "cmp"; }
 
-  function resetState() { S = { a: null, b: null, tA: null, opts: null }; K = { keys: [], key: null, view: "bracket", stack: [], genus: null }; MA = null; applyKeyset(MKS); }
+  function resetState() { S = { a: null, b: null, tA: null, opts: null, more: [] }; K = { keys: [], key: null, view: "bracket", stack: [], genus: null }; MA = null; applyKeyset(MKS); }
   var MA = null, MG = [], MKS = "senecio";
   function keysetById(id) { return KEYSETS.filter(function (k) { return k.id === id; })[0] || KEYSETS[0]; }
   function applyKeyset(id) { var ks = keysetById(id); MKS = ks.id; MG = ks.genera.slice(); setProfile(ks.profile); }
@@ -2960,7 +2965,7 @@ window.FHFuzzy = (function () {
         : '<select id="vkB" disabled><option>Pick the first one</option></select>') +
       '</div></div>' +
       (mode === "species" ? '<label class="vk-tog"><input type="checkbox" id="vkInfra"' + (infraOn ? " checked" : "") + '> Include subspecies, varieties and forms</label>' : '') +
-      '<div id="vkOut"></div>';
+      '<div id="vkMore"></div><div id="vkOut"></div>';
     offLine();
     body.querySelector("#vkKind").addEventListener("change", function (e) { mode = cmpMode = e.target.value; resetState(); render(); });
     var infraBox = body.querySelector("#vkInfra");
@@ -3086,23 +3091,33 @@ window.FHFuzzy = (function () {
     ["ligule", /\bligules?\b/gi], ["panicle", /\b(?:panicles?|inflorescences?)\b/gi],
     ["spikelet", /\bspikelets?\b/gi], ["glume", /\bglumes?\b/gi], ["lemma", /\blemmas?\b/gi],
     ["callus", /\bcallus\b/gi], ["awn", /\b(?:awns?|columns?)\b/gi], ["palea", /\bpaleas?\b/gi],
-    ["lobe", /\b(?:lateral )?lobes?\b/gi]
+    ["lobe", /\b(?:lateral )?lobes?\b/gi], ["anther", /\banthers?\b/gi]
   ];
   var ORGANS = GR_ORGANS, NUMC, CATC;
   var SKIP_BEFORE = /\b(?:beyond|exceed(?:s|ed|ing)?|above|below|than|equal(?:s|ling)?|surpass(?:es|ing)?|from|between|enclos\w+|including|of)\s+(?:the\s+|their\s+|its\s+|a\s+)?(?:[\w-]+\s+){0,2}$/i;
   // Split a description into pieces, one per organ it talks about.
   function organSegments(raw) {
-    var t = cleanText(raw).replace(/\((?:rarely|sometimes|occasionally|rare)[^)]*\)/gi, "").replace(/\b(?:rarely|occasionally|sometimes)\b[^,;.)]*/gi, "");
-    var marks = [];
-    ORGANS.forEach(function (o) {
-      var re = new RegExp(o[1].source, "gi"), m;
-      while ((m = re.exec(t))) {
-        if (SKIP_BEFORE.test(t.slice(Math.max(0, m.index - 40), m.index))) continue;
-        if (o[2] && o[2].test(t.slice(Math.max(0, m.index - 60), m.index))) continue;
-        marks.push({ i: m.index, o: o[0] });
-      }
+    var t0 = cleanText(raw), quals = [];
+    function organMarks(tx) {
+      var mk = [];
+      ORGANS.forEach(function (o) {
+        var re = new RegExp(o[1].source, "gi"), m;
+        while ((m = re.exec(tx))) {
+          if (SKIP_BEFORE.test(tx.slice(Math.max(0, m.index - 40), m.index))) continue;
+          if (o[2] && o[2].test(tx.slice(Math.max(0, m.index - 60), m.index))) continue;
+          mk.push({ i: m.index, o: o[0] });
+        }
+      });
+      mk.sort(function (a, b) { return a.i - b.i; });
+      return mk;
+    }
+    var marks0 = organMarks(t0);
+    var t = t0.replace(/\((?:rarely|sometimes|occasionally|rare)[^)]*\)|\b(?:rarely|occasionally|sometimes)\b[^,;.)]*/gi, function (m, i) {
+      var o = ORGANS[0][0]; marks0.forEach(function (k) { if (k.i <= i) o = k.o; });
+      quals.push({ o: o, text: m });
+      return "";
     });
-    marks.sort(function (a, b) { return a.i - b.i; });
+    var marks = organMarks(t);
     var seg = {};
     // Text before the first organ word (e.g. "Erect annual to 150 cm high; stems ...") describes the plant as a whole.
     if (marks.length && marks[0].i > 0) seg[ORGANS[0][0]] = [t.slice(0, Math.min(marks[0].i, 240))];
@@ -3110,7 +3125,7 @@ window.FHFuzzy = (function () {
       var end = Math.min(k + 1 < marks.length ? marks[k + 1].i : t.length, mk.i + 240);
       (seg[mk.o] = seg[mk.o] || []).push(t.slice(mk.i, end));
     });
-    return { seg: seg, text: t };
+    return { seg: seg, text: t, qual: quals };
   }
   var MRE = /(up to |to |c\. |about |mostly |usually )?(\d+(?:\.\d+)?)(?:\s*(?:–|-|—|to)\s*(\d+(?:\.\d+)?))?\s*(mm|cm|m)\b(?:\s+(long|high|tall|wide|broad|thick|in diameter|diam))?/gi;
   function measures(str) {
@@ -3124,7 +3139,7 @@ window.FHFuzzy = (function () {
       else if (!m[1] && m[3] === undefined && /\bto\s+\d+(?:\.\d+)?\s*(?:mm|cm|m)\b(?:\s+(?:long|high|tall|wide|broad|thick))?\s*(?:,|;|and|or)\s*(?:\w+\s+)?$/i.test(str.slice(Math.max(0, m.index - 45), m.index))) { b = a; a = 0; }
       if (a > b) { var x = a; a = b; b = x; }
       if (/\bby\s+$/i.test(str.slice(Math.max(0, m.index - 6), m.index))) continue;   // "extending ... by up to 5 mm" is not a length
-      out.push({ lo: a, hi: b, dim: /wide|broad|thick|diam/i.test(m[5] || "") ? "W" : "L" });
+      out.push({ lo: a, hi: b, at: m.index, dim: /wide|broad|thick|diam/i.test(m[5] || "") ? "W" : "L" });
     }
     return out;
   }
@@ -3133,19 +3148,40 @@ window.FHFuzzy = (function () {
     (Array.isArray(organ) ? organ : [organ]).forEach(function (o) { arr = arr.concat(seg[o] || []); });
     for (var i = 0; i < arr.length; i++) {
       var ms = measures(arr[i]);
-      for (var j = 0; j < ms.length; j++) if (ms[j].dim === dim) return { lo: ms[j].lo, hi: ms[j].hi };
+      for (var j = 0; j < ms.length; j++) if (ms[j].dim === dim) return { lo: ms[j].lo, hi: ms[j].hi, src: arr[i].slice(Math.max(0, ms[j].at - 24), ms[j].at + 44).replace(/\s+/g, " ") };
     }
     return null;
+  }
+  // The whole spread a description allows: figures given for rare or occasional plants, in brackets, or for named forms (alpine plants and so on).
+  function extFor(sg, organ, dim, typ) {
+    var os = Array.isArray(organ) ? organ : [organ], lo = typ ? typ.lo : null, hi = typ ? typ.hi : null;
+    function add(a, b) { lo = lo === null ? a : Math.min(lo, a); hi = hi === null ? b : Math.max(hi, b); }
+    os.forEach(function (o) {
+      (sg.seg[o] || []).forEach(function (sx) {
+        measures(sx).forEach(function (m) {
+          if (m.dim !== dim) return;
+          var base = sg.text.indexOf(sx), ctx = base >= 0 ? sg.text.slice(Math.max(0, base + m.at - 60), base + m.at) : sx.slice(Math.max(0, m.at - 60), m.at);
+          if (/\([^)]*$/.test(ctx) || /\b(?:often|forms?|alpine|var\.|subsp\.|ssp\.|exceptionally|depauperate|stunted)\b/i.test(ctx)) add(m.lo, m.hi);
+        });
+      });
+      (sg.qual || []).forEach(function (q) {
+        if (q.o !== o) return;
+        measures(q.text).forEach(function (m) { if (m.dim === dim) add(m.lo, m.hi); });
+      });
+    });
+    if (lo === null) return null;
+    if (typ && lo === typ.lo && hi === typ.hi) return null;
+    return { lo: lo, hi: hi };
   }
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   function monthIdx(s) { return MONTHS.indexOf(s.slice(0, 3).replace(/^./, function (c) { return c.toUpperCase(); })); }
   function floweringMonths(text) {
     var set = new Set();
-    var m = text.match(/flower(?:s|ing)[^.]*?(?:\.|$)/i);
+    var m = text.match(/flower(?:s|ing)\b(?:(?!\.\s+[A-Z])[\s\S]){0,220}/i);
     if (!m) return set;
     var s = m[0];
     var NM = "(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)";
-    var re = new RegExp(NM + "\\s*(?:to|–|-|—)\\s*" + NM, "gi"), r, used = s;
+    var re = new RegExp(NM + "\\.?\\s*(?:to|–|-|—)\\s*" + NM, "gi"), r, used = s;
     while ((r = re.exec(s))) {
       var a = monthIdx(r[1]), b = monthIdx(r[2]);
       if (a < 0 || b < 0) continue;
@@ -3164,6 +3200,7 @@ window.FHFuzzy = (function () {
     return set;
   }
   // Numeric characters (values held in mm; "f" converts the unit shown to the user).
+  function rngMm(t, re) { var m = t.match(re); return m ? { lo: +m[1], hi: +(m[2] || m[1]) } : null; }
   var GR_NUMC = [
     { id: "height", group: "Plant", label: "Plant (culm) height", unit: "cm", f: 10, organ: "culm", dim: "L" },
     { id: "blen", group: "Leaves", label: "Leaf blade length", unit: "cm", f: 10, organ: "blade", dim: "L" },
@@ -3177,13 +3214,19 @@ window.FHFuzzy = (function () {
     { id: "clen", group: "Lemma and floret", label: "Callus length", unit: "mm", f: 1, organ: "callus", dim: "L" },
     { id: "lobelen", group: "Lemma and floret", label: "Lemma lobe length", unit: "mm", f: 1, organ: "lobe", dim: "L" },
     { id: "palen", group: "Lemma and floret", label: "Palea length", unit: "mm", f: 1, organ: "palea", dim: "L" },
-    { id: "alen", group: "Awn", label: "Awn (or column plus awn) length", unit: "mm", f: 1, organ: "awn", dim: "L" }
+    { id: "alen", group: "Awn", label: "Awn (or column plus awn) length", unit: "mm", f: 1, organ: "awn", dim: "L" },
+    { id: "pwid", group: "Inflorescence", label: "Panicle width", unit: "cm", f: 10, organ: "panicle", dim: "W" },
+    { id: "swid", group: "Spikelet", label: "Spikelet width", unit: "mm", f: 1, organ: "spikelet", dim: "W" },
+    { id: "anlen", group: "Lemma and floret", label: "Anther length", unit: "mm", f: 1, organ: "anther", dim: "L" },
+    { id: "colen", group: "Awn", label: "Awn straight part (column) length", unit: "mm", f: 1, custom: function (t) { return rngMm(t, /(?:straight (?:part|portion)|column)[^0-9;.]{0,25}(\d+(?:\.\d+)?)(?:\s*[–-]\s*(\d+(?:\.\d+)?))?\s*mm/i); } },
+    { id: "awnex", group: "Awn", label: "Central awn beyond the lemma lobes by", unit: "mm", f: 1, custom: function (t) { return rngMm(t, /awn[^;.]{0,40}?exceed\w*\s+(?:the\s+)?(?:lateral\s+)?(?:lemma\s+)?lobes\s+by\s+(\d+(?:\.\d+)?)(?:\s*[–-]\s*(\d+(?:\.\d+)?))?\s*mm/i); } },
+    { id: "paex", group: "Lemma and floret", label: "Palea beyond the sinus by", unit: "mm", f: 1, custom: function (t) { return rngMm(t, /palea[^;.]{0,60}?exceed\w*\s+(?:the\s+)?sinus\s+by\s+(\d+(?:\.\d+)?)(?:\s*[–-]\s*(\d+(?:\.\d+)?))?\s*mm/i); } }
   ];
   // Feature characters: each state is a regex tested on that organ's piece of the description.
   var GR_CATC = [
     { id: "life", group: "Plant", label: "Life form", organ: "culm", states: [["Perennial", /perennial/i], ["Annual", /\bannual/i]], whole: true },
     { id: "habit", group: "Plant", label: "Growth habit", whole: true, states: [["Tufted (tussock)", /tufted|tussock|caespitose|clump/i], ["Spreading or rhizomatous", /rhizomat|stolon|spreading|mat-forming|creeping|decumbent/i]] },
-    { id: "bform", group: "Leaves", label: "Leaf blade form", organ: "blade", states: [["Flat", /\bflat\b/i], ["Folded or channelled", /channel|folded|conduplicate|grooved/i], ["Inrolled or thread-like", /inrolled|rolled|involute|convolute|terete|filiform|setaceous|thread|needle/i]] },
+    { id: "bform", group: "Leaves", label: "Leaf blade form", organ: "blade", states: [["Flat", /\bflat(?:ter|tened)?\b/i], ["Folded or channelled", /channel|folded|conduplicate|grooved/i], ["Inrolled or thread-like", /inrolled|rolled|involute|convolute|terete|filiform|setaceous|thread|needle/i]] },
     { id: "bsurf", group: "Leaves", label: "Leaf blade surface", organ: "blade", states: [["Glabrous or smooth", /glabrous|smooth|hairless/i], ["Hairy", /\bhair|pilose|villous|pubescent|ciliate|tomentose|puberulous/i], ["Scabrous (rough)", /scabrous|scabrid|rough/i]] },
     { id: "ligule", group: "Leaves", label: "Ligule", organ: "ligule", states: [["Membranous", /membran/i], ["A fringe of hairs", /ciliate|fringe|hair/i]] },
     { id: "pshape", group: "Inflorescence", label: "Panicle shape", organ: "panicle", states: [["Contracted, narrow or spike-like", /contracted|narrow|linear|spike|dense|compact|lanceolate|cylindric/i], ["Open or spreading", /\bopen\b|spreading|diffuse|\blax\b|loose|ovate|pyramidal|broad/i]] },
@@ -3303,10 +3346,11 @@ window.FHFuzzy = (function () {
   setProfile("grass");
 
   function parseTaxon(id, name, text, em) {
-    var sg = organSegments(text || ""), seg = sg.seg, num = {}, cat = {};
+    var sg = organSegments(text || ""), seg = sg.seg, num = {}, numx = {}, cat = {}, catx = {}, src = {};
     NUMC.forEach(function (c) {
       var v = c.custom ? c.custom(sg.text) : numFor(seg, c.organ, c.dim);
-      if (v) num[c.id] = v;
+      if (v) { num[c.id] = v; if (v.src) src[c.id] = v.src; }
+      if (!c.custom) { var x = extFor(sg, c.organ, c.dim, v); if (x) numx[c.id] = x; }
     });
     CATC.forEach(function (c) {
       var st = new Set();
@@ -3314,11 +3358,16 @@ window.FHFuzzy = (function () {
       if (c.months) { floweringMonths(sg.text).forEach(function (m) { st.add(m); }); cat[c.id] = st; return; }
       if (c.custom) { (c.custom(sg.text) || []).forEach(function (x) { st.add(x); }); cat[c.id] = st; return; }
       var txt = c.whole ? sg.text : ((seg[c.organ] || []).concat(c.extra ? (seg[c.extra] || []) : [])).join(" ");
-      if (!txt) { cat[c.id] = st; return; }
-      c.states.forEach(function (s) { if (s[1].test(txt) && !(s[2] && s[2].test(txt))) st.add(s[0]); });
+      var qt = (sg.qual || []).filter(function (q) { return c.whole || q.o === c.organ || q.o === c.extra; }).map(function (q) { return q.text; }).join(" ");
+      if (txt) c.states.forEach(function (s) { if (s[1].test(txt) && !(s[2] && s[2].test(txt))) st.add(s[0]); });
       cat[c.id] = st;
+      if (qt) {
+        var sx = new Set();
+        c.states.forEach(function (s) { if (s[1].test(qt) && !(s[2] && s[2].test(qt)) && !st.has(s[0])) sx.add(s[0]); });
+        if (sx.size) catx[c.id] = sx;
+      }
     });
-    return { id: id, name: name, num: num, cat: cat, hasText: !!(text && text.replace(/<[^>]+>/g, "").trim()) };
+    return { id: id, name: name, num: num, numx: numx, cat: cat, catx: catx, src: src, hasText: !!(text && text.replace(/<[^>]+>/g, "").trim()) };
   }
 
   function longGql(q, v) { return window.FHVicFlora.query(q, v, 60000); }
@@ -3405,29 +3454,37 @@ window.FHFuzzy = (function () {
     });
   }
   function maEval(t, skip) {
-    var unknown = 0, ok = true;
+    var unknown = 0, ok = true, weak = 0, why = [];
     Object.keys(MA.entries).forEach(function (id) {
       if (id === skip) return;
       var v = MA.entries[id], ch = MCH[id];
       if (ch.kind === "num") {
-        var r = t.num[id];
-        if (!r) { unknown++; if (!MA.keepUnknown) ok = false; return; }
-        if (v < r.lo * (1 - MA.tol) || v > r.hi * (1 + MA.tol)) ok = false;
+        var r = t.num[id], x = t.numx && t.numx[id];
+        if (!r && !x) { unknown++; if (!MA.keepUnknown) { ok = false; why.push({ id: id, text: "<b>" + esc(ch.label) + ":</b> you entered " + esc(fmtNum(v, ch)) + ", but the description gives no figure." }); } return; }
+        var lo = Math.min(r ? r.lo : 1e12, x ? x.lo : 1e12), hi = Math.max(r ? r.hi : -1e12, x ? x.hi : -1e12);
+        if (v < lo * (1 - MA.tol) || v > hi * (1 + MA.tol)) {
+          ok = false;
+          why.push({ id: id, text: "<b>" + esc(ch.label) + ":</b> you entered " + esc(fmtNum(v, ch)) + "; described as " + esc(r ? fmtRange(r, ch) : fmtRange(x, ch)) + (r && x ? " (whole spread " + esc(fmtRange(x, ch)) + ")" : "") + "." });
+        } else if (r && (v < r.lo * (1 - MA.tol) || v > r.hi * (1 + MA.tol))) weak++;
       } else {
-        var st = t.cat[id];
-        if (!st || !st.size) { unknown++; if (!MA.keepUnknown) ok = false; return; }
-        var any = false; v.forEach(function (s) { if (st.has(s)) any = true; });
-        if (!any) ok = false;
+        var st = t.cat[id], sx = t.catx && t.catx[id];
+        if ((!st || !st.size) && (!sx || !sx.size)) { unknown++; if (!MA.keepUnknown) { ok = false; why.push({ id: id, text: "<b>" + esc(ch.label) + ":</b> the description does not say." }); } return; }
+        var any = false, usual = false;
+        v.forEach(function (s) { if (st && st.has(s)) { any = true; usual = true; } else if (sx && sx.has(s)) any = true; });
+        if (!any) {
+          ok = false;
+          why.push({ id: id, text: "<b>" + esc(ch.label) + ":</b> you chose " + esc(Array.from(v).join(" or ")) + "; described as " + esc(Array.from(st || []).join(", ") || "not stated") + (sx && sx.size ? " (sometimes " + esc(Array.from(sx).join(", ")) + ")" : "") + "." });
+        } else if (!usual) weak++;
       }
     });
-    return { ok: ok, unknown: unknown };
+    return { ok: ok, unknown: unknown, weak: weak, why: why };
   }
   function fmtNum(mm, c) { var x = mm / c.f; return (Math.round(x * 10) / 10) + (c.unit ? " " + c.unit : ""); }
   function fmtRange(r, c) { return r.lo === r.hi ? fmtNum(r.lo, c) : (r.lo === 0 ? "up to " + fmtNum(r.hi, c) : fmtNum(r.lo, c).replace(" " + c.unit, "") + "–" + fmtNum(r.hi, c)); }
   function evidence(t) {
     var parts = [];
-    NUMC.forEach(function (c) { if (t.num[c.id]) parts.push("<li><b>" + esc(c.label) + ":</b> " + esc(fmtRange(t.num[c.id], c)) + "</li>"); });
-    CATC.forEach(function (c) { var st = t.cat[c.id]; if (st && st.size && c.id !== "lobes") parts.push("<li><b>" + esc(c.label) + ":</b> " + esc(Array.from(st).join(", ")) + "</li>"); });
+    NUMC.forEach(function (c) { if (t.num[c.id] || (t.numx && t.numx[c.id])) parts.push("<li><b>" + esc(c.label) + ":</b> " + (t.num[c.id] ? esc(fmtRange(t.num[c.id], c)) : "") + (t.numx && t.numx[c.id] ? ' <span class="vk-x">(whole spread ' + esc(fmtRange(t.numx[c.id], c)) + ")</span>" : "") + (t.src && t.src[c.id] ? ' <small class="vk-src">&ldquo;' + esc(t.src[c.id]) + "&rdquo;</small>" : "") + "</li>"); });
+    CATC.forEach(function (c) { var st = t.cat[c.id], sx = t.catx && t.catx[c.id]; if (((st && st.size) || (sx && sx.size)) && c.id !== "lobes") parts.push("<li><b>" + esc(c.label) + ":</b> " + esc(st ? Array.from(st).join(", ") : "") + (sx && sx.size ? ' <span class="vk-x">(sometimes: ' + esc(Array.from(sx).join(", ")) + ")</span>" : "") + "</li>"); });
     return parts.length ? "<ul class=\"vk-ev\">" + parts.join("") + "</ul>" : "<p class=\"vk-foot\">Nothing could be read from this description.</p>";
   }
   function showMulti() {
@@ -3435,7 +3492,7 @@ window.FHFuzzy = (function () {
     var out = $b().querySelector("#vkOut"), body = $b(), top = body.scrollTop, keys = Object.keys(MA.entries);
     var results = MA.taxa.map(function (t) { return { t: t, e: maEval(t, null) }; });
     var rem = results.filter(function (r) { return r.e.ok; });
-    rem.sort(function (a, b) { return a.e.unknown - b.e.unknown || a.t.name.localeCompare(b.t.name); });
+    rem.sort(function (a, b) { return a.e.unknown - b.e.unknown || a.e.weak - b.e.weak || a.t.name.localeCompare(b.t.name); });
     var h = '<div class="vk-mhead"><span><b>' + rem.length + "</b> of " + MA.taxa.length + " taxa possible</span>" +
       '<span class="vk-mbtns">' + (keys.length ? '<button type="button" class="vk-sub" data-reset="1">Clear all</button>' : "") + "</span></div>" +
       '<div class="vo-bar"><i style="width:' + Math.round(100 * rem.length / Math.max(1, MA.taxa.length)) + '%"></i></div>' +
@@ -3446,26 +3503,33 @@ window.FHFuzzy = (function () {
     if (rem.length === 1) h += '<div class="vk-status ok">One taxon fits: <b><i>' + esc(rem[0].t.name) + "</i></b>. Check it against the VicFlora description before relying on it.</div>";
     if (!rem.length) h += '<div class="vk-status">Nothing fits. Loosen the tolerance or clear a feature.</div>';
     h += '<div class="vk-txlist">' + rem.slice(0, 80).map(function (r) {
-      return '<details class="vk-tx"><summary><i>' + esc(r.t.name) + "</i>" + (r.e.unknown ? ' <small class="vk-unk">' + r.e.unknown + " not stated</small>" : "") + (!r.t.hasText ? ' <small class="vk-unk">no description</small>' : "") + "</summary>" +
+      return '<details class="vk-tx"><summary><i>' + esc(r.t.name) + "</i>" + (r.e.unknown ? ' <small class="vk-unk">' + r.e.unknown + " not stated</small>" : "") + (r.e.weak ? ' <small class="vk-unk">' + r.e.weak + " only in rare or extreme forms</small>" : "") + (!r.t.hasText ? ' <small class="vk-unk">no description</small>' : "") + "</summary>" +
         evidence(r.t) + '<p class="vk-foot"><a href="' + VF + "taxon/" + esc(r.t.id) + '" target="_blank" rel="noopener">Open in VicFlora</a></p><div class="vk-photorow">' + photoBtn(r.t.name) + '</div></details>';
     }).join("") + "</div>";
+    var gone = results.filter(function (r) { return !r.e.ok; });
+    if (keys.length && gone.length) {
+      h += '<details class="vk-gone"' + (MA.goneOpen ? " open" : "") + '><summary>Ruled out (' + gone.length + ")</summary>" + gone.map(function (r) {
+        return '<div class="vk-gx"><i>' + esc(r.t.name) + "</i><ul>" + r.e.why.map(function (w) { return "<li>" + w.text + "</li>"; }).join("") + "</ul></div>";
+      }).join("") + '<p class="vk-foot">Each line says which feature you entered and what the VicFlora description allows, including the rare or occasional range where one is given. If a description reads differently on VicFlora, widen the tolerance or clear that feature.</p></details>';
+    }
     h += '<div class="vk-h">Enter your specimen <small class="vk-hn">(leave blank what you can\'t see or measure)</small></div>';
     MGROUPS.forEach(function (gname) {
       var chars = NUMC.concat(CATC).filter(function (c) { return c.group === gname; });
       var inner = "", used = 0;
       chars.forEach(function (c) {
-        var have = MA.taxa.filter(function (t) { return c.kind === "num" ? !!t.num[c.id] : (t.cat[c.id] && t.cat[c.id].size); });
+        var have = MA.taxa.filter(function (t) { return c.kind === "num" ? !!(t.num[c.id] || (t.numx && t.numx[c.id])) : ((t.cat[c.id] && t.cat[c.id].size) || (t.catx && t.catx[c.id] && t.catx[c.id].size)); });
         if (!have.length) return;
         used += (c.id in MA.entries) ? 1 : 0;
         var blk = '<div class="vk-ch' + (c.id in MA.entries ? " on" : "") + '"><div class="vk-chh">' + esc(c.label) + " <small>(" + have.length + " of " + MA.taxa.length + " described)</small></div>";
         if (c.kind === "num") {
-          var lo = Math.min.apply(null, have.map(function (t) { return t.num[c.id].lo; })), hi = Math.max.apply(null, have.map(function (t) { return t.num[c.id].hi; }));
+          var spr = have.map(function (t) { var a = t.num[c.id], x = t.numx && t.numx[c.id]; return { lo: Math.min(a ? a.lo : 1e12, x ? x.lo : 1e12), hi: Math.max(a ? a.hi : -1e12, x ? x.hi : -1e12) }; });
+          var lo = Math.min.apply(null, spr.map(function (r) { return r.lo; })), hi = Math.max.apply(null, spr.map(function (r) { return r.hi; }));
           var cur = c.id in MA.entries ? (Math.round(MA.entries[c.id] / c.f * 100) / 100) : "";
           blk += '<div class="vk-numrow"><input type="number" inputmode="decimal" step="any" min="0" data-n="' + c.id + '" value="' + cur + '" placeholder="value"> <span>' + esc(c.unit || "count") + "</span> <small>taxa: " + esc(fmtNum(lo, c).replace(" " + c.unit, "") + "–" + fmtNum(hi, c)) + "</small></div>";
         } else {
           var ok2 = MA.taxa.filter(function (t) { return maEval(t, c.id).ok; });
           blk += '<div class="vk-sc-row">' + c.states.map(function (s) {
-            var n = ok2.filter(function (t) { return t.cat[c.id] && t.cat[c.id].has(s[0]); }).length;
+            var n = ok2.filter(function (t) { return (t.cat[c.id] && t.cat[c.id].has(s[0])) || (t.catx && t.catx[c.id] && t.catx[c.id].has(s[0])); }).length;
             var sel = MA.entries[c.id] && MA.entries[c.id].has(s[0]);
             return '<button type="button" class="vk-sc" data-c="' + c.id + '" data-s="' + esc(s[0]) + '" aria-pressed="' + !!sel + '"' + (n === 0 && !sel ? " disabled" : "") + ">" + esc(s[0]) + ' <span class="vk-n">' + n + "</span></button>";
           }).join("") + "</div>";
@@ -3498,7 +3562,8 @@ window.FHFuzzy = (function () {
       if (e.target.closest("[data-reset]")) { MA.entries = {}; showMulti(); }
     };
     out.addEventListener("toggle", function (e) {
-      var d = e.target; if (!d.dataset || !d.dataset.g) return;
+      var d = e.target; if (d.classList && d.classList.contains("vk-gone")) { MA.goneOpen = d.open; return; }
+      if (!d.dataset || !d.dataset.g) return;
       if (d.open) MA.open.add(d.dataset.g); else MA.open.delete(d.dataset.g);
     }, true);
   }
@@ -3530,7 +3595,7 @@ window.FHFuzzy = (function () {
 
   function pickA(r) {
     var M = MODES[mode], my = ++runId;
-    S.a = r; S.b = null; S.tA = null; S.opts = null;
+    S.a = r; S.b = null; S.tA = null; S.opts = null; S.more = []; renderMore();
     var bEl = $b().querySelector("#vkB");
     $b().querySelector("#vkOut").innerHTML = "";
     if (mode === "family" || mode === "species") { bEl.disabled = false; bEl.value = ""; bEl.focus(); return; }
@@ -3560,6 +3625,25 @@ window.FHFuzzy = (function () {
   function pickB(r) {
     if (S.a && r.id === S.a.id) { status("Pick a different taxon to compare with.", true); return; }
     S.b = r;
+    renderMore();
+    compare();
+  }
+  // "+ species": more than two species or subspecies side by side.
+  function renderMore() {
+    var bd = $b(), el = bd && bd.querySelector("#vkMore");
+    if (!el) return;
+    if (mode !== "species" || !S || !S.b) { el.innerHTML = ""; return; }
+    var h = '<div class="vk-chips">' + (S.more || []).map(function (r, i) { return '<span class="vk-chip"><i>' + esc(r.name) + '</i> <button type="button" data-rmx="' + i + '" aria-label="Remove ' + esc(r.name) + '">&times;</button></span>'; }).join("") + "</div>";
+    h += '<div class="vk-col" style="max-width:520px;margin:8px 0 10px"><label for="vkX">+ Add another species or subspecies</label><input id="vkX" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search to add a species"><div class="vk-list" id="vkListX"></div></div>';
+    el.innerHTML = h;
+    typeahead(el.querySelector("#vkX"), el.querySelector("#vkListX"), spRanks, pickX);
+    el.onclick = function (e) { var b = e.target.closest("[data-rmx]"); if (b) { S.more.splice(+b.dataset.rmx, 1); renderMore(); compare(); } };
+  }
+  function pickX(r) {
+    var have = [S.a, S.b].concat(S.more || []);
+    if (have.some(function (q) { return q && q.id === r.id; })) { status("That one is already in the comparison.", true); return; }
+    S.more.push(r);
+    renderMore();
     compare();
   }
 
@@ -3567,7 +3651,7 @@ window.FHFuzzy = (function () {
     var my = ++runId, M = MODES[mode];
     status("Loading both descriptions and the key from VicFlora...");
     var pA = S.tA && S.tA.id === S.a.id ? Promise.resolve(S.tA) : node(S.a.id);
-    Promise.all([pA, node(S.b.id)]).then(function (res) {
+    Promise.all([pA, node(S.b.id)].concat((S.more || []).map(function (r) { return node(r.id); }))).then(function (res) {
       return Promise.all(res.map(function (t) {
         var has = t.currentProfile && t.currentProfile.profile && String(t.currentProfile.profile).replace(/<[^>]*>/g, "").trim();
         var sp = isInfra(t) && !has ? ancestorOfRank(t, "SPECIES") : null;
@@ -3578,6 +3662,7 @@ window.FHFuzzy = (function () {
       if (my !== runId) return;
       var tA = res[0], tB = res[1];
       S.tA = tA;
+      if (res.length > 2) { S.up = ancestorOfRank(tA, "GENUS"); showMany(res); return; }
       if (mode === "species") S.up = ancestorOfRank(tA, "GENUS");
       return locate(tA, tB).then(function (loc) {
         if (my !== runId) return;
@@ -3675,25 +3760,8 @@ window.FHFuzzy = (function () {
     return path.slice(from, to).map(function (s) { return '<li><span class="vk-stepno">Step ' + (s.no || "?") + '</span>' + inline(s.text) + "</li>"; }).join("");
   }
 
-  function show(tA, tB, loc) {
-    var out = $b().querySelector("#vkOut"), nA = nm(tA), nB = nm(tB);
-    var pa = parseProfile(tA.currentProfile && tA.currentProfile.profile), pb = parseProfile(tB.currentProfile && tB.currentProfile.profile);
-    var rows = featureRows(pa, pb);
-    var h = '<div class="vk-vs"><a href="' + VF + 'taxon/' + esc(tA.id) + '" target="_blank" rel="noopener">' + esc(nA) + '<small>Open in VicFlora</small></a>' +
-      '<a href="' + VF + 'taxon/' + esc(tB.id) + '" target="_blank" rel="noopener">' + esc(nB) + '<small>Open in VicFlora</small></a></div>';
-
-    if (tA._profFrom || tB._profFrom) h += '<p class="vk-foot">' + esc(tA._profFrom ? nA : nB) + (tA._profFrom && tB._profFrom ? " and " + esc(nB) : "") + ' ' + (tA._profFrom && tB._profFrom ? "have" : "has") + ' no description of its own in VicFlora, so the species description (' + esc(tA._profFrom || tB._profFrom) + ') is shown instead.</p>';
-    h += '<div class="vk-h">Features side by side</div>';
-    if (!rows.length) {
-      h += '<div class="vk-status">VicFlora has no written description for either of these.</div>';
-    } else {
-      h += '<label class="vk-tog"><input type="checkbox" id="vkDiffOnly"> Hide rows that read the same</label>';
-      h += '<div class="vk-tablewrap"><table class="vk-table" id="vkFeat"><thead><tr><th>Feature</th><th>' + esc(nA) + '</th><th>' + esc(nB) + '</th></tr></thead><tbody>' +
-        rows.map(function (r) { return '<tr class="' + (r.same ? "same" : "diff") + '"><th scope="row">' + esc(r.label) + "</th>" + cell(r.a) + cell(r.b) + "</tr>"; }).join("") +
-        "</tbody></table></div>";
-      h += '<p class="vk-foot">Rows are grouped by the part each VicFlora sentence starts with. Read the full wording in VicFlora before relying on a difference.</p>';
-    }
-
+  function splitHtml(nA, nB, loc) {
+    var h = "";
     h += '<div class="vk-h">Where the key separates them</div>';
     var cA = loc.ctx ? loc.ctx.la : (loc.via ? loc.via.la : nA), cB = loc.ctx ? loc.ctx.lb : (loc.via ? loc.via.lb : nB);
     if (loc.via) h += '<p class="vk-foot">The key does not list ' + esc(loc.via.a === loc.via.la ? loc.via.b : (loc.via.b === loc.via.lb ? loc.via.a : loc.via.a + " and " + loc.via.b)) + ' by name, so this shows where their species part ways. Check the subspecies or variety in VicFlora for the finer difference.</p>';
@@ -3716,6 +3784,29 @@ window.FHFuzzy = (function () {
       if (loc.pb.length > sp.index + 1) h += '<details class="vk-path"><summary>Rest of the route to ' + esc(cB) + "</summary><ol>" + stepList(loc.pb, sp.index + 1) + "</ol></details>";
     }
     if (!loc.reason && loc.sp && loc.multi) h += '<p class="vk-foot">One of these is keyed in more than one place. This shows the earliest step that separates them.</p>';
+    return h;
+  }
+
+  function show(tA, tB, loc) {
+    var out = $b().querySelector("#vkOut"), nA = nm(tA), nB = nm(tB);
+    var pa = parseProfile(tA.currentProfile && tA.currentProfile.profile), pb = parseProfile(tB.currentProfile && tB.currentProfile.profile);
+    var rows = featureRows(pa, pb);
+    var h = '<div class="vk-vs"><a href="' + VF + 'taxon/' + esc(tA.id) + '" target="_blank" rel="noopener">' + esc(nA) + '<small>Open in VicFlora</small></a>' +
+      '<a href="' + VF + 'taxon/' + esc(tB.id) + '" target="_blank" rel="noopener">' + esc(nB) + '<small>Open in VicFlora</small></a></div>';
+
+    if (tA._profFrom || tB._profFrom) h += '<p class="vk-foot">' + esc(tA._profFrom ? nA : nB) + (tA._profFrom && tB._profFrom ? " and " + esc(nB) : "") + ' ' + (tA._profFrom && tB._profFrom ? "have" : "has") + ' no description of its own in VicFlora, so the species description (' + esc(tA._profFrom || tB._profFrom) + ') is shown instead.</p>';
+    h += '<div class="vk-h">Features side by side</div>';
+    if (!rows.length) {
+      h += '<div class="vk-status">VicFlora has no written description for either of these.</div>';
+    } else {
+      h += '<label class="vk-tog"><input type="checkbox" id="vkDiffOnly"> Hide rows that read the same</label>';
+      h += '<div class="vk-tablewrap"><table class="vk-table" id="vkFeat"><thead><tr><th>Feature</th><th>' + esc(nA) + '</th><th>' + esc(nB) + '</th></tr></thead><tbody>' +
+        rows.map(function (r) { return '<tr class="' + (r.same ? "same" : "diff") + '"><th scope="row">' + esc(r.label) + "</th>" + cell(r.a) + cell(r.b) + "</tr>"; }).join("") +
+        "</tbody></table></div>";
+      h += '<p class="vk-foot">Rows are grouped by the part each VicFlora sentence starts with. Read the full wording in VicFlora before relying on a difference.</p>';
+    }
+
+    h += splitHtml(nA, nB, loc);
     h += '<div class="vk-photorow">' + photoBtn(nA) + photoBtn(nB) + '</div>';
     h += '<p class="vk-foot">Descriptions and keys: VicFlora, Royal Botanic Gardens Victoria. Keys are served by KeyBase. Photos: iNaturalist (opens in your browser).</p>';
     out.innerHTML = h;
@@ -3723,6 +3814,48 @@ window.FHFuzzy = (function () {
     if (tog) tog.addEventListener("change", function () {
       out.querySelectorAll("#vkFeat tbody tr.same").forEach(function (tr) { tr.hidden = tog.checked; });
     });
+  }
+
+  function showMany(ts) {
+    var out = $b().querySelector("#vkOut"), names = ts.map(nm);
+    var ps = ts.map(function (t) { return parseProfile(t.currentProfile && t.currentProfile.profile); });
+    var labels = [];
+    ps.forEach(function (p) { p.order.forEach(function (l) { if (labels.indexOf(l) < 0) labels.push(l); }); });
+    var rk = {}; CATS.forEach(function (c, i) { rk[c[0]] = i; });
+    labels.sort(function (x, y) { return (rk[x] == null ? 99 : rk[x]) - (rk[y] == null ? 99 : rk[y]); });
+    var rows = labels.map(function (l) {
+      var cells = ps.map(function (p) { return p.map[l] || null; });
+      return { label: l, cells: cells, same: cells.every(function (c) { return c && sameText(c, cells[0]); }) };
+    });
+    var h = '<div class="vk-vs vk-vsn">' + ts.map(function (t, i) { return '<a href="' + VF + "taxon/" + esc(t.id) + '" target="_blank" rel="noopener">' + esc(names[i]) + "<small>Open in VicFlora</small></a>"; }).join("") + "</div>";
+    h += '<div class="vk-h">Features side by side</div>';
+    if (!rows.length) h += '<div class="vk-status">VicFlora has no written description for any of these.</div>';
+    else {
+      h += '<label class="vk-tog"><input type="checkbox" id="vkDiffOnly"> Hide rows that read the same</label>';
+      h += '<div class="vk-tablewrap"><table class="vk-table" id="vkFeat"><thead><tr><th>Feature</th>' + names.map(function (n) { return "<th>" + esc(n) + "</th>"; }).join("") + "</tr></thead><tbody>" +
+        rows.map(function (r) { return '<tr class="' + (r.same ? "same" : "diff") + '"><th scope="row">' + esc(r.label) + "</th>" + r.cells.map(cell).join("") + "</tr>"; }).join("") + "</tbody></table></div>";
+      h += '<p class="vk-foot">Rows are grouped by the part each VicFlora sentence starts with. Read the full wording in VicFlora before relying on a difference.</p>';
+    }
+    h += '<div class="vk-h">Where the key separates two of them</div>';
+    var pairs = [];
+    for (var i = 0; i < ts.length; i++) for (var j = i + 1; j < ts.length; j++) pairs.push([i, j]);
+    h += '<div class="vk-col" style="max-width:520px"><label for="vkPair">Pair</label><select id="vkPair">' + pairs.map(function (p, k) { return '<option value="' + k + '">' + esc(names[p[0]] + " and " + names[p[1]]) + "</option>"; }).join("") + '</select></div><div id="vkPairOut"></div>';
+    h += '<div class="vk-photorow">' + names.map(function (n) { return photoBtn(n); }).join("") + "</div>";
+    h += '<p class="vk-foot">Descriptions and keys: VicFlora, Royal Botanic Gardens Victoria. Keys are served by KeyBase. Photos: iNaturalist (opens in your browser).</p>';
+    var fromN = ts.filter(function (t) { return t._profFrom; });
+    if (fromN.length) h += '<p class="vk-foot">' + fromN.map(function (t) { return esc(nm(t)) + " has no description of its own, so its species (" + esc(t._profFrom) + ") is shown"; }).join("; ") + ".</p>";
+    out.innerHTML = h;
+    var tog = out.querySelector("#vkDiffOnly");
+    if (tog) tog.addEventListener("change", function () { out.querySelectorAll("#vkFeat tbody tr.same").forEach(function (tr) { tr.hidden = tog.checked; }); });
+    var sel = out.querySelector("#vkPair"), po = out.querySelector("#vkPairOut"), seq = 0;
+    function loadPair() {
+      var p = pairs[+sel.value], my2 = ++seq;
+      po.innerHTML = '<div class="vk-status">Looking up the key...</div>';
+      locate(ts[p[0]], ts[p[1]]).then(function (loc) { if (my2 === seq) po.innerHTML = splitHtml(names[p[0]], names[p[1]], loc); })
+        .catch(function () { if (my2 === seq) po.innerHTML = '<div class="vk-status err">Could not load the key. Check your connection and try again.</div>'; });
+    }
+    sel.addEventListener("change", loadPair);
+    loadPair();
   }
 
   window.VicKey = { open: open, close: close, _t: { cleanText: cleanText, parseProfile: parseProfile, featureRows: featureRows, buildKey: buildKey, findPath: findPath, findPaths: findPaths, bestSplit: bestSplit, splitPoint: splitPoint, itemMatches: itemMatches } };
@@ -4461,7 +4594,7 @@ window.FHKit = (function(){
     const sqlGeomCols = "CREATE TABLE gpkg_geometry_columns (table_name TEXT NOT NULL,column_name TEXT NOT NULL,"
       +"geometry_type_name TEXT NOT NULL,srs_id INTEGER NOT NULL,z TINYINT NOT NULL,m TINYINT NOT NULL)";
     const sqlFeature = "CREATE TABLE "+tableName+" (fid INTEGER PRIMARY KEY AUTOINCREMENT,"+geomCol+" POLYGON,"
-      +"polygon_id TEXT,site TEXT,survey_date TEXT,species_list TEXT,species_count INTEGER,notes TEXT,created_by TEXT)";
+      +"polygon_id TEXT,site TEXT,survey_date TEXT,species_list TEXT,species_count INTEGER,notes TEXT,created_by TEXT,tree_count INTEGER,photo_ids TEXT)";
 
     const srsRows = [
       {rowid:-1, record: gpkgEncodeRecord([t("Undefined cartesian SRS"), rid(), t("NONE"), n(-1), t("undefined"), nul()])},
@@ -4487,7 +4620,9 @@ window.FHKit = (function(){
         t((pg.species||[]).join("; ")),
         n((pg.species||[]).length),
         t(pg.notes||""),
-        t(pg.createdBy||"")
+        t(pg.createdBy||""),
+        (pg.treeCount!==undefined && pg.treeCount!=="" && !isNaN(+pg.treeCount)) ? n(+pg.treeCount) : nul(),
+        t((pg.photos||[]).map(p=>p.label).filter(Boolean).join(", "))
       ])
     }));
 
@@ -5156,7 +5291,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-18.1";
+  const BUILD_VERSION = "2026-11-18.4";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -5391,7 +5526,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     FHKit.toast('Survey started for "'+site+'"');
     try{ autoRvmp(); }catch(e){}
   }
-  function finishSurvey(){
+  function finishSurvey(skipGate){
+    if(skipGate!==true && window.__roadFinishGate && window.__roadFinishGate(()=>finishSurvey(true))) return;
     if(document.getElementById("fhFinish")) return;
     const site = ($("site").value||"").trim() || "this survey";
     const wrap = document.createElement("div");
@@ -7574,7 +7710,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     list.innerHTML = siteNotes.map(n=>
       '<div class="site-note card2">'
       + '<div class="c2-head"><div class="sci">'+FHKit.esc(fmtNoteTime(n.ts))+(n.by?' &middot; by '+FHKit.esc(n.by):'')+'</div></div>'
-      + '<div class="c2-body"><textarea data-site-note="'+n.id+'" placeholder="Weather, access, fauna observed, recommendations…">'+FHKit.esc(n.text||"")+'</textarea>'+noteZoneUi(n)+'</div>'
+      + '<div class="c2-body"><textarea data-site-note="'+n.id+'" placeholder="Weather, access, fauna observed, recommendations…">'+FHKit.esc(n.text||"")+'</textarea>'+noteZoneUi(n)+ppHtml("note", n)+'</div>'
       + '<div class="sp-foot"><button type="button" class="sp-del" data-del-note="'+n.id+'">'+SP_ICON.trash+'Delete note</button></div>'
       + '</div>'
     ).join("") || '<p class="muted" style="margin:0 0 10px">No field notes yet — tap “+ Field Notes” to add one.</p>';
@@ -7813,7 +7949,10 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
           '<button type="button" class="'+(k===currentBaseKey?"on":"")+'" data-base="'+k+'"><b>'+b.name+'</b><small>'+b.note+'</small></button>'
         ).join("")
         + '<div class="lm-title">On top</div>'
-        + '<label class="lm-toggle"><input type="checkbox" data-labels'+(showLabels?" checked":"")+'><span><b>'+LABELS_LAYER.name+'</b><small>'+LABELS_LAYER.note+'</small></span></label>';
+        + '<label class="lm-toggle"><input type="checkbox" data-labels'+(showLabels?" checked":"")+'><span><b>'+LABELS_LAYER.name+'</b><small>'+LABELS_LAYER.note+'</small></span></label>'
+        + '<div class="lm-title">No signal</div><button type="button" data-offline><b>Save this area offline</b><small>Do it while you have signal</small></button>';
+      const ob = menu.querySelector("[data-offline]");
+      if(ob) ob.addEventListener("click", ()=>{ menu.classList.remove("show"); if(window.__fhSaveMapArea) window.__fhSaveMapArea({ map, base:BASE_LAYERS[currentBaseKey], under:(BASE_LAYERS[currentBaseKey].under && BASE_LAYERS[BASE_LAYERS[currentBaseKey].under]) || null, labels: showLabels ? LABELS_LAYER : null }); });
       menu.querySelectorAll("[data-base]").forEach(btn=>{
         btn.addEventListener("click", ()=>{
           currentBaseKey = btn.dataset.base;
@@ -8914,9 +9053,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       return '<div class="poly-item card2">'
         + '<div class="c2-head"><div class="sp-cn">'+FHKit.esc(pg.id)+'</div><div class="sci">'+nV+' corner'+(nV===1?'':'s')+(pg.createdBy?' &middot; by '+FHKit.esc(pg.createdBy):'')+'</div></div>'
         + '<div class="c2-body">'
-        + '<label class="detail-label" style="display:block;margin:0 0 6px">Species in this polygon</label>'
-        + '<div class="poly-sp" data-poly-sp-host="'+FHKit.esc(pg.id)+'"></div>'
-        + '<textarea data-poly-notes="'+FHKit.esc(pg.id)+'" placeholder="Notes for this polygon (habitat description, condition, etc.)…">'+FHKit.esc(pg.notes||"")+'</textarea>'
+        + '<label class="detail-label" style="display:block;margin:0 0 6px">'+(typeof surveyType!=="undefined" && surveyType==="tree" ? "Tree species in this stand" : "Species in this polygon")+'</label>'
+        + '<div class="poly-sp" data-poly-sp-host="'+FHKit.esc(pg.id)+'"></div>'+ppTreeHtml(pg)
+        + '<textarea data-poly-notes="'+FHKit.esc(pg.id)+'" placeholder="Notes for this polygon (habitat description, condition, etc.)…">'+FHKit.esc(pg.notes||"")+'</textarea>'+ppHtml("poly", pg)
         + '</div>'
         + '<div class="sp-tools"><button type="button" class="sp-tool" data-poly-adjust="'+FHKit.esc(pg.id)+'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg><span class="sp-tool-lbl">Adjust shape on map</span></button></div>'
         + '<div class="sp-foot"><button type="button" class="sp-del" data-del-poly="'+FHKit.esc(pg.id)+'">'+SP_ICON.trash+'Delete polygon</button></div>'
@@ -9178,7 +9317,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     if(siteNotes.length){
       push([]);
       push(["Site Field Notes"], "bold");
-      siteNotes.forEach(n=>{ if((n.text||"").trim()) push([fmtNoteTime(n.ts), n.text], "wrap"); });
+      siteNotes.forEach(n=>{ if((n.text||"").trim() || ppIds(n)) push([fmtNoteTime(n.ts), n.text||"", ppIds(n) ? "Photos: "+ppIds(n) : ""], "wrap"); });
     }
     push([]);
     // Record ID first (matches each row to its photo in the exported zip);
@@ -9202,8 +9341,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     if(polygons.length){
       push([]);
       push(["Polygons"], "bold");
-      push(["Polygon ID","Points","Species","Notes"], "bold");
-      polygons.forEach(pg=> push([pg.id, (pg.vertices||[]).length, (pg.species||[]).join("; "), pg.notes||""], "wrap"));
+      push(["Polygon ID","Points","Species","Notes","Photo IDs"], "bold");
+      polygons.forEach(pg=> push([pg.id, (pg.vertices||[]).length, (pg.species||[]).join("; "), pg.notes||"", ppIds(pg)], "wrap"));
     }
 
     const xlsxBlob = FHKit.buildXLSXBlob("Flora Survey", sheet, styles, [14,26,30,12,8,8,12,10,14,34]);
@@ -9215,6 +9354,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     // SEPARATE zip files rather than one combined zip — GIS software expects
     // to be pointed at a folder of spatial data, not one full of photos too.
     const photoFiles = D.skipPhotos ? {} : await buildPhotoFiles(rows);
+    if(!D.skipPhotos) await addExtraPhotoFiles(photoFiles, polygons, siteNotes);
     const hasPhotos = Object.keys(photoFiles).length > 0;
     const geoPoints = rows
       .filter(r=> r.significant && Array.isArray(r.points))
@@ -9590,6 +9730,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const id = e.target.dataset.delNote;
     if(id){
       confirmToast("Delete this field note?", "Delete", ()=>{
+        const gone = siteNotes.find(n=>n.id===id); ((gone&&gone.photos)||[]).forEach(p=>deletePhotoBytes(p.id));
         siteNotes = siteNotes.filter(n=>n.id!==id); renderSiteNotes(); autosave();
       });
     }
@@ -10084,18 +10225,42 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       + '<div class="rd-pid">Row ID '+e(v.code)+'</div></div>'
     ).join("");
   }
+  const SITE_CAP = "Typical site conditions";
+  function dataPortrait(u){ return new Promise(res=>{ const i = new Image(); i.onload = ()=>res((i.naturalHeight||0) > (i.naturalWidth||0)); i.onerror = ()=>res(false); i.src = u; }); }
+  function sitePhotoOk(){ return (roadside.photos||[]).some(p=>p.siteCond && !p.portrait); }
+  function roadFinishGate(go){
+    if(surveyType!=="roadside" || sitePhotoOk() || document.getElementById("fhSiteCond")) return false;
+    const wrap = document.createElement("div");
+    wrap.id = "fhSiteCond"; wrap.className = "name-ask confirm";
+    const hasPortrait = (roadside.photos||[]).some(p=>p.siteCond && p.portrait);
+    wrap.innerHTML = '<div class="name-ask-card notice-card" role="alertdialog"><b>Site conditions photo needed</b>'
+      + '<p>'+(hasPortrait ? "The site conditions photo you added is portrait. " : "")+'A landscape photo of typical site conditions is required for a roadside survey and has not been taken yet.</p>'
+      + '<p>All photo uploads must be in landscape format. Turn the phone sideways before taking a photo.</p>'
+      + '<div class="name-ask-btns"><button type="button" class="btn light" data-s="skip">Finish anyway</button><button type="button" class="btn" data-s="add">Add photo now</button></div></div>';
+    document.body.appendChild(wrap);
+    wrap.addEventListener("click", ev=>{
+      if(ev.target === wrap){ wrap.remove(); return; }
+      const b = ev.target.closest("[data-s]"); if(!b) return;
+      wrap.remove();
+      if(b.dataset.s === "add"){ const c = $("roadPhotoCard"); if(c) c.scrollIntoView({ behavior:"smooth", block:"center" }); const i = $("rdSiteInput"); if(i) i.click(); }
+      else go();
+    });
+    return true;
+  }
+  window.__roadFinishGate = roadFinishGate;
   function renderRoadPhotos(){
     const host = $("rdPhotos"); if(!host) return;
     const e = FHKit.esc;
     host.innerHTML = roadside.photos.map(p=>
-      '<div class="rd-photo"><div class="photo-thumb"><img src="'+(p.thumb||"")+'" alt="Roadside photo"><button type="button" class="x" data-rd-photo-del="'+e(p.id)+'" title="Remove photo">&times;</button></div>'
+      '<div class="rd-photo"><div class="photo-thumb"><img src="'+(p.thumb||"")+'" alt="Roadside photo">'+(p.siteCond?'<span class="rd-sc">Site conditions'+(p.portrait?' (portrait)':'')+'</span>':(p.portrait?'<span class="rd-sc">Portrait</span>':''))+'<button type="button" class="x" data-rd-photo-del="'+e(p.id)+'" title="Remove photo">&times;</button></div>'
       + '<input type="text" data-rdcap="'+e(p.id)+'" value="'+e(p.caption||"")+'" placeholder="Caption" autocomplete="off">'
       + zonesUi("data-rdpz", p.id, "photo|"+p.id, p.zone||"") + '<div class="rd-pid">'+e(p.label||"")+'</div></div>'
     ).join("");
     const n = $("rdPhotoCount"); if(n) n.textContent = roadside.photos.length || "";
   }
-  async function addRoadPhotos(files){
-    if(!requireName(()=>addRoadPhotos(files))) return;
+  async function addRoadPhotos(files, site){
+    if(!requireName(()=>addRoadPhotos(files, site))) return;
+    let sawPortrait = false;
     const d = new Date();
     const ymd = String(d.getFullYear()).slice(2)+pad2(d.getMonth()+1)+pad2(d.getDate());
     for(const f of Array.from(files||[])){
@@ -10104,10 +10269,14 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       try{
         const { full, thumb } = await stampImage(f, label);
         await putPhotoBytes(id, full);
-        roadside.photos.push({ id, thumb, label, caption:"", addedAt:new Date().toISOString() });
+        const portrait = await dataPortrait(thumb); if(portrait) sawPortrait = true;
+        const q = { id, thumb, label, caption: site ? SITE_CAP : "", addedAt:new Date().toISOString() };
+        if(site) q.siteCond = true; if(portrait) q.portrait = true;
+        roadside.photos.push(q);
         clearStorageWarning("photo");
       }catch(err){ showStorageWarning("photo", err); FHKit.toast("Couldn't save a photo. Check your device's available storage."); }
     }
+    if(sawPortrait) FHKit.toast("That photo is portrait. All photos must be landscape. Retake it with the phone sideways.");
     renderRoadPhotos(); autosave();
   }
   let vPhotoTarget = null;
@@ -10122,7 +10291,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       try{
         const { full, thumb } = await stampImage(f, label);
         await putPhotoBytes(id, full);
-        v.photos.push({ id, thumb, label, addedAt:new Date().toISOString() });
+        const portrait = await dataPortrait(thumb);
+        v.photos.push(portrait ? { id, thumb, label, portrait:true, addedAt:new Date().toISOString() } : { id, thumb, label, addedAt:new Date().toISOString() });
+        if(portrait) FHKit.toast("That photo is portrait. All photos must be landscape. Retake it with the phone sideways.");
         clearStorageWarning("photo");
       }catch(err){ showStorageWarning("photo", err); FHKit.toast("Couldn't save a photo. Check your device's available storage."); }
     }
@@ -10184,9 +10355,11 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     pcard.addEventListener("click", ev=>{
       if(ev.target.closest("#rdTakePhoto")){ $("rdCamInput").click(); return; }
       if(ev.target.closest("#rdChoosePhoto")){ $("rdFileInput").click(); return; }
+      if(ev.target.closest("#rdSitePhoto")){ $("rdSiteInput").click(); return; }
       const d = ev.target.dataset.rdPhotoDel;
       if(d){ roadside.photos = roadside.photos.filter(p=>p.id!==d); renderRoadPhotos(); autosave(); deletePhotoBytes(d); }
     });
+    $("rdSiteInput").addEventListener("change", ev=>{ const files = Array.from(ev.target.files||[]).slice(0,1); ev.target.value = ""; addRoadPhotos(files, true); });
     ["rdCamInput","rdFileInput"].forEach(id=> $(id).addEventListener("change", ev=>{
       const files = Array.from(ev.target.files||[]); ev.target.value = ""; addRoadPhotos(files);
     }));
@@ -10527,12 +10700,12 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     push(TREE_FIELDS.map(f=>f.k), "bold");
     rowsX.forEach(r=> push(TREE_FIELDS.map(f=>treeVal(r,f,rowsX)), r.uncertain ? "red" : null));
     if((D.polygons||[]).length){
-      push([]); push(["Polygons"], "bold"); push(["Polygon ID","Points","Species","Notes"], "bold");
-      D.polygons.forEach(pg=> push([pg.id, (pg.vertices||[]).length, (pg.species||[]).join("; "), pg.notes||""], "wrap"));
+      push([]); push(["Polygons"], "bold"); push(["Polygon ID","Points","Species","Notes","Approx. tree count","Photo IDs"], "bold");
+      D.polygons.forEach(pg=> push([pg.id, (pg.vertices||[]).length, (pg.species||[]).join("; "), pg.notes||"", pg.treeCount||"", ppIds(pg)], "wrap"));
     }
     if((D.siteNotes||[]).length){
       push([]); push(["Field Notes"], "bold");
-      D.siteNotes.forEach(n=>{ if((n.text||"").trim()) push([fmtNoteTime(n.ts), n.text], "wrap"); });
+      D.siteNotes.forEach(n=>{ if((n.text||"").trim() || ppIds(n)) push([fmtNoteTime(n.ts), n.text||"", ppIds(n) ? "Photos: "+ppIds(n) : ""], "wrap"); });
     }
     push([]); push(["Site", m.site||""]); push(["Date", m.date||""]); push(["Trees", rowsX.length]);
     return [22,22,12,12,18,28,24,22,20,12,10,8,20,16,28,14,20,16,8,14,16,14,14,14,14,14,14,14,16,10,16];
@@ -10556,6 +10729,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const xlsxFilename = baseName+".xlsx";
     // photos: per-record photos, plus the roadside photo list
     const photoFiles = D.skipPhotos ? {} : await buildPhotoFiles(rowsX);
+    if(!D.skipPhotos) await addExtraPhotoFiles(photoFiles, polygons, D.siteNotes||[]);
     if(type==="roadside" && !D.skipPhotos){
       const rp = (D.roadside && D.roadside.photos) || [];
       for(const p of rp){
@@ -11453,6 +11627,137 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     document.addEventListener("input", odSchedule, true); document.addEventListener("click", odSchedule, true);
     if(odConnected()) setTimeout(()=>odSync(false), 5000);
   })();
+
+/* ===== Photos on polygons and field notes, stand tree count, offline map area ===== */
+const ppIds = o => (o && o.photos || []).map(p=>p.label).filter(Boolean).join(", ");
+function ppHtml(kind, o){
+  const e = FHKit.esc, key = kind+"|"+e(o.id);
+  const th = (o.photos||[]).map(p=>'<div class="photo-thumb"><img src="'+(p.thumb||"")+'" alt="Photo"><button type="button" class="x" data-pp-del="'+key+"|"+e(p.id)+'" title="Remove photo">&times;</button></div>').join("");
+  return '<div class="row-photos"><label class="detail-label">Photos <span class="muted" style="text-transform:none;font-weight:600">(landscape only)</span></label>'
+    + '<div class="photo-grid">'+th+'</div>'
+    + '<div class="photo-btns"><button type="button" class="btn-out sp-addphoto" data-pp-cam="'+key+'">Take photo</button><button type="button" class="btn-out sp-addphoto" data-pp-file="'+key+'">Choose photos</button></div></div>';
+}
+function ppTreeHtml(pg){
+  if(typeof surveyType === "undefined" || surveyType !== "tree") return "";
+  return '<p class="muted" style="margin:0 0 6px;font-size:12px">A species added here is saved as one tree record that represents the whole stand.</p>'
+    + '<label class="detail-label" style="display:block;margin:0 0 4px">Approx. number of trees in this stand</label>'
+    + '<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" data-poly-count="'+FHKit.esc(pg.id)+'" value="'+FHKit.esc(pg.treeCount||"")+'" placeholder="e.g. 12" style="width:140px;margin:0 0 8px">';
+}
+const ppFind = (kind,id)=> (kind==="poly" ? polygons : siteNotes).find(x=>x.id===id);
+let ppTarget = null;
+(function ppInputs(){
+  [["ppCam",true],["ppFile",false]].forEach(([id,cam])=>{
+    const inp = document.createElement("input"); inp.type="file"; inp.accept="image/*"; inp.id=id; inp.className="file-hidden"; inp.tabIndex=-1;
+    if(cam) inp.setAttribute("capture","environment"); else inp.multiple = true;
+    inp.addEventListener("change", ev=>{ const files = Array.from(ev.target.files||[]); ev.target.value=""; if(ppTarget) addPPPhotos(ppTarget[0], ppTarget[1], files); });
+    document.body.appendChild(inp);
+  });
+})();
+async function addPPPhotos(kind, id, files){
+  if(!requireName(()=>addPPPhotos(kind, id, files))) return;
+  const o = ppFind(kind, id); if(!o) return;
+  if(!Array.isArray(o.photos)) o.photos = [];
+  let portrait = 0;
+  for(const f of files){
+    const pid = "p_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
+    let label;
+    if(kind==="poly"){ const nums = o.photos.map(p=>+String(p.label||"").split("-").pop()||0); label = o.id+"-"+((nums.length?Math.max(...nums):0)+1); }
+    else { const d = new Date(); label = "FN-"+String(d.getFullYear()).slice(2)+pad2(d.getMonth()+1)+pad2(d.getDate())+"-"+Math.random().toString(36).slice(2,8).toUpperCase(); }
+    try{
+      const { full, thumb } = await stampImage(f, label);
+      await putPhotoBytes(pid, full);
+      const isP = await dataPortrait(thumb); if(isP) portrait++;
+      const q = { id:pid, thumb, label, addedAt:new Date().toISOString() }; if(isP) q.portrait = true;
+      o.photos.push(q);
+      clearStorageWarning("photo");
+    }catch(err){ showStorageWarning("photo", err); FHKit.toast("Couldn't save a photo. Check your device's available storage."); }
+  }
+  if(portrait) FHKit.toast("That photo is portrait. All photos must be landscape. Retake it with the phone sideways.");
+  if(kind==="poly") renderPolygons(); else renderSiteNotes();
+  autosave();
+}
+document.addEventListener("click", ev=>{
+  const b = ev.target.closest && ev.target.closest("[data-pp-cam],[data-pp-file],[data-pp-del]"); if(!b) return;
+  const d = b.dataset;
+  if(d.ppCam || d.ppFile){ const [k,i] = (d.ppCam||d.ppFile).split("|"); ppTarget = [k,i]; $(d.ppCam ? "ppCam" : "ppFile").click(); return; }
+  const [k,i,pid] = d.ppDel.split("|"); const o = ppFind(k,i); if(!o) return;
+  o.photos = (o.photos||[]).filter(p=>p.id!==pid); if(k==="poly") renderPolygons(); else renderSiteNotes(); autosave(); deletePhotoBytes(pid);
+});
+document.addEventListener("input", ev=>{
+  const id = ev.target.dataset && ev.target.dataset.polyCount; if(!id) return;
+  const pg = polygons.find(p=>p.id===id); if(!pg) return;
+  const v = ev.target.value.replace(/[^0-9]/g,""); if(v !== ev.target.value) ev.target.value = v;
+  pg.treeCount = v; autosave();
+});
+async function addExtraPhotoFiles(files, polys, notes){
+  const all = [].concat((polys||[]).flatMap(p=>p.photos||[]), (notes||[]).flatMap(n=>n.photos||[]));
+  for(const p of all){
+    let du = p.dataUrl; if(!du){ try{ du = await getPhotoBytes(p.id); }catch(e){ du = null; } }
+    if(du) files[(p.label||p.id)+".jpg"] = dataUrlToBytes(du);
+  }
+}
+
+// Save the map area around the screen centre into the tile cache kept by sw.js, so it still shows with no signal.
+window.__fhSaveMapArea = function(ctx){
+  const map = ctx.map, base = ctx.base, E = FHKit.esc;
+  if(document.getElementById("fhOffMap")) return;
+  if(!(navigator.serviceWorker && navigator.serviceWorker.controller)){ FHKit.notice("Offline maps need the saved app", "Reload the app once with a connection, then try again. The offline copy is made by the app's saved-files helper, which is not running yet.", "warn"); return; }
+  const c = map.getCenter();
+  const tx = (lon,z)=> Math.floor((lon+180)/360*Math.pow(2,z));
+  const ty = (lat,z)=>{ const r = lat*Math.PI/180; return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z)); };
+  const CAP = 2500;
+  function plan(km){
+    const dLat = km/111.32, dLon = km/(111.32*Math.cos(c.lat*Math.PI/180));
+    const w = c.lng-dLon, e = c.lng+dLon, s = c.lat-dLat, n = c.lat+dLat;
+    const o = base.opts||{}, top = Math.min(o.maxNativeZoom||19, 19), lo = Math.max(o.minZoom||0, 14);
+    const cnt = z=> (tx(e,z)-tx(w,z)+1)*(ty(s,z)-ty(n,z)+1);
+    const under = ctx.under ? 14 : null;               // Vicmap sits on Esri below zoom 15
+    const extra = ctx.labels ? 1 : 0;
+    let zMax = top, total = 0;
+    for(; zMax >= lo; zMax--){ total = 0; for(let z=lo; z<=zMax; z++) total += cnt(z)*(1+extra); if(under && lo>14) total += cnt(14); if(total <= CAP) break; }
+    return { w,e,s,n,lo,zMax,total,under,cnt };
+  }
+  const opts = [0.5,1,2].map(k=>({ k, p:plan(k) }));
+  const wrap = document.createElement("div"); wrap.id = "fhOffMap"; wrap.className = "name-ask confirm";
+  wrap.innerHTML = '<div class="name-ask-card notice-card"><b>Save map for offline use</b><p>Saves the '+E(base.name)+' map around the centre of the screen on this phone. Do it while you have signal. It can use roughly '+'30 to 80 MB.</p>'
+    + '<div class="name-ask-btns" style="flex-direction:column;align-items:stretch">'
+    + opts.map(o=>'<button type="button" class="btn light" data-km="'+o.k+'">Radius '+(o.k<1?(o.k*1000)+" m":o.k+" km")+' <small>(to zoom '+o.p.zMax+', about '+o.p.total.toLocaleString()+' tiles)</small></button>').join("")
+    + '<button type="button" class="btn light" data-km="0">Cancel</button></div></div>';
+  document.body.appendChild(wrap);
+  wrap.addEventListener("click", ev=>{
+    if(ev.target === wrap){ wrap.remove(); return; }
+    const b = ev.target.closest("[data-km]"); if(!b) return;
+    const km = +b.dataset.km; if(!km){ wrap.remove(); return; }
+    go(plan(km), wrap);
+  });
+  function urlFor(L, z, x, y){
+    let u = L.url.replace("{z}",z).replace("{x}",x).replace("{y}",y);
+    if(L.opts && L.opts.subdomains){ const sd = L.opts.subdomains; u = u.replace("{s}", sd[(x+y)%sd.length]); }
+    return u;
+  }
+  async function go(p, dlg){
+    const tiles = [];
+    const addLayer = (L, from, to)=>{ for(let z=from; z<=to; z++){ const x0=tx(p.w,z), x1=tx(p.e,z), y0=ty(p.n,z), y1=ty(p.s,z); for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) tiles.push(urlFor(L,z,x,y)); } };
+    addLayer(base, p.lo, p.zMax);
+    if(ctx.under) addLayer(ctx.under, 14, Math.min(p.zMax, 15));
+    if(ctx.labels) addLayer(ctx.labels, p.lo, p.zMax);
+    let done = 0, bad = 0, stop = false, i = 0;
+    dlg.innerHTML = '<div class="name-ask-card notice-card"><b>Saving map</b><p id="fhOffMapP">0 of '+tiles.length.toLocaleString()+'</p><div class="name-ask-btns"><button type="button" class="btn light" id="fhOffMapX">Stop</button></div></div>';
+    dlg.querySelector("#fhOffMapX").addEventListener("click", ()=>{ stop = true; });
+    const note = dlg.querySelector("#fhOffMapP");
+    async function one(u){
+      for(let a=0;a<2;a++){
+        try{ const r = await fetch(u, { mode:"cors" }); if(r && r.ok){ await r.arrayBuffer(); return true; } }catch(e){}
+        try{ const r = await fetch(u, { mode:"no-cors" }); if(r){ return true; } }catch(e){}
+      }
+      return false;
+    }
+    async function worker(){ while(!stop && i < tiles.length){ const u = tiles[i++]; if(await one(u)) done++; else bad++; note.textContent = (done+bad).toLocaleString()+" of "+tiles.length.toLocaleString()+(bad?" ("+bad+" failed)":""); } }
+    await Promise.all([1,2,3,4,5,6].map(worker));
+    dlg.remove();
+    FHKit.notice(stop ? "Stopped" : (bad > tiles.length*0.1 ? "Saved with gaps" : "Map saved"), done.toLocaleString()+" map tiles saved on this phone"+(bad?"; "+bad+" could not be fetched (poor signal or blocked)":"")+". They show without signal. Saving a very large area can push older saved tiles out, so keep it to the area you will work in.", bad > tiles.length*0.1 ? "warn" : "ok");
+  }
+};
 
   FHKit.buildPicker($("pick"), $("pickList"), add, ()=> surveyType==="tree" ? [] : rows.map(r=>r.sci), openExisting);
   // Jump to the record already logged for a species picked from the search list.

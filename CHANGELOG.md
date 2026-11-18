@@ -1,3 +1,22 @@
+## VicKey: compare 3 or more, ruled-out list, fuller ranges (2026-11-18, v.2026-11-18.4)
+- Species comparison: "+ Add another species or subspecies" puts three or more side by side. The key section has a pair picker.
+- Multi-access keys: a "Ruled out" list under the possible taxa gives, for each discarded taxon, the feature you entered and what VicFlora describes.
+- Fixed: wording like "sometimes developing rhizomes or stolons" was thrown away, so R. pallidum was ruled out when Spreading or rhizomatous was chosen. It now counts, marked "sometimes".
+- Fixed: flowering months written as "Sep.-Jan." were read as September only (affected every taxon written that way).
+- Ranges now include the whole spread (rare, bracketed or form-specific figures, e.g. alpine blade width), shown as "whole spread". Each figure shows the VicFlora words it was read from.
+- New measurements: panicle width, spikelet width, anther length, awn straight part, central awn beyond the lobes, palea beyond the sinus. "Flatter" counts as flat.
+
+## Tree trial feedback: photos on polygons and notes, stand tree count, offline map (2026-11-18, v.2026-11-18.3)
+- Polygons and field notes can now hold multiple photos (Take photo / Choose photos). Photos are in the photos folder of the export, listed in a "Photo IDs" column in Excel and the polygon GIS layer, and back up to OneDrive with the survey.
+- Significant tree surveys: polygons are labelled "Tree species in this stand", with an "Approx. number of trees in this stand" field. It is saved, exported (Excel and the tree_count column of the polygon layer) and backed up. It is not shared by Team Sync.
+- Map > Layers > "Save this area offline" saves the Vicmap/Esri tiles within 500 m, 1 km or 2 km of the screen centre to the phone, so the map shows with no signal.
+- Portrait photos on polygons and notes get the same warning as elsewhere.
+
+## Roadside: site conditions photo prompt and landscape reminder (2026-11-18, v.2026-11-18.2)
+- Tapping Finish survey on a roadside survey now checks for a landscape photo of typical site conditions. If there is none, a prompt offers "Add photo now" or "Finish anyway".
+- New "Site conditions photo" button in the roadside Photos card, with a note that all photos must be landscape.
+- A portrait photo does not count as the site conditions photo. Any portrait photo (general or values row) gets a warning and is marked "Portrait". It is still saved, not blocked.
+
 ## OneDrive errors now say which step failed (2026-11-18, v.2026-11-18.1)
 - A failed OneDrive request is retried once after 1.5 seconds.
 - If it still fails, the message names the step (listing folders, checking a survey, downloading, building export files, uploading a file, survey or photo).
