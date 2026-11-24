@@ -1121,7 +1121,7 @@ body.t-roadside .only-flora,body.t-tree .only-flora,body.t-roadside .not-road,bo
     <div class="field" id="rdOtherWrap" hidden><label for="rdOther">Other (name)</label><input id="rdOther" type="text" autocomplete="off"></div>
     <p class="muted" style="margin:6px 0 12px">The site and date are set in Survey details above.</p>
     <div class="rd-rvmp"><h3 class="rd-h" style="margin-top:0">Pre-load from RVMP data</h3>
-      <p class="muted" style="margin:0 0 6px">Type the road name as the survey name and the app matches it to the RVMP roadside list and asks you to confirm. If the name doesn't match, your location suggests one. Nothing is filled until you confirm. You can also choose it here and the Significant species list from the Roadside Vegetation Management Plan data (Endangered EVCs, fauna, flora). Only the values are filled in. Threats, mitigation and priority are left for assessment.</p>
+      <p class="muted" style="margin:0 0 6px">Type the road name as the survey name and the app matches it to the RVMP roadside list and asks you to confirm. If the name doesn't match, your location suggests one. Nothing is filled until you confirm. You can also choose it here. Confirming fills the Ecological value column from the Roadside Vegetation Management Plan data (Endangered EVCs, fauna, flora). The Significant species list is not pre-filled: add only the species you observe. Threats, mitigation and priority are left for assessment.</p>
       <select id="rdRvmp" aria-label="Roadside"></select>
       <div class="photo-btns"><button type="button" class="btn-out sp-addphoto" id="rdRvmpNear">Find from my location</button><button type="button" class="btn light" id="rdRvmpLoad">Pre-load</button></div>
       <div class="rd-pid" id="rdRvmpInfo"></div></div>
@@ -5394,6 +5394,15 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     if(!Array.isArray(body)) throw new Error("Unexpected query response");
     return body.filter(r=>r && r.document).map(r=>fsDocToObject(r.document));
   }
+  async function fsFindSurveys(projectId, idToken, site, date){
+    const url = fsBase(projectId)+":runQuery";
+    const body = await fsFetch(url, { method:"POST", headers:{"Content-Type":"application/json","Authorization":"Bearer "+idToken},
+      body: JSON.stringify({ structuredQuery:{ from:[{ collectionId:"surveys" }],
+        where:{ compositeFilter:{ op:"AND", filters:[ { fieldFilter:{ field:{ fieldPath:"site" }, op:"EQUAL", value:{ stringValue:site } } }, { fieldFilter:{ field:{ fieldPath:"date" }, op:"EQUAL", value:{ stringValue:date } } } ] } },
+        limit:5 } }) });
+    if(!Array.isArray(body)) return [];
+    return body.filter(r=>r && r.document).map(r=>fsDocToObject(r.document));
+  }
   async function fsPatchDoc(projectId, idToken, docPath, obj){
     const fieldNames = Object.keys(obj||{});
     const mask = fieldNames.map(f=>"updateMask.fieldPaths="+encodeURIComponent(f)).join("&");
@@ -5406,7 +5415,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     try{ await fsFetch(url, { method:"DELETE", headers:{"Authorization":"Bearer "+idToken} }); }
     catch(e){ if(e.status!=="NOT_FOUND") throw e; }
   }
-  const live = { setLiveEndpoints, authAnon, authRefresh, fsCreateDoc, fsGetDoc, fsListDocs, fsQueryChanged, fsPatchDoc, fsDeleteDoc };
+  const live = { setLiveEndpoints, authAnon, authRefresh, fsCreateDoc, fsGetDoc, fsListDocs, fsQueryChanged, fsPatchDoc, fsDeleteDoc, fsFindSurveys };
 
   return { xyForSrs, EXPORT_SRS, readZipAsync, esc, today, toast, notice, downloadCSV, downloadXLSX, downloadZip, buildXLSXBlob, buildZipBlob, buildGeoPackageBlob, buildGeoPackageBytes, buildPolygonGeoPackageBlob, buildPolygonGeoPackageBytes, triggerDownload, shareFiles, getLastShareDiagnostic, buildPicker, consLabel, consBadge, live, readZip, readXLSXSurvey, readPointsGeoPackage, readPolygonsGeoPackage };
 })();
@@ -5443,7 +5452,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-24.1";
+  const BUILD_VERSION = "2026-11-24.3";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -5711,6 +5720,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // Same bottom card as askName; Continue fills the Site field and carries on.
   function requireSite(retry){
     if(surveyStarted) return true;
+    if(window.__rdNeedPick && window.__rdNeedPick()) return false;
     if(document.getElementById("fhSiteAsk")) return false;
     const wrap = document.createElement("div");
     wrap.id = "fhSiteAsk"; wrap.className = "name-ask typing";
@@ -10331,6 +10341,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     setT("recCardTitle","t", T && T.rec);
     setT("empty","t", T && T.empty);
     setT("pick","ph", T && T.ph);
+    try{ $("site").readOnly = (t==="roadside"); $("site").title = t==="roadside" ? "Set from the RVMP roadside you confirmed" : ""; }catch(e){}
     const siteLab = document.querySelector('label[for="site"]');
     if(siteLab){ if(siteLab.dataset.ot===undefined) siteLab.dataset.ot = siteLab.textContent; siteLab.textContent = (T && T.site) || siteLab.dataset.ot; }
     const h1 = document.querySelector(".home-hello h1");
@@ -10341,18 +10352,127 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     surveyType = t; roadside = blankRoadside(); applyType(); renderRoadside();
     document.body.classList.add("starting");
     window.scrollTo({ top:0, behavior:"smooth" });
+    if(t==="roadside"){ rdPickUi(); return; }
     setTimeout(()=>{ try{ $("site").focus(); }catch(e){} }, 350);
   }
 
+  // ── Roadside start: the roadside is chosen from your location (or the list), never typed ──────────
+  // The survey name is the RVMP roadside name, so every assessor on the same roadside and day gets the
+  // same name (one OneDrive folder), and a Team Sync survey already running for it is offered to join.
+  let rdPickSel = null;
+  function rdSiteName(d){ return d.name + (d.loc ? " - "+d.loc : ""); }
+  function rdDistTxt(m){ return m==null ? "" : (m===0 ? "you are on it" : (m>=1000 ? (m/1000).toFixed(1)+" km away" : Math.round(m)+" m away")); }
+  function rdPickUi(){
+    const host = $("surveyStart"); if(!host) return;
+    let el = $("rdPick");
+    if(!el){ el = document.createElement("div"); el.id = "rdPick"; el.className = "rd-pick only-road"; host.parentNode.insertBefore(el, host); }
+    const e = FHKit.esc;
+    const all = RVMP_ROADS.map((d,k)=>({ d, k })).sort((a,b)=> rdSiteName(a.d).localeCompare(rdSiteName(b.d)));
+    el.innerHTML = '<label class="detail-label">Roadside</label>'
+      + '<p class="muted" id="rdPickMsg" style="margin:0 0 6px">Finding the roadsides near you...</p>'
+      + '<div id="rdPickList" class="rd-pick-list" role="radiogroup" aria-label="Nearest roadsides"></div>'
+      + '<button type="button" class="btn light" id="rdPickRetry" style="margin:6px 0">Find my location again</button>'
+      + '<details class="rd-pick-all"><summary>Not listed? Choose from all roadsides</summary><select id="rdPickAll" style="width:100%;margin-top:6px"><option value="">Select a roadside</option>'
+      + all.map(x=>'<option value="'+x.k+'">'+e(rdSiteName(x.d))+'</option>').join("") + '</select></details>'
+      + (LIVE_CONFIGURED ? '<label class="rd-pick-live"><input type="checkbox" id="rdPickLive" checked> Start Team Sync so other assessors can join with the code</label>' : '')
+      + '<button type="button" class="btn-go" id="rdPickGo" disabled><span>Confirm roadside and start</span></button>'
+      + '<p class="muted" style="margin:8px 0 0">Joining a teammate? Tap Home, then Join a live survey, and enter their code. The roadside comes with it.</p>';
+    rdPickSel = null;
+    el.querySelector("#rdPickRetry").addEventListener("click", rdPickLocate);
+    el.querySelector("#rdPickAll").addEventListener("change", ev=>{ const v = ev.target.value; if(v==="") return; rdPickChoose(+v, null); });
+    el.querySelector("#rdPickList").addEventListener("click", ev=>{ const b = ev.target.closest("[data-k]"); if(b) rdPickChoose(+b.dataset.k, b.dataset.m==="" ? null : +b.dataset.m); });
+    el.querySelector("#rdPickGo").addEventListener("click", rdPickStart);
+    rdPickLocate();
+  }
+  function rdPickChoose(k, m){
+    rdPickSel = { i:k, m:m };
+    document.querySelectorAll("#rdPickList [data-k]").forEach(b=>{ const on = +b.dataset.k===k; b.classList.toggle("on", on); b.setAttribute("aria-checked", on?"true":"false"); });
+    const all = $("rdPickAll"); if(all && m!=null) all.value = "";
+    const go = $("rdPickGo"), d = RVMP_ROADS[k];
+    if(go && d){ go.disabled = false; go.querySelector("span").textContent = "Confirm "+d.name+" and start"; }
+  }
+  function rdPickLocate(){
+    const msg = $("rdPickMsg"), list = $("rdPickList");
+    if(!navigator.geolocation){ if(msg) msg.textContent = "Location isn't available on this device. Choose the roadside from the list."; return; }
+    if(msg) msg.textContent = "Finding the roadsides near you...";
+    navigator.geolocation.getCurrentPosition(pos=>{
+      const lat = pos.coords.latitude, lon = pos.coords.longitude;
+      const near = RVMP_ROADS.map((d,i)=>({ i, d, m:rvmpDistTo(d, lat, lon) })).sort((a,b)=>a.m-b.m).slice(0, 6);
+      if(!near.length){ if(msg) msg.textContent = "No RVMP roadsides found. Choose from the list."; return; }
+      const e = FHKit.esc;
+      if(list) list.innerHTML = near.map(x=>'<button type="button" class="rd-pick-opt" role="radio" aria-checked="false" data-k="'+x.i+'" data-m="'+Math.round(x.m)+'"><b>'+e(x.d.name)+'</b><span>'+e((x.d.loc||"")+(x.d.loc?" | ":"")+rdDistTxt(x.m))+'</span></button>').join("");
+      if(msg) msg.textContent = near[0].m <= 150 ? "Nearest roadsides to you. Check the first one is right, or tap another." : "No RVMP roadside is within 150 m of you. Tap the right one, or choose from all roadsides.";
+      rdPickChoose(near[0].i, Math.round(near[0].m));
+    }, ()=>{ if(msg) msg.textContent = "Couldn't get your location. Choose the roadside from the list, or try again."; }, { enableHighAccuracy:true, timeout:20000, maximumAge:30000 });
+  }
+  async function rdPickStart(){
+    if(!rdPickSel || !RVMP_ROADS[rdPickSel.i]) { FHKit.toast("Choose the roadside first"); return; }
+    if(!requireName(()=>rdPickStart())) return;     // your name goes on the survey and the Team Sync record
+    const d = RVMP_ROADS[rdPickSel.i], name = rdSiteName(d);
+    if(!($("date").value||"").trim()) $("date").value = FHKit.today();
+    const date = $("date").value;
+    // A Team Sync survey already running for this roadside today: offer to join it instead of starting a second one.
+    if(LIVE_CONFIGURED && navigator.onLine){
+      const go = $("rdPickGo"); if(go) go.disabled = true;
+      let found = [];
+      try{ await ensureAuth(); found = (await FHKit.live.fsFindSurveys(FIREBASE_CONFIG.projectId, live.idToken, name, date)) || []; }catch(e){ found = []; }
+      if(go) go.disabled = false;
+      found = found.filter(x=>x && x._id && (x.type==="roadside" || !x.type));
+      if(found.length){ rdOfferJoin(found[0], ()=>rdPickBegin(d, name)); return; }
+    }
+    rdPickBegin(d, name);
+  }
+  function rdOfferJoin(sv, startOwn){
+    if(document.getElementById("fhRdJoin")) return;
+    const e = FHKit.esc, wrap = document.createElement("div");
+    wrap.id = "fhRdJoin"; wrap.className = "name-ask";
+    wrap.innerHTML = '<div class="name-ask-card notice-card" role="alertdialog" aria-labelledby="fhRdJoinT"><b id="fhRdJoinT">Already being surveyed today</b>'
+      + '<p>'+e((sv.createdBy ? sv.createdBy+" has" : "Someone has")+' already started a Team Sync survey for '+(sv.site||"this roadside")+' today (code '+sv._id+'). Join it so you both record into one survey?')+'</p>'
+      + '<div class="name-ask-btns"><button type="button" class="btn light" data-j="own">Start my own</button><button type="button" class="btn" data-j="join">Join '+e(sv._id)+'</button></div></div>';
+    document.body.appendChild(wrap);
+    wrap.addEventListener("click", ev=>{
+      const b = ev.target.closest("[data-j]"); if(!b) return;
+      wrap.remove();
+      if(b.dataset.j==="join"){ const c = $("liveJoinCode"); if(c) c.value = sv._id; joinLive(); }
+      else startOwn();
+    });
+  }
+  function rdPickBegin(d, name){
+    $("site").value = name;
+    roadside.rvmpId = d.id;            // so the name check after start does not ask again
+    startSurvey();
+    if(!surveyStarted) return;
+    const k = RVMP_ROADS.indexOf(d), s0 = $("rdRvmp"); if(s0) s0.value = String(k);
+    roadside.rvmpId = "";
+    loadRvmp(d, rdPickSel ? rdPickSel.m : undefined);
+    const lv = $("rdPickLive");
+    if(lv && lv.checked) setTimeout(()=>{ try{ startLive(); }catch(e){} }, 300);
+  }
+  window.__rdNeedPick = ()=>{ if(surveyType!=="roadside") return false; document.body.classList.add("starting"); if(!$("rdPick")) rdPickUi(); try{ $("rdPick").scrollIntoView({ behavior:"smooth", block:"center" }); }catch(e){} FHKit.toast("Choose the roadside first"); return true; };
+  (function rdPickStyle(){
+    const st = document.createElement("style");
+    st.textContent = 'body.t-roadside.no-survey #surveyCard .row.stack .field:first-child,body.t-roadside.no-survey #surveyStart{display:none!important}'
+      + 'body:not(.no-survey) #rdPick{display:none!important}'
+      + '.rd-pick-list{display:flex;flex-direction:column;gap:6px;margin:4px 0}'
+      + '.rd-pick-opt{display:flex;flex-direction:column;align-items:flex-start;text-align:left;padding:10px 12px;border:1.5px solid var(--line,#ccc);border-radius:10px;background:var(--card,#fff);color:inherit;font:inherit;cursor:pointer}'
+      + '.rd-pick-opt span{font-size:.85em;opacity:.75}'
+      + '.rd-pick-opt.on{border-color:var(--gold,#dfad1f);box-shadow:0 0 0 2px var(--gold,#dfad1f) inset}'
+      + '.rd-pick-all{margin:4px 0 10px}.rd-pick-all summary{cursor:pointer;font-size:.9em}'
+      + '.rd-pick-live{display:flex;gap:8px;align-items:flex-start;margin:6px 0 10px;font-size:.92em}'
+      + 'body.t-roadside #site[readonly]{opacity:.85}';
+    document.head.appendChild(st);
+  })();
+
   // ── Casey Roadside form ──────────────────────────────────────────────
   function prepName(){ return roadside.preparedBy==="__other" ? (roadside.preparedOther||"") : (roadside.preparedBy||""); }
-  // Earlier builds put RVMP/VBA/ALA fauna into the species list. Those auto-added rows are removed, unless
-  // the surveyor has since added a photo or a map point to them (then it is treated as their own record).
-  function isBgFauna(r){ return !!(r && r.rvmp && /^Fauna\b/.test(r.sigText||"") && !(r.photos||[]).length && !(r.points||[]).length); }
+  // Earlier builds put RVMP flora and RVMP/VBA/ALA fauna into the species list. Those auto-added rows are
+  // removed, unless the surveyor has since added a photo or a map point to them (then it is their own record).
+  function isBgFauna(r){ return !!(r && r.rvmp && (/^Fauna\b/.test(r.sigText||"") || /\((?:RVMP data|VBA|ALA)[^)]*\)\s*$/.test(r.sigText||"")) && !(r.photos||[]).length && !(r.points||[]).length); }
   function rdDropBgFauna(){
     if(surveyType!=="roadside" || !Array.isArray(rows)) return false;
     const gone = rows.filter(isBgFauna); if(!gone.length) return false;
     gone.forEach(r=>{ const i = rows.indexOf(r); if(i>=0) rows.splice(i,1); try{ openNotes.delete(r); }catch(e){} try{ liveDeleteSpecies(r); }catch(e){} });
+    try{ FHKit.toast("Removed "+gone.length+" species that were pre-filled from the RVMP data. Add species you observe yourself."); }catch(e){}
     return true;
   }
   function renderRoadside(){
@@ -10712,25 +10832,19 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       const v = blankValue(); Object.assign(v, x); delete v.key; v.rvmp = true;
       let c = "RV-"+hash(d.id+"|"+hk), n = 1; while(used[c]) c = "RV-"+hash(d.id+"|"+hk)+(++n); used[c] = 1; v.code = c; return v;
     }).filter(Boolean);
-    roadside.values = keep.concat(fresh); roadside.rvmpId = d.id; roadside.rvmpName = d.name+(d.loc?" - "+d.loc:""); roadside.rvmpConfirmed = new Date().toISOString();
+    roadside.values = keep.concat(fresh); if(!roadside.values.length) roadside.values.push(blankValue());
+    // The survey name follows the confirmed roadside (not while Team Sync is on, so teammates stay matched).
+    if(!live.active && rdSiteName(d) !== ($("site").value||"").trim()) $("site").value = rdSiteName(d);
+    roadside.rvmpId = d.id; roadside.rvmpName = d.name+(d.loc?" - "+d.loc:""); roadside.rvmpConfirmed = new Date().toISOString();
     if(!(roadside.commentary||"").trim()){
       roadside.commentary = "RVMP data for "+d.name+(d.loc?" ("+d.loc+")":"")+": "+d.cat+(d.own?". Ownership: "+d.own:"")+". "+d.n+" mapped zone"+(d.n===1?"":"s")+" ("+d.zones[0].c+(d.n>1?" to "+d.zones[d.n-1].c:"")+"), "+d.ha+" ha.";
     }
     let added = 0;
     const total = d.zones.length, zs = (list, all) => (all || !list.length || list.length>=total) ? WHOLE : list.join(", ");
-    // Only flora goes into Significant Species Observed. Fauna from the RVMP, VBA and ALA data stays in the
-    // Values and Threats table, because it is background data, not something seen on the day.
-    const sp = (d.flora||[]).map(f=>({ sci:f.sci, common:f.common, note:"Source: "+f.src+(f.poss?" (possible)":""), sig:rvmpStatus(f.st)+" (RVMP data)", z:zs(f.z, f.all) }));
-    for(const s of sp){
-      if(rows.some(r=>r.sci===s.sci)) continue;
-      await add({ sci:s.sci, common:s.common, type:"indigenous", lf:"", ffg:"", epbc:"", free:false }, { quiet:true });
-      const r = rows.filter(x=>x.sci===s.sci).pop(); if(!r) continue;
-      r.sigText = s.sig; r.fieldNotes = s.note; r.zones = s.z; r.significant = false; r.rvmp = true;
-      liveSyncFieldDebounced(r, { sigText:r.sigText, fieldNotes:r.fieldNotes, zones:r.zones });
-      added++;
-    }
+    // Nothing goes into Significant Species Observed from the desktop data: that list is only for
+    // species the surveyor records on the day. RVMP flora and fauna stay in the Values and Threats table.
     renderRoadside(); render(); renderSiteNotes(); autosave(); liveSyncRoadside();
-    const info = $("rdRvmpInfo"); if(info) info.textContent = "Loaded "+fresh.length+" value row"+(fresh.length===1?"":"s")+" and "+added+" species for "+d.name+(dist==null?"":(dist===0?" (you are on it)":" (about "+Math.round(dist)+" m away)"))+".";
+    const info = $("rdRvmpInfo"); if(info) info.textContent = "Loaded "+fresh.length+" value row"+(fresh.length===1?"":"s")+" for "+d.name+(dist==null?"":(dist===0?" (you are on it)":" (about "+Math.round(dist)+" m away)"))+".";
     FHKit.toast("Pre-loaded values for "+d.name);
   }
   // Nothing is loaded until the surveyor confirms the roadside name, so every value belongs to that roadside.
@@ -11106,7 +11220,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     ["li","High-quality vegetation, where flagged."],
     ["li","RVMP fauna records for Southern Brown Bandicoot *Isoodon obesulus obesulus*, Latham’s Snipe *Gallinago hardwickii* and Glossy Grass Skink *Pseudemoia rawlinsoni*."],
     ["li","Threatened flora records."],
-    ["p","Each row lists the zone codes where the value occurs, and a value without a specific zone is recorded as Whole roadside. The flora also enter the Significant Species list with their status, and the Commentary is started with the RVMP summary. Threats, mitigation and priority are left blank, because they are decided during the assessment. Rows typed by the surveyor are retained, and reloading a roadside does not duplicate rows."],
+    ["p","Each row lists the zone codes where the value occurs, and a value without a specific zone is recorded as Whole roadside. The Significant Species list is not pre-filled: it holds only the species the surveyor records in the field. The Commentary is started with the RVMP summary. Threats, mitigation and priority are left blank, because they are decided during the assessment. Rows typed by the surveyor are retained, and reloading a roadside does not duplicate rows."],
     ["h2","Fauna Records Screening"],
     ["p","Records were screened against each roadside’s mapped patches. Victorian Biodiversity Atlas (VBA) records were used for Latham’s Snipe, Swamp Skink *Lissolepis coventryi*, Powerful Owl *Ninox strenua*, Glossy Grass Skink and Southern Toadlet *Pseudophryne semimarmorata*. Atlas of Living Australia (ALA) records were used for Southern Brown Bandicoot and Koala *Phascolarctos cinereus*. A species is put forward as significant fauna where at least one record meets all three of the following conditions:"],
     ["li","It lies within 1 km of the roadside’s patches."],
@@ -11141,8 +11255,8 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const GOLD = "0.875 0.678 0.122", CHARC = "0.349 0.349 0.349", INK = "0 0 0", BAND = "0.910 0.910 0.910", WHITE = "1 1 1";
     const HL = { High:"0.961 0.761 0.741", Moderate:"1 0.922 0.600", Low:"0.749 0.890 0.706" };
     const FONT = { R:"F1", B:"F2", I:"F3", BI:"F4" };
-    const site = (m.site||"").trim() || "this roadside";
     const road = (D.roadside && D.roadside.rvmpId!=null) ? roadById(D.roadside.rvmpId) : null;
+    const site = (road && road.name) || (m.site||"").trim() || "this roadside";
     const heading = rd.rvmpName ? String(rd.rvmpName).replace(/ - /g," – ") : site;
     const pages = []; let cur = null, y = 0;
     const images = [];
@@ -11635,6 +11749,10 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const t = (survey && (survey.type==="roadside" || survey.type==="tree")) ? survey.type : "flora";
     if(t !== surveyType){ surveyType = t; roadside = blankRoadside(); rdState = null; }
     if(t==="roadside"){ rdSt(); applyRoadMeta(survey); rdAppliedAt = survey._updateTime||""; liveSyncRoadside(); }
+    if(t==="roadside" && survey && survey.site){
+      $("site").value = survey.site; if(survey.date) $("date").value = survey.date;
+      if(!surveyStarted){ surveyStarted = true; try{ applySurveyState(); autosave(); }catch(e){} }
+    }
     applyType(); renderRoadside();
   }
   async function pullRemoteSurveyMeta(){

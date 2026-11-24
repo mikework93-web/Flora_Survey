@@ -1,3 +1,16 @@
+## 2026-11-24.3 - Roadside: choose the roadside from your location
+- Starting a Casey Roadside survey no longer asks you to type a name. The app finds your location and lists the six nearest RVMP roadsides with their distance; the nearest is selected. Tap another, or pick from the full list, then Confirm and start.
+- The survey name is the RVMP roadside name (for example "Edwards Lane - Blind Bight"), so everyone on the same roadside and day uses the same name and shares one OneDrive folder. The name box is read-only in roadside surveys.
+- Starting also loads the RVMP values straight away (no second confirm step), and by default starts Team Sync so others can join with the code.
+- If a Team Sync survey for the same roadside and day already exists, the app offers to join it (showing who started it and the code) instead of starting a second one.
+- Joining with a code takes the roadside name, date and form from the shared survey and starts it, with nothing to type.
+- Changing the roadside later from the RVMP card also updates the survey name (not while Team Sync is on).
+
+## 2026-11-24.2 - Roadside: species list is manual only
+- Confirming a roadside no longer adds any species to Significant Species Observed. RVMP flora and fauna (and VBA/ALA fauna) go only into the Values and Threats table; the species list holds only what the surveyor records.
+- Species rows that earlier builds pre-filled from the RVMP, VBA or ALA data are removed when the survey is opened (a message says how many), unless someone added a photo or map point to them.
+- The roadside help text and the PDF Methods text now say the species list is not pre-filled.
+
 ## 2026-11-24.1 - Roadside: fauna list, report-style PDF, shared site photos
 - Significant Species Observed now lists flora only. Fauna from the RVMP, VBA and ALA data stays in the Values and Threats table. Fauna rows that earlier builds added automatically are removed when the survey is opened, unless someone added a photo or map point to them.
 - The roadside PDF now follows the Casey Conservation Roadsides batch report: cover photo with the charcoal title box, contents page, Methods, then the site section (Site Details, Values and Threats, Commentary, Significant Species Observed) and Images. Gold headings, charcoal table headers with gold text, banded rows, numbered tables with captions and table notes, the logo header and page numbers.
