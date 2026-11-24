@@ -5443,7 +5443,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-18.7";
+  const BUILD_VERSION = "2026-11-24.1";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -10346,8 +10346,18 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
 
   // ── Casey Roadside form ──────────────────────────────────────────────
   function prepName(){ return roadside.preparedBy==="__other" ? (roadside.preparedOther||"") : (roadside.preparedBy||""); }
+  // Earlier builds put RVMP/VBA/ALA fauna into the species list. Those auto-added rows are removed, unless
+  // the surveyor has since added a photo or a map point to them (then it is treated as their own record).
+  function isBgFauna(r){ return !!(r && r.rvmp && /^Fauna\b/.test(r.sigText||"") && !(r.photos||[]).length && !(r.points||[]).length); }
+  function rdDropBgFauna(){
+    if(surveyType!=="roadside" || !Array.isArray(rows)) return false;
+    const gone = rows.filter(isBgFauna); if(!gone.length) return false;
+    gone.forEach(r=>{ const i = rows.indexOf(r); if(i>=0) rows.splice(i,1); try{ openNotes.delete(r); }catch(e){} try{ liveDeleteSpecies(r); }catch(e){} });
+    return true;
+  }
   function renderRoadside(){
     if(!$("roadCard")) return;
+    if(rdDropBgFauna()){ setTimeout(()=>{ try{ render(); autosave(); }catch(e){} }, 0); }
     const rd = roadside;
     try{ renderVba(); }catch(e){}
     const prep = $("rdPrep");
@@ -10429,7 +10439,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       }catch(err){ showStorageWarning("photo", err); FHKit.toast("Couldn't save a photo. Check your device's available storage."); }
     }
     if(sawPortrait) FHKit.toast("That photo is portrait. All photos must be landscape. Retake it with the phone sideways.");
-    renderRoadPhotos(); autosave();
+    renderRoadPhotos(); autosave(); liveSyncRoadside();
   }
   let vPhotoTarget = null;
   async function addValuePhotos(code, files){
@@ -10497,19 +10507,19 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       }
     });
     pcard.addEventListener("input", ev=>{
-      if(ev.target.dataset.rdpz){ const q = roadside.photos.find(x=>x.id===ev.target.dataset.rdpz); if(q){ q.zone = ev.target.value; autosave(); } return; }
+      if(ev.target.dataset.rdpz){ const q = roadside.photos.find(x=>x.id===ev.target.dataset.rdpz); if(q){ q.zone = ev.target.value; autosave(); liveSyncRoadside(); } return; }
       const id = ev.target.dataset.rdcap; if(!id) return;
-      const p = roadside.photos.find(x=>x.id===id); if(p){ p.caption = ev.target.value; autosave(); }
+      const p = roadside.photos.find(x=>x.id===id); if(p){ p.caption = ev.target.value; autosave(); liveSyncRoadside(); }
     });
     pcard.addEventListener("change", ev=>{
-      const t = ev.target; if(t.dataset && t.dataset.zc && t.dataset.zc.indexOf("photo|")===0){ const p = roadside.photos.find(x=>x.id===t.dataset.zc.slice(6)); if(p){ p.zone = zonesFromUi(t); autosave(); } }
+      const t = ev.target; if(t.dataset && t.dataset.zc && t.dataset.zc.indexOf("photo|")===0){ const p = roadside.photos.find(x=>x.id===t.dataset.zc.slice(6)); if(p){ p.zone = zonesFromUi(t); autosave(); liveSyncRoadside(); } }
     });
     pcard.addEventListener("click", ev=>{
       if(ev.target.closest("#rdTakePhoto")){ $("rdCamInput").click(); return; }
       if(ev.target.closest("#rdChoosePhoto")){ $("rdFileInput").click(); return; }
       if(ev.target.closest("#rdSitePhoto")){ $("rdSiteInput").click(); return; }
       const d = ev.target.dataset.rdPhotoDel;
-      if(d){ roadside.photos = roadside.photos.filter(p=>p.id!==d); renderRoadPhotos(); autosave(); deletePhotoBytes(d); }
+      if(d){ roadside.photos = roadside.photos.filter(p=>p.id!==d); roadside.photosGone = roadside.photosGone||[]; if(roadside.photosGone.indexOf(d)<0) roadside.photosGone.push(d); renderRoadPhotos(); autosave(); deletePhotoBytes(d); liveSyncRoadside(); }
     });
     $("rdSiteInput").addEventListener("change", ev=>{ const files = Array.from(ev.target.files||[]).slice(0,1); ev.target.value = ""; addRoadPhotos(files, true); });
     ["rdCamInput","rdFileInput"].forEach(id=> $(id).addEventListener("change", ev=>{
@@ -10708,9 +10718,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
     let added = 0;
     const total = d.zones.length, zs = (list, all) => (all || !list.length || list.length>=total) ? WHOLE : list.join(", ");
-    const sp = (d.fauna||[]).map(f=>({ sci:f.sci, common:f.common, note:"Fauna. Source: "+f.src+(f.poss?" (possible)":""), sig:"Fauna value (RVMP data)", z:zs(f.z, f.all) }))
-      .concat((d.flora||[]).map(f=>({ sci:f.sci, common:f.common, note:"Source: "+f.src+(f.poss?" (possible)":""), sig:rvmpStatus(f.st)+" (RVMP data)", z:zs(f.z, f.all) })))
-      .concat(vbaFauna(d).filter(f=>f.ok.length && !(d.fauna||[]).some(x=>x.sci===f.sci)).map(f=>({ sci:f.sci, common:f.common, note:"Fauna. Source: "+(f.src==="ALA"?"ALA (includes VBA)":"VBA")+". "+vbaLine(f).replace(/^[^:]*: /,""), sig:"Fauna: "+(f.st||"significant fauna")+" ("+(f.src==="ALA"?"ALA":"VBA")+" records within "+vbaRad()+", last 20 years)", z:WHOLE })));
+    // Only flora goes into Significant Species Observed. Fauna from the RVMP, VBA and ALA data stays in the
+    // Values and Threats table, because it is background data, not something seen on the day.
+    const sp = (d.flora||[]).map(f=>({ sci:f.sci, common:f.common, note:"Source: "+f.src+(f.poss?" (possible)":""), sig:rvmpStatus(f.st)+" (RVMP data)", z:zs(f.z, f.all) }));
     for(const s of sp){
       if(rows.some(r=>r.sci===s.sci)) continue;
       await add({ sci:s.sci, common:s.common, type:"indigenous", lf:"", ffg:"", epbc:"", free:false }, { quiet:true });
@@ -11020,24 +11030,20 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       filesNote:"one zip with "+names.join(", "), title:parts.title, site:parts.site, date:parts.date });
   }
 
-  // ── Roadside PDF (Keystone style: charcoal band, gold text) ─────────────
+  const PDF_AFM = {"R":[278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584,761,556,556,222,556,333,1000,556,556,333,1000,667,333,1000,556,611,556,556,222,222,333,333,350,556,1000,333,1000,500,333,944,556,500,667,278,333,556,556,556,556,260,556,333,737,370,556,584,333,737,333,400,584,333,333,333,556,537,278,333,333,365,556,834,834,834,611,667,667,667,667,667,667,1000,722,667,667,667,667,278,278,278,278,722,722,778,778,778,778,778,584,778,722,722,722,722,667,667,611,556,556,556,556,556,556,889,500,556,556,556,556,278,278,278,278,556,556,556,556,556,556,556,584,611,556,556,556,556,500,556,500],"B":[278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584,761,556,611,278,556,500,1000,556,556,333,1000,667,333,1000,611,611,611,611,278,278,500,500,350,556,1000,333,1000,556,333,944,611,500,667,278,333,556,556,556,556,280,556,333,737,370,556,584,333,737,333,400,584,333,333,333,611,556,278,333,333,365,556,834,834,834,611,722,722,722,722,722,722,1000,722,667,667,667,667,278,278,278,278,722,722,778,778,778,778,778,584,778,722,722,722,722,667,667,611,556,556,556,556,556,556,889,556,556,556,556,556,278,278,278,278,611,611,611,611,611,611,611,584,611,611,611,611,611,556,611,556]};   // Helvetica / Helvetica-Bold widths, WinAnsi 32-255 (oblique = regular)
+  // ── Roadside PDF, in the style of the Casey Conservation Roadsides batch report ─────────────
+  // A4, Helvetica (Arial look), gold headings, charcoal table headers with gold text, grey banded rows,
+  // cover photo with a charcoal title box, contents page, Methods, then the site section and Images.
+  const PDF_WIN = { "–":"\x96", "—":"\x97", "‘":"\x91", "’":"\x92", "“":"\x93", "”":"\x94", "•":"\x95", "…":"\x85", "€":"\x80", "™":"\x99" };
   function pdfLatin1(s){
-    return String(s==null?"":s).replace(/[–—]/g,"-").replace(/[‘’]/g,"'").replace(/[“”]/g,'"')
-      .replace(/•/g,"-").replace(/·/g,"|").replace(/\r/g,"").replace(/[^\n\x20-\x7e\xa0-\xff]/g,"?");
+    return String(s==null?"":s).replace(/[–—‘’“”•…€™]/g, c=>PDF_WIN[c]).replace(/\r/g,"").replace(/\t/g," ")
+      .replace(/[^\n\x20-\x7e\x80-\xff]/g,"?");
   }
   function pdfEsc(s){ return pdfLatin1(s).replace(/\\/g,"\\\\").replace(/\(/g,"\\(").replace(/\)/g,"\\)"); }
   function pdfStrW(s, size, bold){
-    let w = 0; const str = pdfLatin1(s);
-    for(let i=0;i<str.length;i++){
-      const c = str[i];
-      if("il.,;:'|!jI".indexOf(c)>=0) w += .27;
-      else if("ftr()[] -/".indexOf(c)>=0) w += .33;
-      else if("mwMW@%".indexOf(c)>=0) w += .85;
-      else if(c>="A" && c<="Z") w += .68;
-      else if(c>="0" && c<="9") w += .56;
-      else w += .52;
-    }
-    return w*size*(bold?1.06:1);
+    const t = pdfLatin1(s), w = PDF_AFM[bold?"B":"R"]; let n = 0;
+    for(let i=0;i<t.length;i++){ const c = t.charCodeAt(i); n += (c>=32 && c<=255) ? w[c-32] : 556; }
+    return n*size/1000;
   }
   function pdfWrap(s, width, size, bold){
     const out = [];
@@ -11046,7 +11052,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       if(!words.length){ out.push(""); return; }
       let line = "";
       words.forEach(w=>{
-        while(pdfStrW(w,size,bold) > width){   // break very long words
+        while(pdfStrW(w,size,bold) > width){
           let k = w.length; while(k>1 && pdfStrW(w.slice(0,k),size,bold) > width) k--;
           if(line){ out.push(line); line = ""; }
           out.push(w.slice(0,k)); w = w.slice(k);
@@ -11068,152 +11074,356 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }
     return null;
   }
+  // The logo on white, without the tagline (as in the report header).
   async function pdfLogoBytes(){
     try{
       const r = await fetch("logo.png"); if(!r.ok) return null;
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
       const img = await new Promise((res,rej)=>{ const im = new Image(); im.onload = ()=>res(im); im.onerror = rej; im.src = url; });
-      const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight;
-      const g = c.getContext("2d"); g.fillStyle = "#333331"; g.fillRect(0,0,c.width,c.height); g.drawImage(img,0,0);
+      const h = Math.round(img.naturalHeight*0.84);
+      const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = h;
+      const g = c.getContext("2d"); g.fillStyle = "#ffffff"; g.fillRect(0,0,c.width,c.height); g.drawImage(img,0,0);
       URL.revokeObjectURL(url);
       return dataUrlToBytes(c.toDataURL("image/jpeg", 0.92));
     }catch(e){ return null; }
   }
+  const PDF_MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  function pdfDate(s, monthOnly){
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s||""));
+    if(!m) return String(s||"");
+    return (monthOnly ? "" : (+m[3])+" ") + PDF_MONTHS[+m[2]-1] + " " + m[1];
+  }
+  // "*word*" marks italics in the fixed text below.
+  const PDF_METHODS = [
+    ["h1","Methods"],
+    ["p","Roadside surveys were completed in the Keystone Conservation Flora Survey app using the Casey Roadside survey type. The app holds a built-in copy of the Roadside Vegetation Management Plan (RVMP) data for the retained roadsides, comprising 59 named roads, unnamed roads, and 360 mapped patches. The data were prepared as a GeoPackage of Geographic Information System (GIS) layers covering management zones, high-quality vegetation, Endangered Ecological Vegetation Classes (EVCs), and fauna and flora values. Each mapped patch was assigned a management zone code, made up of the first letters of the road name and a number running along the road (for example LAN-01). The same code is carried on every layer, so values, species and notes can be tied to a zone without any new mapping."],
+    ["h2","Roadside Matching and Confirmation"],
+    ["p","The surveyor types the road name as the survey name. The app matches it to the RVMP road names, accepting common abbreviations such as Rd and Hwy. If there is no match, the app suggests the nearest roadside from the device location. Nothing is filled until the surveyor confirms the roadside, and the confirmed roadside is shown on the exported Excel and PDF title pages as RVMP roadside (confirmed)."],
+    ["h2","Data Pre-filled from the RVMP Layers"],
+    ["p","On confirmation, the app fills the Ecological Value column of the Values and Threats table with:"],
+    ["li","Endangered Gippsland Plain EVCs."],
+    ["li","High-quality vegetation, where flagged."],
+    ["li","RVMP fauna records for Southern Brown Bandicoot *Isoodon obesulus obesulus*, Latham’s Snipe *Gallinago hardwickii* and Glossy Grass Skink *Pseudemoia rawlinsoni*."],
+    ["li","Threatened flora records."],
+    ["p","Each row lists the zone codes where the value occurs, and a value without a specific zone is recorded as Whole roadside. The flora also enter the Significant Species list with their status, and the Commentary is started with the RVMP summary. Threats, mitigation and priority are left blank, because they are decided during the assessment. Rows typed by the surveyor are retained, and reloading a roadside does not duplicate rows."],
+    ["h2","Fauna Records Screening"],
+    ["p","Records were screened against each roadside’s mapped patches. Victorian Biodiversity Atlas (VBA) records were used for Latham’s Snipe, Swamp Skink *Lissolepis coventryi*, Powerful Owl *Ninox strenua*, Glossy Grass Skink and Southern Toadlet *Pseudophryne semimarmorata*. Atlas of Living Australia (ALA) records were used for Southern Brown Bandicoot and Koala *Phascolarctos cinereus*. A species is put forward as significant fauna where at least one record meets all three of the following conditions:"],
+    ["li","It lies within 1 km of the roadside’s patches."],
+    ["li","Its spatial accuracy is 1 km or better."],
+    ["li","It is no more than 20 years old on the day of the survey."],
+    ["p","Records with no date were excluded. Each qualifying species is added as a row showing its status, record count, nearest distance and latest year, and is merged into the matching RVMP row where one exists. The ALA includes records from other sources, and sensitive records may be generalised, so it is not a direct VBA extract."],
+    ["h2","Modelled Habitat"],
+    ["p","Habitat distribution modelling (HDM) layers for Southern Brown Bandicoot, Latham’s Snipe, Glossy Grass Skink and Swamp Skink were clipped to the roadsides plus 1 km and grouped into Low, Moderate and High classes, each a third of that species’ score range across Victoria. The app reports the highest score within 75 m of the roadside patches for species rated Moderate or High. This is presented as a prompt to consider the species, not as a record, and no rows are added to the Values table. Classes are not comparable between species."],
+    ["h2","Use of Pre-filled Data"],
+    ["p","All pre-filled content is desktop information and was confirmed or edited by the surveyor in the field. Exports (Excel, PDF and GIS) carry the zone codes, and spatial exports use GDA2020 / MGA Zone 55 (EPSG:7855)."],
+    ["p","Based on observed site conditions, an ecological value may be deemed not worth thoroughly assessing (e.g. incorrect habitat type for significant fauna with nearby record). These rows in the “Values and Threats” table are retained to detail that they have been assessed. Conversely, additional rows are added based on observations in the field."]
+  ];
+  const PDF_ABBR = [["EVC","EVC = Ecological Vegetation Class"],["EPBC","EPBC = Environment Protection and Biodiversity Conservation Act 1999"],["FFG","FFG = Flora and Fauna Guarantee"],["HDM","HDM = Habitat Distribution Model"],["RVMP","RVMP = Roadside Vegetation Management Plan"],["VBA","VBA = Victorian Biodiversity Atlas"],["ALA","ALA = Atlas of Living Australia"],["CoC","CoC = City of Casey"]];
+  function pdfAbbrNote(text, photos){
+    const t = String(text||""), out = PDF_ABBR.filter(a=> new RegExp("\\b"+a[0]+"\\b").test(t)).map(a=>a[1]);
+    if(photos) out.push("Photo IDs refer to the field photograph codes");
+    return out.join("; ");
+  }
+  // "Plain *italic* text" -> runs
+  function pdfRuns(s, f){ const out = []; String(s==null?"":s).split("*").forEach((t,i)=>{ if(t) out.push({ t, f: (i%2) ? (f==="B"?"BI":"I") : (f||"R") }); }); return out; }
+  // Free text from the form: a scientific name in brackets is set in italics without the brackets,
+  // as in the report ("Southern Brown Bandicoot (Isoodon obesulus)" -> "Southern Brown Bandicoot *Isoodon obesulus*").
+  function pdfSci(s){
+    return String(s==null?"":s).replace(/\*/g, "").replace(/\(([A-Z][a-z]+ [a-z]{3,}(?: (?:subsp\.|ssp\.|var\.|f\.) [a-z]{3,}| [a-z]{3,})?)\)/g, (m0, n)=> "*"+n.replace(/ (subsp\.|ssp\.|var\.|f\.) /, "* $1 *")+"*");
+  }
+
   async function buildRoadsidePdf(D){
     const rd = Object.assign(blankRoadside(), D.roadside || {});
-    const m = D.m, rowsX = D.rows || [];
-    const W = 595.28, H = 841.89, M = 42, CW = W - 2*M;
-    const GOLD = "0.800 0.655 0.208", CHAR = "0.200 0.200 0.192", INK = "0.165 0.165 0.157", MUTE = "0.42 0.416 0.388", PALE = "0.941 0.929 0.894", LINE = "0.80 0.78 0.72";
+    const m = D.m || {};
+    const rowsX = (D.rows || []).filter(r=>!isBgFauna(r));
+    const W = 595.28, H = 841.89, M = 72, CW = W - 2*M, TOP = H - 76, BOT = 64;
+    const GOLD = "0.875 0.678 0.122", CHARC = "0.349 0.349 0.349", INK = "0 0 0", BAND = "0.910 0.910 0.910", WHITE = "1 1 1";
+    const HL = { High:"0.961 0.761 0.741", Moderate:"1 0.922 0.600", Low:"0.749 0.890 0.706" };
+    const FONT = { R:"F1", B:"F2", I:"F3", BI:"F4" };
+    const site = (m.site||"").trim() || "this roadside";
+    const road = (D.roadside && D.roadside.rvmpId!=null) ? roadById(D.roadside.rvmpId) : null;
+    const heading = rd.rvmpName ? String(rd.rvmpName).replace(/ - /g," – ") : site;
     const pages = []; let cur = null, y = 0;
-    const images = [];   // { bytes, w, h }
-    function newPage(){ cur = { ops:[], imgs:[] }; pages.push(cur); y = H - M; }
-    function txt(x, yb, s, size, bold, col){ cur.ops.push("BT /"+(bold?"F2":"F1")+" "+size+" Tf "+(col||INK)+" rg "+x.toFixed(2)+" "+yb.toFixed(2)+" Td ("+pdfEsc(s)+") Tj ET"); }
-    function rect(x, yb, w, h, fill){ cur.ops.push(fill+" rg "+x.toFixed(2)+" "+yb.toFixed(2)+" "+w.toFixed(2)+" "+h.toFixed(2)+" re f"); }
-    function box(x, yb, w, h){ cur.ops.push(LINE+" RG 0.6 w "+x.toFixed(2)+" "+yb.toFixed(2)+" "+w.toFixed(2)+" "+h.toFixed(2)+" re S"); }
-    function need(h){ if(y - h < M + 22) newPage(); }
-    function heading(s){
-      need(40); y -= 6;
-      rect(M, y-22, CW, 22, PALE); rect(M, y-22, 3, 22, GOLD);
-      txt(M+10, y-15, s, 11.5, true, INK); y -= 30;
+    const images = [];
+    const toc = [];
+    let tableNo = 0;
+    function newPage(){ cur = { ops:[], imgs:[] }; pages.push(cur); y = TOP; }
+    const fx = v=> (+v).toFixed(2);
+    function run(x, yb, t, f, size, col){ if(t) cur.ops.push("BT /"+FONT[f||"R"]+" "+size+" Tf "+(col||INK)+" rg "+fx(x)+" "+fx(yb)+" Td ("+pdfEsc(t)+") Tj ET"); }
+    function rect(x, yb, w, h, fill){ cur.ops.push(fill+" rg "+fx(x)+" "+fx(yb)+" "+fx(w)+" "+fx(h)+" re f"); }
+    function box(x, yb, w, h){ cur.ops.push("0 0 0 RG 0.5 w "+fx(x)+" "+fx(yb)+" "+fx(w)+" "+fx(h)+" re S"); }
+    const rw = (t, f, size)=> pdfStrW(t, size, f==="B" || f==="BI");
+    // Rich-text wrapping: runs -> lines of words, each word a list of runs.
+    function wrapRuns(runs, width, size){
+      const words = []; let curW = null, space = true;
+      runs.forEach(r=>{
+        pdfLatin1(r.t).split(/( +)/).forEach(piece=>{
+          if(!piece) return;
+          if(/^ +$/.test(piece)){ space = true; return; }
+          if(space || !curW){ curW = { runs:[], w:0 }; words.push(curW); space = false; }
+          curW.runs.push({ t:piece, f:r.f }); curW.w += rw(piece, r.f, size);
+        });
+      });
+      const lines = []; let line = [], lw = 0;
+      const spW = rw(" ", "R", size);
+      words.forEach(wd=>{
+        // a single word wider than the line is cut
+        while(wd.w > width && wd.runs.length===1 && wd.runs[0].t.length>1){
+          const r0 = wd.runs[0]; let k = r0.t.length; while(k>1 && rw(r0.t.slice(0,k), r0.f, size) > width) k--;
+          if(line.length){ lines.push({ words:line, w:lw }); line = []; lw = 0; }
+          lines.push({ words:[{ runs:[{ t:r0.t.slice(0,k), f:r0.f }], w:rw(r0.t.slice(0,k), r0.f, size) }], w:width });
+          wd = { runs:[{ t:r0.t.slice(k), f:r0.f }], w:rw(r0.t.slice(k), r0.f, size) };
+        }
+        const add = line.length ? spW + wd.w : wd.w;
+        if(line.length && lw + add > width){ lines.push({ words:line, w:lw }); line = [wd]; lw = wd.w; }
+        else { line.push(wd); lw += add; }
+      });
+      if(line.length) lines.push({ words:line, w:lw });
+      return lines;
     }
-    function para(s, size){
-      size = size || 10; const lh = size*1.35;
-      pdfWrap(s, CW, size, false).forEach(l=>{ need(lh); y -= lh; txt(M, y+size*0.25, l, size, false, INK); });
+    function drawLine(L, x, yb, width, size, align, last, col, hl){
+      const spW = rw(" ", "R", size);
+      let gap = spW, sx = x;
+      if(align==="justify" && !last && L.words.length>1){ gap = spW + (width - L.w)/(L.words.length-1); }
+      else if(align==="center") sx = x + (width - L.w)/2;
+      else if(align==="right") sx = x + width - L.w;
+      if(hl){ const ww = (align==="justify" && !last && L.words.length>1) ? width : L.w; rect(sx-0.5, yb - size*0.24, ww+1, size*1.12, hl); }
+      L.words.forEach(wd=>{ let xx = sx; wd.runs.forEach(r=>{ run(xx, yb, r.t, r.f, size, col); xx += rw(r.t, r.f, size); }); sx += wd.w + gap; });
+    }
+    function need(h){ if(y - h < BOT) newPage(); }
+    function para(runs, o){
+      o = o || {}; const size = o.size || 11, lh = o.lh || size*1.32, x = o.x!=null ? o.x : M, width = o.width || (CW - (x - M));
+      const lines = wrapRuns(typeof runs==="string" ? pdfRuns(runs) : runs, width, size);
+      lines.forEach((L,i)=>{ need(lh); y -= lh; drawLine(L, x, y + size*0.22, width, size, o.align || "justify", i===lines.length-1, o.col); });
+      y -= (o.after!=null ? o.after : 7);
+      return lines.length;
+    }
+    function h1(t, tocIt){ need(60); y -= 8; y -= 22; run(M, y, t, "B", 20, GOLD); y -= 12; if(tocIt) toc.push({ t, page:pages.length }); }
+    function h2(t, keep){ need(keep || 60); y -= 8; y -= 18; run(M, y, t, "B", 16, GOLD); y -= 9; }
+    function h3(t){ need(44); y -= 4; y -= 14; run(M, y, t, "B", 11, INK); y -= 5; }
+    function bullet(runs){
+      const size = 11, lh = 14.5, lines = wrapRuns(pdfRuns(runs), CW-36, size);
+      lines.forEach((L,i)=>{ need(lh); y -= lh; if(i===0) run(M+18, y+size*0.22, "\x95", "R", size); drawLine(L, M+36, y+size*0.22, CW-36, size, "left", true); });
+      y -= 2;
+    }
+    function caption(no, rest){ para([{ t:"Table "+no+".", f:"B" }, { t:" "+rest, f:"R" }], { size:10, lh:13, align:"left", after:4 }); }
+    function note(text){ if(!text) return; y -= 2; para([{ t:"Table Note:", f:"B" }, { t:" "+text, f:"R" }], { size:8.5, lh:10.5, align:"left", after:10 }); }
+    // cells: { runs, hl (colour for the first paragraph), hlAll } ; widths as proportions
+    function table(cols, headers, data, size){
+      size = size || 9; const lh = size*1.18, pad = 3, gapP = 2;
+      const tot = cols.reduce((a,b)=>a+b,0), ws = cols.map(c=>c/tot*CW);
+      const layout = (cells, bold)=> cells.map((c,i)=>{
+        const cell = (typeof c==="string" || c==null) ? { runs:pdfRuns(c==null?"":String(c), bold?"B":"R") } : c;
+        const paras = []; let curP = [];
+        cell.runs.forEach(r=>{ String(r.t).split("\n").forEach((piece,k)=>{ if(k>0){ paras.push(curP); curP = []; } if(piece) curP.push({ t:piece, f:r.f }); }); });
+        paras.push(curP);
+        const lines = [];
+        paras.forEach((p,pi)=>{ const L = p.length ? wrapRuns(p, ws[i]-2*pad, size) : [{ words:[], w:0 }]; L.forEach((l,li)=>{ l.gapBefore = (pi>0 && li===0) ? gapP : 0; l.hl = (cell.hlAll || (cell.hl && pi===0)) ? (cell.hl||cell.hlAll) : null; lines.push(l); }); });
+        return lines;
+      });
+      const hdr = layout(headers, true);
+      const hH = Math.max(...hdr.map(ls=> ls.reduce((a,l)=>a+lh+l.gapBefore,0))) + 2*pad;
+      function drawHeader(){
+        let x = M; rect(M, y-hH, CW, hH, CHARC);
+        hdr.forEach((ls,i)=>{ let yy = y - pad; ls.forEach(l=>{ yy -= lh; drawLine(l, x+pad, yy+size*0.25, ws[i]-2*pad, size, "left", true, GOLD); }); box(x, y-hH, ws[i], hH); x += ws[i]; });
+        y -= hH;
+      }
+      need(hH + lh*3 + 2*pad); drawHeader();
+      data.forEach((cells, ri)=>{
+        let rest = layout(cells, false);
+        while(rest.some(ls=>ls.length)){
+          const fullH = Math.max(...rest.map(ls=> ls.reduce((a,l)=>a+lh+l.gapBefore,0))) + 2*pad;
+          let avail = y - BOT;
+          if(fullH > avail && (avail < lh*3 + 2*pad || fullH <= TOP - BOT - hH)){ newPage(); drawHeader(); avail = y - BOT; }
+          // take the lines that fit
+          const take = rest.map(ls=>{ let hsum = 0, k = 0; while(k<ls.length && hsum + lh + ls[k].gapBefore + 2*pad <= avail){ hsum += lh + ls[k].gapBefore; k++; } return k; });
+          const part = rest.map((ls,i)=> ls.slice(0, take[i]));
+          rest = rest.map((ls,i)=> ls.slice(take[i]));
+          const h = Math.max(...part.map(ls=> ls.reduce((a,l)=>a+lh+l.gapBefore,0))) + 2*pad;
+          if(ri % 2 === 1) rect(M, y-h, CW, h, BAND);
+          let x = M;
+          part.forEach((ls,i)=>{ let yy = y - pad; ls.forEach(l=>{ yy -= lh + l.gapBefore; drawLine(l, x+pad, yy+size*0.25, ws[i]-2*pad, size, "left", true, INK, l.hl); }); box(x, y-h, ws[i], h); x += ws[i]; });
+          y -= h;
+          if(rest.some(ls=>ls.length)){ newPage(); drawHeader(); }
+        }
+      });
       y -= 4;
     }
-    function kv(label, val){
-      const lines = pdfWrap(val || "-", CW-140, 10, false), lh = 13.5;
-      need(lines.length*lh + 4);
-      txt(M, y-10, label, 10, true, MUTE);
-      lines.forEach((l,i)=> txt(M+140, y-10-i*lh, l, 10, false, INK));
-      y -= lines.length*lh + 4;
+    async function photoBytes(p){
+      let du = p.dataUrl || null;
+      if(!du && p.id){ try{ du = await getPhotoBytes(p.id); }catch(e){ du = null; } }
+      if(!du) du = p.thumb || null;
+      if(!du) return null;
+      const b = dataUrlToBytes(du), inf = jpegInfo(b);
+      return inf ? { b, inf } : null;
     }
-    function table(cols, headers, data){
-      const tot = cols.reduce((a,b)=>a+b,0), ws = cols.map(c=>c/tot*CW), pad = 4, size = 9, lh = 11.5;
-      function drawRow(cells, bold, fill){
-        const wrapped = cells.map((c,i)=> pdfWrap(c, ws[i]-2*pad, size, bold));
-        const n = Math.max(1, ...wrapped.map(a=>a.length));
-        const h = n*lh + 2*pad;
-        need(h);
-        let x = M;
-        if(fill) rect(M, y-h, CW, h, fill);
-        wrapped.forEach((lines,i)=>{
-          box(x, y-h, ws[i], h);
-          lines.forEach((l,k)=> txt(x+pad, y-pad-size-k*lh+1.5, l, size, bold, INK));
-          x += ws[i];
-        });
-        y -= h;
-      }
-      need(40);
-      drawRow(headers, true, PALE);
-      data.forEach(r=> drawRow(r, false, null));
-      y -= 8;
-    }
-    // first page: brand band
+    function placeImg(img, x, yb, w, h){ images.push({ bytes:img.b, w:img.inf.w, h:img.inf.h }); cur.imgs.push({ n:images.length-1, x, y:yb, w, h }); }
+
+    // ---- gather the images, in the order the report refers to them
+    const pics = [];
+    const valRows = (rd.values||[]).filter(v=>v.value||v.threat||v.mitigation||v.priority||(v.photos||[]).length);
+    const short = t=>{ let s = String(t||"").split(/[(.;\n]/)[0].trim(); if(s.length>70) s = s.slice(0,68).replace(/\s+\S*$/,"")+"…"; return s; };
+    const atSite = t=> new RegExp(site.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"), "i").test(t) ? t : t+" at "+site;
+    valRows.forEach(v=> (v.photos||[]).forEach(p=> pics.push({ p, id:p.label||"", cap:pdfRuns(pdfSci(atSite(short(v.value) || "Ecological value"))), kind:"value" })));
+    const roadPics = (rd.photos||[]).slice().sort((a,b)=> (b.siteCond?1:0) - (a.siteCond?1:0));
+    roadPics.forEach(p=> pics.push({ p, id:p.label||"", cap:pdfRuns(pdfSci(atSite((p.caption||"").trim() || "Roadside"))), kind:"road" }));
+    rowsX.forEach(r=>{ const ids = rowPhotoIds(r); (r.photos||[]).forEach((p,i)=> pics.push({ p, id:ids[i], cap:[{ t:(r.common ? r.common+" " : ""), f:"R" }, { t:r.sci||"", f:"I" }, { t:" at "+site, f:"R" }], kind:"species" })); });
+    const loaded = [];
+    for(const x of pics){ const img = await photoBytes(x.p); if(img) loaded.push(Object.assign(x, { img })); }
+    loaded.forEach((x,i)=>{ x.no = i+1; });
+
+    // ---- cover
     newPage();
-    rect(0, H-84, W, 84, CHAR);
-    const logo = await pdfLogoBytes();
-    if(logo){ const inf = jpegInfo(logo); if(inf){ images.push({ bytes:logo, w:inf.w, h:inf.h }); const hh = 58, ww = hh*inf.w/inf.h; cur.imgs.push({ n:images.length-1, x:M, y:H-84+13, w:ww, h:hh }); } }
-    else { txt(M, H-44, "KEYSTONE CONSERVATION", 20, true, GOLD); txt(M, H-62, "ECOLOGICAL CONSULTANCY AND MANAGEMENT", 9, false, GOLD); }
-    txt(W-M-pdfStrW("Casey Roadside Survey",11,true), H-48, "Casey Roadside Survey", 11, true, GOLD);
-    y = H - 84 - 24;
-    txt(M, y-14, "Casey Conservation Roadsides", 18, true, INK); y -= 30;
+    const coverPic = loaded.find(x=>x.kind==="road" && x.p.siteCond && x.img.inf.w>=x.img.inf.h) || loaded.find(x=>x.img.inf.w>=x.img.inf.h) || loaded[0];
+    if(coverPic){
+      const iw = coverPic.img.inf.w, ih = coverPic.img.inf.h, sc = Math.max(W/iw, H/ih), dw = iw*sc, dh = ih*sc;
+      cur.ops.push("q 0 0 "+fx(W)+" "+fx(H)+" re W n");
+      images.push({ bytes:coverPic.img.b, w:iw, h:ih });
+      cur.ops.push("q "+fx(dw)+" 0 0 "+fx(dh)+" "+fx((W-dw)/2)+" "+fx((H-dh)/2)+" cm /Im"+(images.length-1)+" Do Q Q");
+      cur.imgsInline = (cur.imgsInline||[]).concat([images.length-1]);
+    } else rect(0, 0, W, H, BAND);
+    rect(29, 52, 509, 176, CHARC);
+    run(43, 186, "Keystone Conservation", "B", 24, GOLD);
+    run(43, 154, "Ecological Consultancy and Management", "B", 13, GOLD);
+    run(43, 117, "Casey Conservation Roadsides", "B", 17, WHITE);
+    run(43, 86, heading + (m.date ? "  |  " + pdfDate(m.date, true) : ""), "R", 12, WHITE);
 
-    heading("Title Page");
+    // ---- contents (filled in at the end)
+    newPage(); const tocPage = cur;
+    // ---- methods
+    newPage();
+    PDF_METHODS.forEach(b=>{
+      if(b[0]==="h1") h1(b[1], true); else if(b[0]==="h2") h2(b[1]); else if(b[0]==="li") bullet(b[1]); else para(b[1]);
+    });
+
+    // ---- the site
+    newPage();
+    h1(heading, true);
+    h2("Site Details", 160);
+    tableNo++; para("Table "+tableNo+" below shows the survey details for "+site+".", { after:6 });
+    caption(tableNo, "Survey details for "+site+".");
     const prepared = rd.preparedBy==="__other" ? (rd.preparedOther||"") : (rd.preparedBy||"");
-    kv("Site conducted", m.site||"");
-    kv("Conducted on", (m.date||"") + (rd.time ? "  "+rd.time : ""));
-    kv("Prepared by", prepared);
-    if(rd.rvmpName) kv("RVMP roadside (confirmed)", rd.rvmpName);
+    const det = [["Site", m.site||""], ["Conducted on", pdfDate(m.date) + (rd.time ? ", "+rd.time : "")], ["Prepared by", prepared || "-"]];
+    if(rd.rvmpName) det.push(["RVMP roadside (confirmed)", heading]);
+    table([33,67], ["Detail","Record"], det, 10.5);
+    if(rd.rvmpName) note("RVMP refers to Roadside Vegetation Management Plan");
+    else y -= 8;
 
-    heading("Values and Threats");
-    const vals = (rd.values||[]).filter(v=>v.value||v.threat||v.mitigation||v.priority||(v.photos||[]).length).map((v,i)=>[String(i+1), v.value, v.threat, v.mitigation, v.priority, v.zones||"", valPhotoIds(v).join(" ")]);
-    if(vals.length) table([4,20,18,22,9,15,16], ["#","Ecological Value","Threatening Process(es)","Mitigation","Priority","Zone codes","Photo IDs"], vals);
-    else para("No values or threats recorded.");
+    h2("Values and Threats", 170);
+    tableNo++; para("Table "+tableNo+" below summarises the ecological values and threats recorded at "+site+", with the priority and mitigation recommended for each.", { after:6 });
+    caption(tableNo, "Ecological values and threats at "+site+".");
+    if(valRows.length){
+      const pc = p=> /high/i.test(p) ? HL.High : (/mod|med/i.test(p) ? HL.Moderate : (/low/i.test(p) ? HL.Low : null));
+      const vdata = valRows.map((v,i)=>{ const c = pc(v.priority||""); return [String(i+1), { runs:pdfRuns(pdfSci(v.value||"-")) }, { runs:pdfRuns(pdfSci(v.threat||"-")), hl: v.threat ? c : null }, { runs:pdfRuns(pdfSci(v.mitigation||"-")), hl: v.mitigation ? c : null }, { runs:pdfRuns(v.priority||"-"), hl:c }, (v.zones||"-").replace(/,\s*/g, "\n"), valPhotoIds(v).join("\n") || "-"]; });
+      table([24,125,133,133,63,61,87], ["#","Ecological Value","Threatening Process(es)","Mitigation","Priority","Zone codes","Photo IDs"], vdata, 8.5);
+      note(pdfAbbrNote(valRows.map(v=>[v.value,v.threat,v.mitigation].join(" ")).join(" "), true));
+    } else para("No values or threats recorded.");
 
-    heading("Commentary");
-    para(rd.commentary || "No commentary recorded.");
+    h2("Commentary");
+    const parasC = String(rd.commentary||"").split(/\n+/).map(s=>s.trim()).filter(Boolean);
+    const roadNos = loaded.filter(x=>x.kind==="road").map(x=>x.no), refNos = roadNos.length ? roadNos : loaded.map(x=>x.no);
+    const listNos = a=> a.map(n=>"Image "+n).join(", ").replace(/, (Image \d+)$/, " and $1");
+    if(refNos.length && !/images section/i.test(rd.commentary||"")) parasC.push("Representative photographs of the roadside are provided in the Images section ("+listNos(refNos)+").");
+    if(!parasC.length) para("No commentary recorded.");
+    parasC.forEach((t,i)=>{
+      const isHead = i < parasC.length-1 && t.length <= 50 && t.split(/\s+/).length <= 7 && !/[.!?:;,]$/.test(t);
+      if(isHead) h3(t.replace(/\*/g,"")); else para(pdfSci(t));
+    });
 
-    heading("Significant Species Observed");
-    if(rowsX.length) table([4,24,20,26,14,14], ["#","Scientific Name","Common Name","Significance","Zone codes","Photo IDs"], rowsX.map((r,i)=>[String(i+1), r.sci, r.common||"", r.sigText||"", rowZoneText(r, roadById(rd.rvmpId)), rowPhotoIds(r).join(" ")]));
-    else para("No significant species recorded.");
+    h2("Significant Species Observed", 130);
+    tableNo++; para("Table "+tableNo+" below lists the significant species observed at "+site+".", { after:6 });
+    caption(tableNo, "Significant species observed at "+site+".");
+    if(rowsX.length){
+      const sdata = rowsX.map((r,i)=>[String(i+1), { runs:[{ t:r.sci||"", f:"I" }] }, r.common||"", r.sigText||"-", (rowZoneText(r, road)||"-").replace(/,\s*/g, "\n"), rowPhotoIds(r).filter((x,k)=> (r.photos||[]).length>k).join("\n") || "-"]);
+      table([24,145,145,133,85,90], ["#","Scientific Name","Common Name","Significance","Zone codes","Photo IDs"], sdata, 8.5);
+      note(pdfAbbrNote(rowsX.map(r=>r.sigText||"").join(" "), true));
+    } else para("No significant species recorded.");
 
-    const ph = (rd.photos||[]).filter(p=>p.thumb).slice();
-    (rd.values||[]).forEach((v,vi)=> (v.photos||[]).forEach(p=>{ if(p.thumb) ph.push({ thumb:p.thumb, label:p.label, caption:"Values row "+(vi+1)+(v.zones?" ("+v.zones+")":"") }); }));
-    rowsX.forEach(r=>{ const ids = rowPhotoIds(r); (r.photos||[]).forEach((p,i)=>{ if(p.thumb) ph.push({ thumb:p.thumb, label:ids[i], caption:r.sci }); }); });
-    if(ph.length){
-      heading("Photos");
-      const colsN = 3, gap = 10, cw = (CW - gap*(colsN-1))/colsN;
-      for(let i=0;i<ph.length;i+=colsN){
-        const batch = ph.slice(i, i+colsN).map(p=>{ const b = dataUrlToBytes(p.thumb), inf = jpegInfo(b); return { p, b, inf }; }).filter(x=>x.inf);
-        if(!batch.length) continue;
-        const ih = Math.max(...batch.map(x=> cw*x.inf.h/x.inf.w));
-        const caps = batch.map(x=> pdfWrap((x.p.caption?x.p.caption+" ":"")+"("+(x.p.label||"")+")", cw, 8, false));
-        const h = ih + Math.max(...caps.map(c=>c.length))*10 + 10;
-        need(h);
-        batch.forEach((x,k)=>{
-          const ww = cw, hh = cw*x.inf.h/x.inf.w, xx = M + k*(cw+gap);
-          images.push({ bytes:x.b, w:x.inf.w, h:x.inf.h });
-          cur.imgs.push({ n:images.length-1, x:xx, y:y-hh, w:ww, h:hh });
-          caps[k].forEach((l,j)=> txt(xx, y-hh-9-j*10, l, 8, false, MUTE));
-        });
-        y -= h;
+    // ---- images: landscape full width, portrait two to a row
+    if(loaded.length){
+      newPage();
+      h2("Images");
+      para("Photographs of "+site+" are presented below in the order in which they are referred to in the report.", { after:12 });
+      const capRuns = x=> [{ t:"Image "+x.no, f:"B" }, { t:". ", f:"R" }].concat(x.cap, [{ t:" ("+pdfDate((x.p.addedAt||"").slice(0,10) || m.date, true)+"; Photo ID "+(x.id||"-")+").", f:"R" }]);
+      let i = 0;
+      while(i < loaded.length){
+        const a = loaded[i], aPort = a.img.inf.h > a.img.inf.w;
+        const b = loaded[i+1], pair = aPort && b && b.img.inf.h > b.img.inf.w;
+        if(!aPort){
+          const w = CW*0.82, h = Math.min(w*a.img.inf.h/a.img.inf.w, 300), ww = h*a.img.inf.w/a.img.inf.h;
+          const capL = wrapRuns(capRuns(a), CW, 9.5);
+          need(h + capL.length*12 + 26);
+          placeImg(a.img, M + (CW-ww)/2, y-h, ww, h); y -= h + 4;
+          capL.forEach((L,k)=>{ y -= 12; drawLine(L, M, y, CW, 9.5, "center", true); });
+          y -= 18; i++;
+        } else {
+          const items = pair ? [a, b] : [a], colW = CW/2;
+          const dims = items.map(x=>{ const h = 245, w = Math.min(h*x.img.inf.w/x.img.inf.h, colW-24); return { w, h:w*x.img.inf.h/x.img.inf.w }; });
+          const hMax = Math.max(...dims.map(d=>d.h));
+          const caps = items.map(x=> wrapRuns(capRuns(x), colW-20, 9.5));
+          need(hMax + Math.max(...caps.map(c=>c.length))*12 + 26);
+          items.forEach((x,k)=>{
+            const cx = pair ? M + colW*k + colW/2 : M + CW/2, d = dims[k];
+            placeImg(x.img, cx - d.w/2, y - d.h, d.w, d.h);
+            let yy = y - hMax - 4; caps[k].forEach(L=>{ yy -= 12; drawLine(L, cx - (colW-20)/2, yy, colW-20, 9.5, "center", true); });
+          });
+          y -= hMax + 4 + Math.max(...caps.map(c=>c.length))*12 + 18;
+          i += items.length;
+        }
       }
     }
-    // footers
-    pages.forEach((pg,i)=>{
-      cur = pg;
-      cur.ops.push(LINE+" RG 0.6 w "+M+" "+(M-6)+" m "+(W-M)+" "+(M-6)+" l S");
-      txt(M, M-18, "Keystone Conservation | Ecological Consultancy and Management", 8, false, MUTE);
-      const pn = "Page "+(i+1)+" of "+pages.length; txt(W-M-pdfStrW(pn,8,false), M-18, pn, 8, false, MUTE);
+
+    // ---- contents page
+    cur = tocPage; y = TOP; 
+    y -= 22; run(M, y, "Contents", "B", 16, INK); y -= 18;
+    toc.forEach(e=>{
+      y -= 21.6; const pn = String(e.page);
+      const tw = rw(e.t, "B", 10), pw = rw(pn, "B", 10), dotW = rw(".", "B", 10);
+      run(M, y, e.t, "B", 10);
+      const nDots = Math.max(0, Math.floor((CW - tw - pw - 6)/dotW));
+      run(M + tw + 2, y, new Array(nDots+1).join("."), "B", 10);
+      run(M + CW - pw, y, pn, "B", 10);
     });
-    // assemble
+
+    // ---- header and page numbers (not on the cover)
+    const logo = await pdfLogoBytes(); let logoN = -1, linf = null;
+    if(logo){ linf = jpegInfo(logo); if(linf){ images.push({ bytes:logo, w:linf.w, h:linf.h }); logoN = images.length-1; } }
+    pages.forEach((pg,i)=>{
+      if(i===0) return;
+      cur = pg;
+      run(M, H-45, "Casey Conservation Roadsides", "R", 10);
+      if(logoN>=0){ const lw = 140, lh2 = lw*linf.h/linf.w; cur.imgs.push({ n:logoN, x:W-M+(-lw)+0, y:H-14-lh2, w:lw, h:lh2 }); }
+      else run(W-M-rw("KEYSTONE CONSERVATION","B",10), H-45, "KEYSTONE CONSERVATION", "B", 10, GOLD);
+      const pn = String(i+1); run(W/2 - rw(pn,"R",10)/2, 40, pn, "R", 10);
+    });
+
+    // ---- assemble
     const enc = s=>{ const u = new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i] = s.charCodeAt(i) & 255; return u; };
-    const objs = [];   // objs[i] = parts for object i+1
+    const objs = [];
     objs.push(["<< /Type /Catalog /Pages 2 0 R >>"]);
-    objs.push([null]);   // pages, filled below
-    objs.push(["<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"]);
-    objs.push(["<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"]);
-    const imgObjNo = images.map((im,i)=>{
+    objs.push([null]);
+    ["Helvetica","Helvetica-Bold","Helvetica-Oblique","Helvetica-BoldOblique"].forEach(f=> objs.push(["<< /Type /Font /Subtype /Type1 /BaseFont /"+f+" /Encoding /WinAnsiEncoding >>"]));
+    const imgObjNo = images.map(im=>{
       objs.push(["<< /Type /XObject /Subtype /Image /Width "+im.w+" /Height "+im.h+" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+im.bytes.length+" >>\nstream\n", im.bytes, "\nendstream"]);
       return objs.length;
     });
     const pageNos = [];
     pages.forEach(pg=>{
       let content = pg.ops.join("\n");
-      pg.imgs.forEach((im,k)=>{ content += "\nq "+im.w.toFixed(2)+" 0 0 "+im.h.toFixed(2)+" "+im.x.toFixed(2)+" "+im.y.toFixed(2)+" cm /Im"+im.n+" Do Q"; });
+      pg.imgs.forEach(im=>{ content += "\nq "+fx(im.w)+" 0 0 "+fx(im.h)+" "+fx(im.x)+" "+fx(im.y)+" cm /Im"+im.n+" Do Q"; });
       const cBytes = enc(content);
       objs.push(["<< /Length "+cBytes.length+" >>\nstream\n", cBytes, "\nendstream"]);
       const cNo = objs.length;
-      const xo = pg.imgs.length ? " /XObject << "+pg.imgs.map(im=>"/Im"+im.n+" "+imgObjNo[im.n]+" 0 R").join(" ")+" >>" : "";
-      objs.push(["<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "+W+" "+H+"] /Contents "+cNo+" 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >>"+xo+" >> >>"]);
+      const used = pg.imgs.map(im=>im.n).concat(pg.imgsInline||[]).filter((n,k,a)=>a.indexOf(n)===k);
+      const xo = used.length ? " /XObject << "+used.map(n=>"/Im"+n+" "+imgObjNo[n]+" 0 R").join(" ")+" >>" : "";
+      objs.push(["<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "+W+" "+H+"] /Contents "+cNo+" 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >>"+xo+" >> >>"]);
       pageNos.push(objs.length);
     });
     objs[1] = ["<< /Type /Pages /Count "+pageNos.length+" /Kids [ "+pageNos.map(n=>n+" 0 R").join(" ")+" ] >>"];
     const chunks = []; let len = 0; const offs = [];
     const add = x=>{ const u = typeof x==="string" ? enc(x) : x; chunks.push(u); len += u.length; };
-    add("%PDF-1.4\n");
+    add("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n");
     objs.forEach((parts,i)=>{ offs.push(len); add((i+1)+" 0 obj\n"); parts.forEach(add); add("\nendobj\n"); });
     const xr = len;
     add("xref\n0 "+(objs.length+1)+"\n0000000000 65535 f \n");
@@ -11271,6 +11481,16 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       f[b+"p"] = JSON.stringify((v.photos||[]).map(p=>({ id:p.id, label:p.label||"" })));
       f[b+"g"] = v.rvmp ? "1" : "";
     });
+    // Roadside photos (site conditions and others): details plus the small thumbnail, so teammates see
+    // them straight away. Full-size photos still travel through OneDrive. Thumbnails stop being shared
+    // past about 600 KB in total, to stay well inside the shared record's size limit.
+    let budget = 600000;
+    (roadside.photos||[]).forEach(p=>{
+      if(!p || !p.id) return;
+      const th = (p.thumb && p.thumb.length <= budget) ? p.thumb : ""; budget -= th.length;
+      f["s_"+rdKey(p.id)+"_j"] = JSON.stringify({ id:p.id, label:p.label||"", caption:p.caption||"", zone:p.zone||"", siteCond:!!p.siteCond, portrait:!!p.portrait, addedAt:p.addedAt||"", thumb:th });
+    });
+    (roadside.photosGone||[]).forEach(id=>{ f["s_"+rdKey(id)+"_x"] = "1"; });
     return f;
   }
   // Works out what changed since the last agreed state and queues just those fields.
@@ -11341,6 +11561,29 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     const done = (K)=>{ st.vals[K] = R[K].v; st.t[K] = R[K].t; changed = true; };
     RD_M.forEach(k=>{ const K = "m_"+k; if(take(K)){ roadside[k] = R[K].v; done(K); } });
     const ids = {}; Object.keys(R).forEach(K=>{ const m = K.match(/^r_(.+)_(c|o|value|zones|threat|mitigation|priority|p|g|x)$/); if(m) ids[m[1]] = 1; });
+    // Roadside photos from teammates
+    const sids = {}; Object.keys(R).forEach(K=>{ const m = K.match(/^s_(.+)_(j|x)$/); if(m) sids[m[1]] = 1; });
+    roadside.photos = roadside.photos||[];
+    Object.keys(sids).forEach(id=>{
+      const J = "s_"+id+"_j", X = "s_"+id+"_x";
+      if(R[X] && R[X].v==="1"){
+        const i = roadside.photos.findIndex(p=>rdKey(p.id)===id);
+        if(i>=0){ const pid = roadside.photos[i].id; roadside.photos.splice(i,1); roadside.photosGone = roadside.photosGone||[]; if(roadside.photosGone.indexOf(pid)<0) roadside.photosGone.push(pid); changed = true; }
+        st.vals[X] = "1"; st.t[X] = R[X].t; return;
+      }
+      if(!take(J)) return;
+      try{
+        const o = JSON.parse(R[J].v||"{}"); if(!o.id){ done(J); return; }
+        if((roadside.photosGone||[]).indexOf(o.id)>=0){ done(J); return; }
+        let q = roadside.photos.find(p=>p.id===o.id);
+        if(!q){ q = { id:o.id }; roadside.photos.push(q); }
+        q.label = o.label||q.label||""; q.caption = o.caption||""; q.zone = o.zone||""; q.addedAt = o.addedAt||q.addedAt||"";
+        if(o.siteCond) q.siteCond = true; else delete q.siteCond;
+        if(o.portrait) q.portrait = true; else delete q.portrait;
+        if(o.thumb) q.thumb = o.thumb; else if(!q.thumb) q.thumb = "";
+        done(J);
+      }catch(e){}
+    });
     roadside.values = roadside.values||[];
     Object.keys(ids).forEach(id=>{
       const kk = k=>"r_"+id+"_"+k;
@@ -11657,7 +11900,16 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
         let rmeta = null, remote = null;
         if(checkRemote || localChanged){ odStep = "checking "+D+" in OneDrive"; rmeta = await odMeta(OD_ROOT+"/"+D+"/survey.json"); if(rmeta) pr.found++; }
         const remoteChanged = !!rmeta && rmeta.lastModifiedDateTime !== (st.pull[D]||"");
-        if(remoteChanged && loc && loc.key === openKey) continue;       // never change the open survey; it merges after it is closed
+        if(remoteChanged && loc && loc.key === openKey){
+          // The open survey is not merged until it is closed, but photos the other device added are put in
+          // now (add-only), so site-condition photos show up without closing the survey.
+          try{
+            odStep = "downloading "+D;
+            const r = await odFetch(OD_G+":/"+odEnc(OD_ROOT+"/"+D+"/survey.json")+":/content");
+            if(r.ok){ const rem = await r.json(); const n = odAddOpenPhotos(rem); if(n){ pr.photos += n; try{ await odPhotosFor(snapshot(), D); }catch(e){} } }
+          }catch(e){}
+          continue;
+        }
         if(remoteChanged){
           odStep = "downloading "+D;
           try{ const r = await odFetch(OD_G+":/"+odEnc(OD_ROOT+"/"+D+"/survey.json")+":/content"); if(r.ok) remote = await r.json(); }catch(e){}
@@ -11701,6 +11953,23 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       else if(manual){ const nl = Object.keys(getFolder()).length; FHKit.toast((up ? "Backed up "+up+" file"+(up>1?"s":"")+". " : "Nothing new to upload. ")+"OneDrive holds "+pr.found+" survey"+(pr.found===1?"":"s")+"; this device has "+nl+"."); }
     }catch(e){ if(e && e.signin){ st.login = true; st.err = ""; odLss("fh_od_state", st); odBanner(); if(manual) FHKit.toast("Sign in to OneDrive again to continue."); } else { st.err = String(e.message||e); if(odStep && st.err.indexOf(odStep) < 0 && st.err.indexOf("while") < 0) st.err += " (while "+odStep+")"; odLss("fh_od_state", st); if(manual) FHKit.toast("OneDrive: "+st.err); } }
     odBusy = false; odStatus();
+  }
+  function odAddOpenPhotos(rem){
+    if(surveyType!=="roadside" || !rem || !rem.roadside) return 0;
+    let n = 0; roadside.photos = roadside.photos||[];
+    const gone = (roadside.photosGone||[]).concat(rem.roadside.photosGone||[]);
+    (rem.roadside.photos||[]).forEach(p=>{
+      if(!p || !p.id || gone.indexOf(p.id)>=0) return;
+      const have = roadside.photos.find(x=>x.id===p.id);
+      if(!have){ roadside.photos.push(Object.assign({}, p)); n++; }
+      else if(!have.thumb && p.thumb){ have.thumb = p.thumb; n++; }
+    });
+    (rem.roadside.values||[]).forEach(rv=>{
+      const v = (roadside.values||[]).find(x=>x.code===rv.code); if(!v) return;
+      (rv.photos||[]).forEach(p=>{ const h = (v.photos||[]).find(x=>x.id===p.id); if(h && !h.thumb && p.thumb){ h.thumb = p.thumb; n++; } });
+    });
+    if(n){ try{ renderRoadside(); autosave(); liveSyncRoadside(); }catch(e){} }
+    return n;
   }
   function odSchedule(){ if(!odConnected()) return; clearTimeout(odTimer); odTimer = setTimeout(()=>odSync(false), 15000); }
   // Puts back photos that a survey on this device refers to but that are missing here. Never overwrites or removes anything.

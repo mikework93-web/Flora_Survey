@@ -1,3 +1,12 @@
+## 2026-11-24.1 - Roadside: fauna list, report-style PDF, shared site photos
+- Significant Species Observed now lists flora only. Fauna from the RVMP, VBA and ALA data stays in the Values and Threats table. Fauna rows that earlier builds added automatically are removed when the survey is opened, unless someone added a photo or map point to them.
+- The roadside PDF now follows the Casey Conservation Roadsides batch report: cover photo with the charcoal title box, contents page, Methods, then the site section (Site Details, Values and Threats, Commentary, Significant Species Observed) and Images. Gold headings, charcoal table headers with gold text, banded rows, numbered tables with captions and table notes, the logo header and page numbers.
+- Priority colours: High red, Moderate yellow, Low green, on the priority and the first item of the threat and mitigation cells.
+- Scientific names in brackets are set in italics; short lines in the commentary become bold subheadings; a sentence pointing to the roadside photos is added to the commentary.
+- Images use the full-size photo where the device has it: landscape photos full width, portrait photos two to a row, each with a numbered caption giving the month and Photo ID.
+- Roadside photos (including the site conditions photo) are now shared through Team Sync with their thumbnail, so teammates see them straight away. Deleting one removes it for everyone.
+- OneDrive: photos added on another device now appear in a survey that is open on this device (add-only), instead of waiting until the survey is closed.
+
 ## 2026-11-18.7 - VicKey botanical review
 - Measurements in Flora of Victoria form are now read properly: "(2–)3–5(–7) mm" (usual range plus occasional extremes, which were previously missed entirely), "3–5 × 1–2 mm" (length and width), "to c. 2 mm", "10 mm or more", "c. 10 mm across", "3·5 mm".
 - "Lower glume 8–10 mm, upper 7–9 mm" now gives 7–10 mm instead of only the first figure.
