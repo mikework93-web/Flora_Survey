@@ -1,3 +1,9 @@
+## 2026-11-24.4 - Landscape reminder on every photo option
+
+- Tapping any Add photo, Take photo or Choose photos button now shows a "Use landscape mode" prompt first, in all survey types (flora, roadside, significant tree, polygon and site-note photos).
+- The prompt must be answered before the camera or gallery opens: "Phone is sideways, continue" opens it, "Cancel" does not.
+- If the phone is already sideways the prompt says so.
+
 ## 2026-11-24.3 - Roadside: choose the roadside from your location
 - Starting a Casey Roadside survey no longer asks you to type a name. The app finds your location and lists the six nearest RVMP roadsides with their distance; the nearest is selected. Tap another, or pick from the full list, then Confirm and start.
 - The survey name is the RVMP roadside name (for example "Edwards Lane - Blind Bight"), so everyone on the same roadside and day uses the same name and shares one OneDrive folder. The name box is read-only in roadside surveys.

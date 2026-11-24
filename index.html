@@ -5452,7 +5452,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-24.3";
+  const BUILD_VERSION = "2026-11-24.4";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -10510,6 +10510,42 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   const SITE_CAP = "Typical site conditions";
   function dataPortrait(u){ return new Promise(res=>{ const i = new Image(); i.onload = ()=>res((i.naturalHeight||0) > (i.naturalWidth||0)); i.onerror = ()=>res(false); i.src = u; }); }
   function sitePhotoOk(){ return (roadside.photos||[]).some(p=>p.siteCond && !p.portrait); }
+  // Landscape reminder: every image picker (camera or gallery, all survey types) asks first
+  (function landscapeGate(){
+    const origClick = HTMLInputElement.prototype.click;
+    if(origClick.__lsGate) return;
+    if(!document.getElementById("fhLsCss")){
+      const st = document.createElement("style"); st.id = "fhLsCss";
+      st.textContent = "@keyframes fhLsTurn{0%,20%{transform:rotate(0)}55%,100%{transform:rotate(-90deg)}}#fhLandscape .ls-phone{display:block;margin:2px auto 10px;animation:fhLsTurn 2.2s ease-in-out infinite alternate}@media (prefers-reduced-motion:reduce){#fhLandscape .ls-phone{animation:none;transform:rotate(-90deg)}}";
+      document.head.appendChild(st);
+    }
+    function isLand(){ try{ return window.matchMedia("(orientation: landscape)").matches; }catch(e){ return false; } }
+    HTMLInputElement.prototype.click = function(){
+      const el = this;
+      if(el.type !== "file" || el.getAttribute("accept") !== "image/*" || el.__lsOk) return origClick.call(el);
+      if(document.getElementById("fhLandscape")) return;
+      const wrap = document.createElement("div");
+      wrap.id = "fhLandscape"; wrap.className = "name-ask confirm";
+      const note = ()=> isLand() ? "Your phone is already sideways. Keep it that way for the photo." : "Turn your phone sideways before you take or choose a photo.";
+      wrap.innerHTML = '<div class="name-ask-card notice-card" role="alertdialog" aria-labelledby="fhLsT">'
+        + '<svg class="ls-phone" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></svg>'
+        + '<b id="fhLsT">Use landscape mode</b>'
+        + '<p>All photos must be landscape (wider than tall). Portrait photos are flagged and need to be retaken.</p>'
+        + '<p data-ls-note><b>'+note()+'</b></p>'
+        + '<div class="name-ask-btns"><button type="button" class="btn light" data-ls="no">Cancel</button><button type="button" class="btn" data-ls="go">Phone is sideways, continue</button></div></div>';
+      document.body.appendChild(wrap);
+      const upd = ()=>{ const n = wrap.querySelector("[data-ls-note] b"); if(n) n.textContent = note(); };
+      window.addEventListener("resize", upd);
+      const close = ()=>{ window.removeEventListener("resize", upd); wrap.remove(); };
+      wrap.addEventListener("click", ev=>{
+        const b = ev.target.closest("[data-ls]");
+        if(!b) return;
+        close();
+        if(b.dataset.ls === "go"){ el.__lsOk = true; try{ origClick.call(el); } finally { el.__lsOk = false; } }
+      });
+    };
+    HTMLInputElement.prototype.click.__lsGate = true;
+  })();
   function roadFinishGate(go){
     if(surveyType!=="roadside" || sitePhotoOk() || document.getElementById("fhSiteCond")) return false;
     const wrap = document.createElement("div");
