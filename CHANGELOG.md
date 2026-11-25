@@ -1,3 +1,8 @@
+## 2026-11-26.1 - iPhone saving error and old survey reappearing
+
+- Fixed the red "This survey stopped saving on this device ... database connection is closing" banner on iPhone Safari. Safari closes the phone's storage when the page is in the background. The app now reopens it and retries the save, for both survey data and photos.
+- Fixed a finished survey reappearing in the next one. If the clear-up at Finish failed (the same Safari storage problem), the old survey was restored on reload and then shared with the team. Finish now marks a clean start, stops pending saves, and the next load ignores any leftover draft.
+
 ## 2026-11-24.4 - Landscape reminder on every photo option
 
 - Tapping any Add photo, Take photo or Choose photos button now shows a "Use landscape mode" prompt first, in all survey types (flora, roadside, significant tree, polygon and site-note photos).

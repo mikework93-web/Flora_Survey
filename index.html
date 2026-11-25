@@ -5452,7 +5452,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
   // updated (any change is enough — it's just compared, never parsed) and
   // the app will notice on its own and offer a one-tap update instead of
   // needing manual cache-clearing steps.
-  const BUILD_VERSION = "2026-11-24.4";
+  const BUILD_VERSION = "2026-11-26.1";
   const UPDATE_CHECK_KEY = "fh_florasurvey_lastupdatecheck"; // matches this app's other fh_florasurvey_* keys
   // force=true skips the 20-min throttle and reports back what it found —
   // used by the manual "Check for updates" tap below, for when the passive
@@ -5526,6 +5526,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
      and for surveys saved by older versions (they are moved across on the first save). */
   const IDB_FLAG = "fh_"+FH_KEY+"_idbstate";
   const STATE_DB = "fh_"+FH_KEY+"_state";
+  let freshStart = false;
+  const FRESH_KEY = "fh_"+FH_KEY+"_fresh";
+  const idbClosing = e => !!e && (e.name==="InvalidStateError" || /closing|connection is|transaction/i.test(String(e.message||"")));
   let stateDbP = null, stateUsable = !!window.indexedDB, stateQueue = Promise.resolve(), restorePending = false;
   let folderCache = null;
   const folderWritten = new Map();
@@ -6935,7 +6938,12 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       let req;
       try{ req = indexedDB.open(STATE_DB, 1); }catch(e){ reject(e); return; }
       req.onupgradeneeded = ()=>{ req.result.createObjectStore("folder"); req.result.createObjectStore("kv"); };
-      req.onsuccess = ()=> resolve(req.result);
+      req.onsuccess = ()=>{
+        const d = req.result;
+        d.onclose = ()=>{ stateDbP = null; };
+        d.onversionchange = ()=>{ try{ d.close(); }catch(e){} stateDbP = null; };
+        resolve(d);
+      };
       req.onerror = ()=> reject(req.error||new Error("Could not open survey storage"));
       req.onblocked = ()=> reject(new Error("Survey storage is blocked"));
     });
@@ -6943,12 +6951,18 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     return stateDbP;
   }
   function idbRun(store, mode, fn){
-    return openStateDB().then(db => new Promise((resolve, reject)=>{
-      const tx = db.transaction(store, mode); let out;
-      try{ out = fn(tx.objectStore(store)); }catch(e){ reject(e); return; }
+    const attempt = ()=> openStateDB().then(db => new Promise((resolve, reject)=>{
+      let tx, out;
+      try{ tx = db.transaction(store, mode); out = fn(tx.objectStore(store)); }catch(e){ reject(e); return; }
       tx.oncomplete = ()=> resolve(out && out.result !== undefined ? out.result : undefined);
       tx.onerror = tx.onabort = ()=> reject(tx.error||new Error("Could not save"));
     }));
+    // iPhone Safari closes IndexedDB connections when the page is backgrounded; reopen and retry (twice).
+    return attempt().catch(err=>{
+      if(!idbClosing(err)) throw err;
+      stateDbP = null;
+      return attempt().catch(err2=>{ if(!idbClosing(err2)) throw err2; stateDbP = null; return new Promise(r=>setTimeout(r,250)).then(attempt); });
+    });
   }
   function legacyFolder(){ try{ return JSON.parse(localStorage.getItem(FOLDER_KEY))||{}; }catch(e){ return {}; } }
   function getFolder(){ if(!folderCache) folderCache = legacyFolder(); return folderCache; }
@@ -6984,6 +6998,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       });
   }
   function saveWorking(snap){
+    if(freshStart) return;
     if(!stateUsable){ localStorage.setItem(WORKING_KEY, JSON.stringify(snap)); return; }
     stateQueue = stateQueue.then(()=> idbRun("kv", "readwrite", st=>{ st.put({ t: Date.now(), snap: snap }, "working"); }))
       .then(()=>{
@@ -7303,6 +7318,9 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     // A "new" survey is a clean break — don't silently rejoin the live
     // session this device was just part of when the page reloads.
     try{ localStorage.removeItem(LIVE_KEY); localStorage.removeItem(LIVE_QUEUE_KEY); }catch(e){}
+    freshStart = true;   // stop any pending autosave from writing the finished survey back
+    try{ localStorage.setItem(FRESH_KEY, "1"); }catch(e){}
+    try{ sessionStorage.setItem(FRESH_KEY, "1"); }catch(e){}
     clearWorking().then(()=>location.reload(), ()=>location.reload());
   }
 
@@ -7752,13 +7770,25 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
       let req;
       try{ req = indexedDB.open(PHOTO_DB_NAME, 1); }catch(e){ reject(e); return; }
       req.onupgradeneeded = ()=>{ req.result.createObjectStore(PHOTO_STORE); };
-      req.onsuccess = ()=> resolve(req.result);
-      req.onerror = ()=> reject(req.error||new Error("Could not open photo storage"));
+      req.onsuccess = ()=>{
+        const d = req.result;
+        d.onclose = ()=>{ photoDbPromise = null; };
+        d.onversionchange = ()=>{ try{ d.close(); }catch(e){} photoDbPromise = null; };
+        resolve(d);
+      };
+      req.onerror = ()=>{ photoDbPromise = null; reject(req.error||new Error("Could not open photo storage")); };
     });
     return photoDbPromise;
   }
+  function phRun(run){
+    return openPhotoDB().then(run).catch(err=>{
+      if(!idbClosing(err)) throw err;
+      photoDbPromise = null;
+      return openPhotoDB().then(run);
+    });
+  }
   function putPhotoBytes(id, dataUrl){
-    return openPhotoDB().then(db => new Promise((resolve, reject)=>{
+    return phRun(db => new Promise((resolve, reject)=>{
       const tx = db.transaction(PHOTO_STORE, "readwrite");
       tx.objectStore(PHOTO_STORE).put(dataUrl, id);
       tx.oncomplete = ()=> resolve();
@@ -7766,7 +7796,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }));
   }
   function getPhotoBytes(id){
-    return openPhotoDB().then(db => new Promise((resolve, reject)=>{
+    return phRun(db => new Promise((resolve, reject)=>{
       const tx = db.transaction(PHOTO_STORE, "readonly");
       const req = tx.objectStore(PHOTO_STORE).get(id);
       req.onsuccess = ()=> resolve(req.result||null);
@@ -7774,7 +7804,7 @@ function getLastShareDiagnostic(){ return lastShareDiagnostic; }
     }));
   }
   function deletePhotoBytes(id){
-    return openPhotoDB().then(db => new Promise((resolve)=>{
+    return phRun(db => new Promise((resolve)=>{
       const tx = db.transaction(PHOTO_STORE, "readwrite");
       tx.objectStore(PHOTO_STORE).delete(id);
       tx.oncomplete = ()=> resolve();
@@ -12473,14 +12503,18 @@ window.__fhSaveMapArea = function(ctx){
   if(!$("date").value) $("date").value = FHKit.today();
 
   let working = null;
-  try{ working = JSON.parse(localStorage.getItem(WORKING_KEY)); }catch(e){}
+  let freshMark = false;
+  try{ freshMark = localStorage.getItem(FRESH_KEY)==="1" || sessionStorage.getItem(FRESH_KEY)==="1"; }catch(e){}
+  try{ localStorage.removeItem(FRESH_KEY); sessionStorage.removeItem(FRESH_KEY); }catch(e){}
+  if(freshMark){ try{ localStorage.removeItem(WORKING_KEY); }catch(e){} }
+  else{ try{ working = JSON.parse(localStorage.getItem(WORKING_KEY)); }catch(e){} }
   let idbFlag = false; try{ idbFlag = localStorage.getItem(IDB_FLAG) === "1"; }catch(e){}
   // Older versions kept the draft in localStorage: use it straight away. Newer ones keep it in IndexedDB.
   if(working && !idbFlag){ try{ restore(working); }catch(e){} }
   if(stateUsable){
     restorePending = true;
     Promise.race([
-      Promise.all([loadFolderFromIDB(), (working && !idbFlag) ? Promise.resolve(null) : loadWorking()]),
+      Promise.all([loadFolderFromIDB(), freshMark ? clearWorking().then(()=>null) : ((working && !idbFlag) ? Promise.resolve(null) : loadWorking())]),
       new Promise(r=> setTimeout(()=>r(null), 5000))
     ]).then(res=>{
       const w = res && res[1];
